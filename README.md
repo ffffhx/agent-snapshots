@@ -4,7 +4,7 @@ Local-first, read-only session snapshots for Codex, Claude Code, and Trae.
 
 This project was split out of Garden Lab so the snapshot viewer can live as its own tool. It scans local agent history, renders a browser review UI, exports static HTML/Markdown snapshots, redacts common secrets, and can publish redacted snapshots to a small standalone share API.
 
-Website: <https://ffffhx.github.io/garden-lab/codex-snapshots/>
+Website: <https://ffffhx.github.io/codex-snapshots/>
 
 ## Quick Start
 
