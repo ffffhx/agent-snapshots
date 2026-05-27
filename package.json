@@ -1,0 +1,35 @@
+{
+  "name": "codex-snapshots",
+  "version": "0.1.0",
+  "description": "Local-first read-only snapshots for Codex, Claude Code, and Trae sessions.",
+  "type": "module",
+  "packageManager": "pnpm@10.20.0",
+  "bin": {
+    "codex-snapshot": "bin/codex-snapshot.mjs"
+  },
+  "files": [
+    "bin",
+    "server",
+    "scripts",
+    "README.md"
+  ],
+  "scripts": {
+    "dev": "node bin/codex-snapshot.mjs serve --port 4321",
+    "snapshot": "node bin/codex-snapshot.mjs",
+    "snapshot:daemon": "node bin/codex-snapshot.mjs serve --port 4321",
+    "snapshot:install-daemon": "node scripts/launch-agent.mjs install",
+    "snapshot:uninstall-daemon": "node scripts/launch-agent.mjs uninstall",
+    "snapshot:daemon:status": "node scripts/launch-agent.mjs status",
+    "snapshot:daemon:logs": "node scripts/launch-agent.mjs logs",
+    "share:server": "node server/share-api.mjs",
+    "test:smoke": "node bin/codex-snapshot.mjs --help && node server/share-api.mjs --help && node --check bin/codex-snapshot.mjs && node --check server/share-api.mjs && node --check scripts/launch-agent.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "UNLICENSED",
+  "dependencies": {
+    "highlight.js": "^11.11.1",
+    "markdown-it": "^14.1.1"
+  }
+}
