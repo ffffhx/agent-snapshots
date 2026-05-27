@@ -44,7 +44,7 @@ shareForm.addEventListener("submit", (event) => {
 });
 
 async function checkViewer(url) {
-  setStatus(viewerStatus, "Checking", "checking");
+  setStatus(viewerStatus, "检查中", "checking");
 
   try {
     await fetch(url, {
@@ -52,14 +52,14 @@ async function checkViewer(url) {
       mode: "no-cors",
       signal: AbortSignal.timeout(2500),
     });
-    setStatus(viewerStatus, "Connected", "ready");
+    setStatus(viewerStatus, "已连接", "ready");
   } catch {
-    setStatus(viewerStatus, "Offline", "error");
+    setStatus(viewerStatus, "未启动", "error");
   }
 }
 
 async function checkApi(url) {
-  setStatus(apiStatus, "Checking", "checking");
+  setStatus(apiStatus, "检查中", "checking");
 
   try {
     const response = await fetch(`${url}/api/snapshots/health`, {
@@ -71,9 +71,9 @@ async function checkApi(url) {
       throw new Error(`HTTP ${response.status}`);
     }
 
-    setStatus(apiStatus, "Connected", "ready");
+    setStatus(apiStatus, "已连接", "ready");
   } catch {
-    setStatus(apiStatus, "Optional", "error");
+    setStatus(apiStatus, "可选", "error");
   }
 }
 

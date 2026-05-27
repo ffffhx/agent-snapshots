@@ -27,7 +27,7 @@ body {
     linear-gradient(var(--grid-soft) 1px, transparent 1px),
     var(--paper);
   background-size: 24px 24px;
-  font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  font-family: "Iowan Old Style", "Palatino Linotype", Georgia, "Songti SC", "Noto Serif CJK SC", "Source Han Serif SC", serif;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
 }
@@ -51,7 +51,7 @@ label span,
 .share-meta,
 .shot-kicker,
 .shot-meta {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "PingFang SC", "Microsoft YaHei", monospace;
 }
 
 .shell,
@@ -79,7 +79,7 @@ label span,
   font-size: 12px;
   font-weight: 900;
   letter-spacing: 0.08em;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 h1,
@@ -90,15 +90,15 @@ p {
 
 h1 {
   margin-bottom: 24px;
-  font-size: clamp(56px, 9vw, 124px);
-  line-height: 0.88;
+  font-size: 92px;
+  line-height: 1.16;
   letter-spacing: 0;
 }
 
 h2 {
   margin-bottom: 14px;
-  font-size: clamp(26px, 3vw, 42px);
-  line-height: 1;
+  font-size: 34px;
+  line-height: 1.25;
   letter-spacing: 0;
 }
 
@@ -129,7 +129,7 @@ h2 {
   color: var(--ink);
   font-size: 13px;
   font-weight: 900;
-  text-transform: uppercase;
+  text-transform: none;
   transition: transform 160ms ease, border-color 160ms ease, background-color 160ms ease;
 }
 
@@ -214,20 +214,26 @@ h2 {
   padding-bottom: 18px;
 }
 
+.shot-top > div:first-child {
+  min-width: 0;
+  flex: 1;
+}
+
 .shot-heading {
-  font-size: clamp(30px, 4vw, 54px);
+  font-size: 40px;
   font-weight: 900;
-  line-height: 0.96;
+  line-height: 1.24;
 }
 
 .shot-switches {
   display: flex;
-  gap: 8px;
+  flex: 0 0 auto;
+  gap: 6px;
 }
 
 .shot-switches span {
-  width: 54px;
-  height: 34px;
+  width: 34px;
+  height: 28px;
   border: 1px solid var(--line);
   background: var(--panel);
 }
@@ -303,7 +309,7 @@ h2 {
   color: var(--muted);
   font-size: 12px;
   font-weight: 900;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .status-pill.ready {
@@ -346,7 +352,7 @@ label span {
   color: var(--muted);
   font-size: 12px;
   font-weight: 900;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 input {
@@ -383,7 +389,7 @@ input:focus {
 
 .share-header h1 {
   margin-bottom: 18px;
-  font-size: clamp(42px, 8vw, 84px);
+  font-size: 72px;
 }
 
 .share-meta {
@@ -529,6 +535,18 @@ input:focus {
   .shot-sidebar {
     display: none;
   }
+
+  h1 {
+    font-size: 78px;
+  }
+
+  .shot-heading {
+    font-size: 40px;
+  }
+
+  .share-header h1 {
+    font-size: 64px;
+  }
 }
 
 @media (max-width: 680px) {
@@ -555,6 +573,22 @@ input:focus {
 
   .shot-top {
     display: grid;
+  }
+
+  h1 {
+    font-size: 54px;
+  }
+
+  h2 {
+    font-size: 28px;
+  }
+
+  .shot-heading {
+    font-size: 36px;
+  }
+
+  .share-header h1 {
+    font-size: 44px;
   }
 
   .shot-bubble,

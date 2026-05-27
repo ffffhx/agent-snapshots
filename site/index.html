@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Local-first read-only snapshots for Codex, Claude Code, and Trae sessions.">
+  <meta name="description" content="面向 Codex、Claude Code 和 Trae 的本地优先、只读会话快照工具。">
   <title>Codex Snapshots</title>
   <link rel="stylesheet" href="./assets/site.css">
 </head>
@@ -11,21 +11,20 @@
   <main class="shell">
     <section class="hero" aria-labelledby="hero-title">
       <div class="hero-copy">
-        <p class="eyebrow">Local-first agent review</p>
+        <p class="eyebrow">本地优先的 agent 审阅工具</p>
         <h1 id="hero-title">Codex Snapshots</h1>
         <p class="lede">
-          Review, redact, export, and share read-only snapshots from local Codex,
-          Claude Code, and Trae sessions.
+          从本地 Codex、Claude Code 和 Trae 会话中审阅、脱敏、导出并分享只读快照。
         </p>
         <div class="actions">
-          <a class="button primary" id="open-local-viewer" href="http://127.0.0.1:4321/">Open Local Viewer</a>
-          <a class="button" href="https://github.com/ffffhx/codex-snapshots">GitHub Repository</a>
+          <a class="button primary" id="open-local-viewer" href="http://127.0.0.1:4321/">打开本地查看器</a>
+          <a class="button" href="https://github.com/ffffhx/codex-snapshots">GitHub 仓库</a>
         </div>
       </div>
-      <div class="product-shot" aria-label="Codex Snapshots product preview">
+      <div class="product-shot" aria-label="Codex Snapshots 产品预览">
         <div class="shot-sidebar">
-          <div class="shot-kicker">Local Agents</div>
-          <div class="shot-title">Projects</div>
+          <div class="shot-kicker">本地 Agents</div>
+          <div class="shot-title">项目</div>
           <div class="shot-search"></div>
           <div class="shot-row active"><span></span><b>garden-lab</b></div>
           <div class="shot-row"><span></span><b>codex-snapshots</b></div>
@@ -34,28 +33,28 @@
         <div class="shot-main">
           <div class="shot-top">
             <div>
-              <div class="shot-kicker">Read-only review</div>
-              <div class="shot-heading">Deploy snapshot website</div>
+              <div class="shot-kicker">只读审阅</div>
+              <div class="shot-heading">部署快照网站</div>
             </div>
             <div class="shot-switches"><span></span><span></span><span class="on"></span></div>
           </div>
-          <div class="shot-meta">Codex | ~/Code/codex-snapshots | redacted: yes</div>
-          <div class="shot-bubble user">Can this become a standalone project?</div>
-          <div class="shot-bubble assistant">Yes. The workflow has its own data boundary, viewer, share API, and deployment surface.</div>
+          <div class="shot-meta">Codex | ~/Code/codex-snapshots | 已脱敏：是</div>
+          <div class="shot-bubble user">这个能变成一个独立项目吗？</div>
+          <div class="shot-bubble assistant">可以。它已经有独立的数据边界、查看器、分享 API 和部署入口。</div>
         </div>
       </div>
     </section>
 
-    <section class="status-grid" aria-label="Connection status">
+    <section class="status-grid" aria-label="连接状态">
       <article class="status-panel">
         <div class="panel-heading">
-          <p class="eyebrow">Local service</p>
-          <span class="status-pill checking" id="viewer-status">Checking</span>
+          <p class="eyebrow">本地服务</p>
+          <span class="status-pill checking" id="viewer-status">检查中</span>
         </div>
-        <h2>Open your machine's read-only viewer</h2>
+        <h2>打开你电脑上的只读查看器</h2>
         <p>
-          The website is only a shell. Session data stays on your machine and is read from
-          <code id="viewer-url-label">http://127.0.0.1:4321/</code>.
+          这个网站只是入口外壳。会话数据仍保留在你的电脑上，并从
+          <code id="viewer-url-label">http://127.0.0.1:4321/</code> 读取。
         </p>
         <pre><code>pnpm install
 pnpm dev</code></pre>
@@ -63,28 +62,28 @@ pnpm dev</code></pre>
 
       <article class="status-panel">
         <div class="panel-heading">
-          <p class="eyebrow">Cloud shares</p>
-          <span class="status-pill checking" id="api-status">Checking</span>
+          <p class="eyebrow">云端分享</p>
+          <span class="status-pill checking" id="api-status">检查中</span>
         </div>
-        <h2>Open a shared snapshot</h2>
+        <h2>打开一个分享快照</h2>
         <form class="share-form" id="share-form">
           <label>
-            <span>Share ID</span>
+            <span>分享 ID</span>
             <input id="share-id" name="id" autocomplete="off" placeholder="snap_..." spellcheck="false">
           </label>
           <label>
-            <span>Share API</span>
+            <span>分享 API</span>
             <input id="api-url" name="api" autocomplete="off" spellcheck="false">
           </label>
-          <button class="button primary" type="submit">Open Share</button>
+          <button class="button primary" type="submit">打开分享</button>
         </form>
       </article>
     </section>
 
-    <section class="commands" aria-label="Commands">
+    <section class="commands" aria-label="命令">
       <div>
-        <p class="eyebrow">Install</p>
-        <h2>Run it locally</h2>
+        <p class="eyebrow">安装</p>
+        <h2>在本地运行</h2>
       </div>
       <pre><code>git clone https://github.com/ffffhx/codex-snapshots.git
 cd codex-snapshots

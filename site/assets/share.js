@@ -8,16 +8,16 @@ const meta = document.getElementById("share-meta");
 const content = document.getElementById("share-content");
 
 loadShare().catch((error) => {
-  title.textContent = "Snapshot unavailable";
+  title.textContent = "快照暂不可用";
   meta.textContent = apiUrl;
   content.innerHTML = `<div class="empty">${escapeHtml(error instanceof Error ? error.message : String(error))}</div>`;
 });
 
 async function loadShare() {
   if (!shareId) {
-    title.textContent = "Missing share id";
-    meta.textContent = "Open a link with ?id=snap_...";
-    content.innerHTML = '<div class="empty">No share id was provided.</div>';
+    title.textContent = "缺少分享 ID";
+    meta.textContent = "请打开带有 ?id=snap_... 的链接。";
+    content.innerHTML = '<div class="empty">没有提供分享 ID。</div>';
     return;
   }
 
@@ -29,7 +29,7 @@ async function loadShare() {
   const payload = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(payload.error || `Failed to load snapshot from ${apiUrl}`);
+    throw new Error(payload.error || `无法从 ${apiUrl} 加载快照`);
   }
 
   renderSnapshot(payload);
@@ -40,24 +40,24 @@ function renderSnapshot(payload) {
   const share = payload.share || {};
   const turns = Array.isArray(snapshot.turns) ? snapshot.turns : [];
 
-  title.textContent = share.title || snapshot.title || "Snapshot";
+  title.textContent = share.title || snapshot.title || "快照";
   meta.textContent = [
     share.engineLabel || snapshot.engineLabel || "Codex",
-    share.id || snapshot.id || "unknown",
-    `${share.turnCount ?? turns.length} entries`,
-    `redacted: ${(share.redacted ?? snapshot.redacted) ? "yes" : "no"}`,
+    share.id || snapshot.id || "未知",
+    `${share.turnCount ?? turns.length} 条记录`,
+    `已脱敏：${(share.redacted ?? snapshot.redacted) ? "是" : "否"}`,
     apiUrl,
   ].join(" | ");
 
   content.innerHTML = turns.length
     ? turns.map(renderTurn).join("")
-    : '<div class="empty">This snapshot has no shareable turns.</div>';
+    : '<div class="empty">这个快照没有可分享的对话记录。</div>';
 }
 
 function renderTurn(turn) {
   const role = turn.kind === "tool" ? "tool" : turn.role === "user" ? "user" : "assistant";
   const body = turn.kind === "tool"
-    ? `<details class="tool-details" open><summary>Tool${turn.name ? ` / ${escapeHtml(turn.name)}` : ""}</summary><pre>${escapeHtml(turn.text || "")}</pre></details>`
+    ? `<details class="tool-details" open><summary>工具${turn.name ? ` / ${escapeHtml(turn.name)}` : ""}</summary><pre>${escapeHtml(turn.text || "")}</pre></details>`
     : `${turn.html || renderPlainText(turn.text)}${renderImages(turn.images || [])}`;
 
   return `<article class="turn ${escapeHtml(role)}"><div class="message-card"><div class="body">${sanitizeClientHtml(body)}</div></div></article>`;
@@ -78,9 +78,9 @@ function renderImages(images) {
   return `<div class="attachment-grid">${images.map((image, index) => {
     const label = `${image.mimeType || "image"}${image.size ? ` / ${image.size}` : ""}`;
     if (!image.src) {
-      return `<figure class="image-attachment image-unavailable"><div>${escapeHtml(image.unavailableReason || "Image unavailable")}</div><figcaption>${escapeHtml(label)}</figcaption></figure>`;
+      return `<figure class="image-attachment image-unavailable"><div>${escapeHtml(image.unavailableReason || "图片暂不可用")}</div><figcaption>${escapeHtml(label)}</figcaption></figure>`;
     }
-    return `<figure class="image-attachment"><img src="${escapeHtml(image.src)}" alt="${escapeHtml(image.alt || `Image attachment ${index + 1}`)}" decoding="async"><figcaption>${escapeHtml(label)}</figcaption></figure>`;
+    return `<figure class="image-attachment"><img src="${escapeHtml(image.src)}" alt="${escapeHtml(image.alt || `图片附件 ${index + 1}`)}" decoding="async"><figcaption>${escapeHtml(label)}</figcaption></figure>`;
   }).join("")}</div>`;
 }
 
