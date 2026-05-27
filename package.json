@@ -5,14 +5,41 @@
   "type": "module",
   "packageManager": "pnpm@10.20.0",
   "bin": {
-    "codex-snapshot": "bin/codex-snapshot.mjs"
+    "codex-snapshot": "bin/codex-snapshot.mjs",
+    "codex-snapshots": "bin/codex-snapshot.mjs",
+    "codex-snapshot-share": "server/share-api.mjs",
+    "codex-snapshots-site": "scripts/serve-site.mjs"
   },
+  "keywords": [
+    "codex",
+    "claude",
+    "trae",
+    "agent",
+    "snapshot",
+    "sessions",
+    "redaction"
+  ],
+  "homepage": "https://ffffhx.github.io/codex-snapshots/",
+  "bugs": {
+    "url": "https://github.com/ffffhx/codex-snapshots/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ffffhx/codex-snapshots.git"
+  },
+  "author": "ffffhx",
   "files": [
     "bin",
     "server",
     "scripts",
+    "site",
+    "LICENSE",
     "README.md"
   ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "scripts": {
     "dev": "node bin/codex-snapshot.mjs serve --port 4321",
     "snapshot": "node bin/codex-snapshot.mjs",
@@ -28,7 +55,7 @@
   "engines": {
     "node": ">=18"
   },
-  "license": "UNLICENSED",
+  "license": "MIT",
   "dependencies": {
     "highlight.js": "^11.11.1",
     "markdown-it": "^14.1.1"

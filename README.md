@@ -8,6 +8,25 @@
 
 ## 快速开始
 
+不需要克隆仓库，可以直接通过 npm 临时运行：
+
+```bash
+npx codex-snapshots@latest serve --port 4321
+```
+
+打开 <http://127.0.0.1:4321/>。
+
+也可以全局安装：
+
+```bash
+npm install -g codex-snapshots
+codex-snapshot serve --port 4321
+```
+
+要求 Node.js 18 或更高版本。
+
+## 从源码运行
+
 ```bash
 pnpm install
 pnpm dev
@@ -24,6 +43,19 @@ pnpm site:dev
 打开 <http://127.0.0.1:4323/>。
 
 ## 命令行
+
+全局安装或通过 `npx` 使用时：
+
+```bash
+codex-snapshot list --source all
+codex-snapshot preview <session-id>
+codex-snapshot export <session-id> --html --output snapshot.html
+codex-snapshot export <session-id> --md --output snapshot.md
+codex-snapshot serve --port 4321
+codex-snapshot record-trae --port 4732
+```
+
+从源码运行时，也可以使用对应的 pnpm 脚本：
 
 ```bash
 pnpm snapshot list --source all
@@ -46,6 +78,19 @@ pnpm snapshot record-trae --port 4732
 启动可选的分享 API：
 
 ```bash
+SNAPSHOT_SHARE_TOKEN=change-me codex-snapshot-share
+```
+
+如果还没有全局安装，可以用：
+
+```bash
+SNAPSHOT_SHARE_TOKEN=change-me \
+npx -p codex-snapshots@latest codex-snapshot-share
+```
+
+从源码运行：
+
+```bash
 SNAPSHOT_SHARE_TOKEN=change-me pnpm share:server
 ```
 
@@ -53,7 +98,7 @@ SNAPSHOT_SHARE_TOKEN=change-me pnpm share:server
 
 ```bash
 SNAPSHOT_SHARE_TOKEN=change-me \
-pnpm snapshot publish <session-id> \
+codex-snapshot publish <session-id> \
   --api-url http://127.0.0.1:8787 \
   --site-url http://127.0.0.1:8787
 ```
@@ -62,7 +107,7 @@ pnpm snapshot publish <session-id> \
 
 ## macOS LaunchAgent
 
-把本地查看器安装为用户级 LaunchAgent：
+从源码运行时，可以把本地查看器安装为用户级 LaunchAgent：
 
 ```bash
 pnpm snapshot:install-daemon
