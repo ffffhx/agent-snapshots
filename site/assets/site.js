@@ -37,7 +37,7 @@ shareForm.addEventListener("submit", (event) => {
   }
 
   localStorage.setItem("codex-snapshots.api", api);
-  const target = new URL("./share/", window.location.href);
+  const target = new URL("./share/index.html", window.location.href);
   target.searchParams.set("id", id);
   target.searchParams.set("api", api);
   window.location.href = target.toString();
