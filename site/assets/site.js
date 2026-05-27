@@ -12,6 +12,7 @@ const viewerUrlLabel = document.getElementById("viewer-url-label");
 const apiInput = document.getElementById("api-url");
 const shareInput = document.getElementById("share-id");
 const shareForm = document.getElementById("share-form");
+const copyButtons = document.querySelectorAll("[data-copy-command]");
 
 viewerLink.href = viewerUrl;
 viewerUrlLabel.textContent = viewerUrl;
@@ -42,6 +43,22 @@ shareForm.addEventListener("submit", (event) => {
   target.searchParams.set("api", api);
   window.location.href = target.toString();
 });
+
+for (const button of copyButtons) {
+  button.addEventListener("click", async () => {
+    const command = button.dataset.copyCommand || "";
+    if (!command) {
+      return;
+    }
+
+    await navigator.clipboard?.writeText(command).catch(() => undefined);
+    const original = button.textContent;
+    button.textContent = "已复制";
+    window.setTimeout(() => {
+      button.textContent = original;
+    }, 1400);
+  });
+}
 
 async function checkViewer(url) {
   setStatus(viewerStatus, "检查中", "checking");

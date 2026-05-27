@@ -11,38 +11,79 @@
   <main class="shell">
     <section class="hero" aria-labelledby="hero-title">
       <div class="hero-copy">
-        <p class="eyebrow">本地优先的 agent 审阅工具</p>
+        <p class="eyebrow">本地优先 / 只读审阅 / 可脱敏分享</p>
         <h1 id="hero-title">Codex Snapshots</h1>
         <p class="lede">
-          从本地 Codex、Claude Code 和 Trae 会话中审阅、脱敏、导出并分享只读快照。
+          把 Codex、Claude Code 和 Trae 的本地会话整理成可审阅、可导出、可发布的只读快照。
         </p>
+        <div class="hero-stats" aria-label="能力概览">
+          <span><b>3</b> agent sources</span>
+          <span><b>0</b> cloud sync required</span>
+          <span><b>HTML</b> / Markdown</span>
+        </div>
         <div class="actions">
-          <a class="button primary" id="open-local-viewer" href="http://127.0.0.1:4321/">打开本地查看器</a>
-          <a class="button" href="https://www.npmjs.com/package/codex-snapshots">npm 包</a>
-          <a class="button" href="https://github.com/ffffhx/codex-snapshots">GitHub 仓库</a>
+          <a class="button primary" id="open-local-viewer" href="http://127.0.0.1:4321/"><span aria-hidden="true">↗</span>打开本地查看器</a>
+          <a class="button" href="https://www.npmjs.com/package/codex-snapshots"><span aria-hidden="true">pkg</span>npm 包</a>
+          <a class="button" href="https://github.com/ffffhx/codex-snapshots"><span aria-hidden="true">git</span>GitHub 仓库</a>
         </div>
       </div>
       <div class="product-shot" aria-label="Codex Snapshots 产品预览">
-        <div class="shot-sidebar">
-          <div class="shot-kicker">本地 Agents</div>
-          <div class="shot-title">项目</div>
-          <div class="shot-search"></div>
-          <div class="shot-row active"><span></span><b>garden-lab</b></div>
-          <div class="shot-row"><span></span><b>codex-snapshots</b></div>
-          <div class="shot-row"><span></span><b>coze-monorepo</b></div>
-        </div>
-        <div class="shot-main">
-          <div class="shot-top">
-            <div>
-              <div class="shot-kicker">只读审阅</div>
-              <div class="shot-heading">部署快照网站</div>
-            </div>
-            <div class="shot-switches"><span></span><span></span><span class="on"></span></div>
+        <aside class="shot-sidebar">
+          <div class="shot-kicker">Local Agents</div>
+          <div class="shot-title">Projects</div>
+          <div class="shot-search">搜索项目或对话</div>
+          <div class="shot-tabs">
+            <span class="active">Codex <b>191</b></span>
+            <span>Claude <b>0</b></span>
+            <span>Trae <b>9</b></span>
           </div>
-          <div class="shot-meta">Codex | ~/Code/codex-snapshots | 已脱敏：是</div>
-          <div class="shot-bubble user">这个能变成一个独立项目吗？</div>
-          <div class="shot-bubble assistant">可以。它已经有独立的数据边界、查看器、分享 API 和部署入口。</div>
-        </div>
+          <div class="shot-project active">
+            <span class="shot-dot"></span>
+            <div>
+              <b>codex-snapshots</b>
+              <small>优化官网和本地查看器</small>
+            </div>
+            <em>刚刚</em>
+          </div>
+          <div class="shot-project">
+            <span class="shot-dot green"></span>
+            <div>
+              <b>garden-lab</b>
+              <small>评估会话快照拆分</small>
+            </div>
+            <em>7 小时</em>
+          </div>
+          <div class="shot-project">
+            <span class="shot-dot amber"></span>
+            <div>
+              <b>coze-monorepo</b>
+              <small>定位订阅跳转调用</small>
+            </div>
+            <em>1 天</em>
+          </div>
+        </aside>
+        <section class="shot-main">
+          <div class="shot-topbar">
+            <div>
+              <div class="shot-kicker">Read-only review</div>
+              <div class="shot-heading">优化官网和本地查看器</div>
+            </div>
+            <div class="shot-switches">
+              <span>Tools</span>
+              <span>Output</span>
+              <span class="on">Redact</span>
+            </div>
+          </div>
+          <div class="shot-meta">
+            <span>Codex</span>
+            <span>~/Code/codex-snapshots</span>
+            <span>7 entries</span>
+            <span>redacted: yes</span>
+          </div>
+          <div class="shot-risk"><b>OK</b><span>No common high-risk patterns detected</span></div>
+          <div class="shot-bubble user">使用前端设计相关的 skill，优化一下这个项目的官网和本地查看器。</div>
+          <div class="shot-bubble assistant">我会先看真实页面，再统一视觉系统、提高信息密度，并用浏览器验证响应式效果。</div>
+        </section>
       </div>
     </section>
 
@@ -54,10 +95,13 @@
         </div>
         <h2>打开你电脑上的只读查看器</h2>
         <p>
-          这个网站只是入口外壳。会话数据仍保留在你的电脑上，并从
+          官网只负责引导和分享入口。会话数据仍保留在你的电脑上，并从
           <code id="viewer-url-label">http://127.0.0.1:4321/</code> 读取。
         </p>
-        <pre><code>npx codex-snapshots@latest serve --port 4321</code></pre>
+        <div class="command-line">
+          <pre><code>npx codex-snapshots@latest serve --port 4321</code></pre>
+          <button class="button copy-button" type="button" data-copy-command="npx codex-snapshots@latest serve --port 4321">复制</button>
+        </div>
       </article>
 
       <article class="status-panel">
@@ -84,12 +128,16 @@
       <div>
         <p class="eyebrow">npm 安装</p>
         <h2>不用克隆，直接运行</h2>
+        <p>适合临时审阅，也可以安装成 macOS LaunchAgent 常驻。</p>
       </div>
-      <pre><code>npx codex-snapshots@latest serve --port 4321
+      <div class="command-line large">
+        <pre><code>npx codex-snapshots@latest serve --port 4321
 
 # 或者全局安装
 npm install -g codex-snapshots
 codex-snapshot serve --port 4321</code></pre>
+        <button class="button copy-button" type="button" data-copy-command="npx codex-snapshots@latest serve --port 4321">复制 npx 命令</button>
+      </div>
     </section>
   </main>
 
