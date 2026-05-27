@@ -21,8 +21,9 @@
     "snapshot:uninstall-daemon": "node scripts/launch-agent.mjs uninstall",
     "snapshot:daemon:status": "node scripts/launch-agent.mjs status",
     "snapshot:daemon:logs": "node scripts/launch-agent.mjs logs",
+    "site:dev": "node scripts/serve-site.mjs",
     "share:server": "node server/share-api.mjs",
-    "test:smoke": "node bin/codex-snapshot.mjs --help && node server/share-api.mjs --help && node --check bin/codex-snapshot.mjs && node --check server/share-api.mjs && node --check scripts/launch-agent.mjs"
+    "test:smoke": "node bin/codex-snapshot.mjs --help && node server/share-api.mjs --help && node scripts/serve-site.mjs --help && node --check bin/codex-snapshot.mjs && node --check server/share-api.mjs && node --check scripts/launch-agent.mjs && node --check scripts/serve-site.mjs"
   },
   "engines": {
     "node": ">=18"

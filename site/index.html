@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Local-first read-only snapshots for Codex, Claude Code, and Trae sessions.">
+  <title>Codex Snapshots</title>
+  <link rel="stylesheet" href="./assets/site.css">
+</head>
+<body>
+  <main class="shell">
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <p class="eyebrow">Local-first agent review</p>
+        <h1 id="hero-title">Codex Snapshots</h1>
+        <p class="lede">
+          Review, redact, export, and share read-only snapshots from local Codex,
+          Claude Code, and Trae sessions.
+        </p>
+        <div class="actions">
+          <a class="button primary" id="open-local-viewer" href="http://127.0.0.1:4321/">Open Local Viewer</a>
+          <a class="button" href="https://github.com/ffffhx/codex-snapshots">GitHub Repository</a>
+        </div>
+      </div>
+      <div class="product-shot" aria-label="Codex Snapshots product preview">
+        <div class="shot-sidebar">
+          <div class="shot-kicker">Local Agents</div>
+          <div class="shot-title">Projects</div>
+          <div class="shot-search"></div>
+          <div class="shot-row active"><span></span><b>garden-lab</b></div>
+          <div class="shot-row"><span></span><b>codex-snapshots</b></div>
+          <div class="shot-row"><span></span><b>coze-monorepo</b></div>
+        </div>
+        <div class="shot-main">
+          <div class="shot-top">
+            <div>
+              <div class="shot-kicker">Read-only review</div>
+              <div class="shot-heading">Deploy snapshot website</div>
+            </div>
+            <div class="shot-switches"><span></span><span></span><span class="on"></span></div>
+          </div>
+          <div class="shot-meta">Codex | ~/Code/codex-snapshots | redacted: yes</div>
+          <div class="shot-bubble user">Can this become a standalone project?</div>
+          <div class="shot-bubble assistant">Yes. The workflow has its own data boundary, viewer, share API, and deployment surface.</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="status-grid" aria-label="Connection status">
+      <article class="status-panel">
+        <div class="panel-heading">
+          <p class="eyebrow">Local service</p>
+          <span class="status-pill checking" id="viewer-status">Checking</span>
+        </div>
+        <h2>Open your machine's read-only viewer</h2>
+        <p>
+          The website is only a shell. Session data stays on your machine and is read from
+          <code id="viewer-url-label">http://127.0.0.1:4321/</code>.
+        </p>
+        <pre><code>pnpm install
+pnpm dev</code></pre>
+      </article>
+
+      <article class="status-panel">
+        <div class="panel-heading">
+          <p class="eyebrow">Cloud shares</p>
+          <span class="status-pill checking" id="api-status">Checking</span>
+        </div>
+        <h2>Open a shared snapshot</h2>
+        <form class="share-form" id="share-form">
+          <label>
+            <span>Share ID</span>
+            <input id="share-id" name="id" autocomplete="off" placeholder="snap_..." spellcheck="false">
+          </label>
+          <label>
+            <span>Share API</span>
+            <input id="api-url" name="api" autocomplete="off" spellcheck="false">
+          </label>
+          <button class="button primary" type="submit">Open Share</button>
+        </form>
+      </article>
+    </section>
+
+    <section class="commands" aria-label="Commands">
+      <div>
+        <p class="eyebrow">Install</p>
+        <h2>Run it locally</h2>
+      </div>
+      <pre><code>git clone https://github.com/ffffhx/codex-snapshots.git
+cd codex-snapshots
+pnpm install
+pnpm dev</code></pre>
+    </section>
+  </main>
+
+  <script src="./assets/site.js"></script>
+</body>
+</html>
