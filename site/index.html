@@ -18,6 +18,7 @@
         </p>
         <div class="actions">
           <a class="button primary" id="open-local-viewer" href="http://127.0.0.1:4321/">打开本地查看器</a>
+          <a class="button" href="https://www.npmjs.com/package/codex-snapshots">npm 包</a>
           <a class="button" href="https://github.com/ffffhx/codex-snapshots">GitHub 仓库</a>
         </div>
       </div>
@@ -56,8 +57,7 @@
           这个网站只是入口外壳。会话数据仍保留在你的电脑上，并从
           <code id="viewer-url-label">http://127.0.0.1:4321/</code> 读取。
         </p>
-        <pre><code>pnpm install
-pnpm dev</code></pre>
+        <pre><code>npx codex-snapshots@latest serve --port 4321</code></pre>
       </article>
 
       <article class="status-panel">
@@ -82,13 +82,14 @@ pnpm dev</code></pre>
 
     <section class="commands" aria-label="命令">
       <div>
-        <p class="eyebrow">安装</p>
-        <h2>在本地运行</h2>
+        <p class="eyebrow">npm 安装</p>
+        <h2>不用克隆，直接运行</h2>
       </div>
-      <pre><code>git clone https://github.com/ffffhx/codex-snapshots.git
-cd codex-snapshots
-pnpm install
-pnpm dev</code></pre>
+      <pre><code>npx codex-snapshots@latest serve --port 4321
+
+# 或者全局安装
+npm install -g codex-snapshots
+codex-snapshot serve --port 4321</code></pre>
     </section>
   </main>
 
