@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="面向 Codex、Claude Code 和 Trae 的本地优先、只读会话快照工具。">
   <title>Codex Snapshots</title>
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg">
   <link rel="stylesheet" href="./assets/site.css">
 </head>
 <body>
@@ -124,19 +125,41 @@
       </article>
     </section>
 
-    <section class="commands" aria-label="命令">
+    <section class="commands" aria-label="运行方式">
       <div>
-        <p class="eyebrow">npm 安装</p>
-        <h2>不用克隆，直接运行</h2>
-        <p>适合临时审阅，也可以安装成 macOS LaunchAgent 常驻。</p>
+        <p class="eyebrow">运行方式</p>
+        <h2>选择临时审阅或常驻运行</h2>
+        <p>临时审阅适合手动开一段时间；macOS LaunchAgent 适合登录后自动保持本地查看器可用。</p>
       </div>
-      <div class="command-line large">
-        <pre><code>npx codex-snapshots@latest serve --port 4321
+      <div class="command-options">
+        <article class="command-option">
+          <div class="command-option-heading">
+            <p class="eyebrow">临时审阅</p>
+            <h3>不用克隆，直接运行</h3>
+          </div>
+          <p>手动启动本地只读查看器；关闭终端或停止进程后服务结束。</p>
+          <div class="command-line large">
+            <pre><code>npx codex-snapshots@latest serve --port 4321
 
 # 或者全局安装
 npm install -g codex-snapshots
 codex-snapshot serve --port 4321</code></pre>
-        <button class="button copy-button" type="button" data-copy-command="npx codex-snapshots@latest serve --port 4321">复制 npx 命令</button>
+            <button class="button copy-button" type="button" data-copy-command="npx codex-snapshots@latest serve --port 4321">复制 npx 命令</button>
+          </div>
+        </article>
+        <article class="command-option">
+          <div class="command-option-heading">
+            <p class="eyebrow">macOS LaunchAgent</p>
+            <h3>安装成后台常驻</h3>
+          </div>
+          <p>从源码目录安装为用户级后台服务；登录 macOS 后自动保持查看器可用。</p>
+          <div class="command-line large">
+            <pre><code>pnpm install
+pnpm snapshot:install-daemon
+pnpm snapshot:daemon:status</code></pre>
+            <button class="button copy-button" type="button" data-copy-command="pnpm snapshot:install-daemon">复制安装命令</button>
+          </div>
+        </article>
       </div>
     </section>
   </main>

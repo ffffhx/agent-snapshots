@@ -565,6 +565,44 @@ input:focus {
   grid-template-columns: minmax(220px, 0.35fr) minmax(0, 0.65fr);
 }
 
+.command-options {
+  display: grid;
+  gap: 28px;
+}
+
+.command-option {
+  min-width: 0;
+}
+
+.command-option + .command-option {
+  border-top: 1px solid rgba(23, 32, 42, 0.11);
+  padding-top: 26px;
+}
+
+.command-option-heading {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.command-option-heading .eyebrow {
+  margin-bottom: 0;
+}
+
+.command-option h3 {
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.25;
+  letter-spacing: 0;
+}
+
+.command-option p {
+  margin-bottom: 14px;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1.58;
+}
+
 .share-shell {
   max-width: 1180px;
 }
@@ -603,7 +641,8 @@ input:focus {
 }
 
 .turn.assistant,
-.turn.tool {
+.turn.tool,
+.turn.process {
   justify-content: flex-start;
 }
 
@@ -630,6 +669,57 @@ input:focus {
   border-radius: 8px;
   background: #fff9ea;
   padding: 15px 16px;
+}
+
+.process-details {
+  width: min(930px, 76%);
+  border-top: 1px solid rgba(23, 32, 42, 0.12);
+  color: rgba(23, 32, 42, 0.62);
+}
+
+.process-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 42px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+  font: 800 17px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.process-summary::-webkit-details-marker {
+  display: none;
+}
+
+.process-summary::after {
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  content: "";
+  transform: translateY(-2px) rotate(45deg);
+  transition: transform 0.16s ease;
+}
+
+.process-details[open] .process-summary::after {
+  transform: translateY(2px) rotate(225deg);
+}
+
+.process-body {
+  display: grid;
+  gap: 22px;
+  padding: 6px 0 8px;
+}
+
+.process-entry {
+  min-width: 0;
+}
+
+.process-tool {
+  max-width: min(860px, 100%);
+  border-left: 3px solid rgba(183, 121, 31, 0.32);
+  padding-left: 12px;
 }
 
 .body {
@@ -800,6 +890,7 @@ input:focus {
 
   .shot-bubble,
   .message-card,
+  .process-details,
   .turn.user .message-card,
   .turn.tool .message-card {
     width: 100%;

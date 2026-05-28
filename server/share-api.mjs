@@ -9,6 +9,7 @@ import path from "node:path";
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 8787;
 const MAX_BODY_BYTES = 64 * 1024 * 1024;
+const SNAPSHOT_LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Codex Snapshots"><rect width="64" height="64" rx="14" fill="#17202a"/><path d="M19 16h26a3 3 0 0 1 3 3v26a3 3 0 0 1-3 3H19a3 3 0 0 1-3-3V19a3 3 0 0 1 3-3Z" fill="none" stroke="#eef9f6" stroke-width="4"/><path d="M23 22h11M22 23v11M41 42H30M42 41V30" fill="none" stroke="#7dd3c7" stroke-width="4" stroke-linecap="round"/><circle cx="32" cy="32" r="9" fill="#f2cc60"/><path d="M27 32h10M32 27v10" stroke="#17202a" stroke-width="3" stroke-linecap="round"/></svg>`;
 
 const parsed = parseArgs(process.argv.slice(2));
 
@@ -57,6 +58,11 @@ async function main() {
 
       if (request.method === "GET" && url.pathname === "/") {
         send(response, 200, "text/html; charset=utf-8", renderHome());
+        return;
+      }
+
+      if (request.method === "GET" && (url.pathname === "/favicon.svg" || url.pathname === "/favicon.ico")) {
+        send(response, 200, "image/svg+xml; charset=utf-8", SNAPSHOT_LOGO_SVG);
         return;
       }
 
@@ -335,8 +341,11 @@ function sanitizeTurnHtml(snapshot) {
     if (!turn || typeof turn !== "object") {
       continue;
     }
+    if (typeof turn.text === "string") {
+      turn.text = stripCodexAppDirectives(turn.text);
+    }
     if (typeof turn.html === "string") {
-      turn.html = sanitizePublishedHtml(turn.html);
+      turn.html = stripCodexAppDirectiveHtml(sanitizePublishedHtml(turn.html));
     }
   }
 }
@@ -349,6 +358,21 @@ function sanitizePublishedHtml(value) {
     .replace(/\s+on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "");
 }
 
+function stripCodexAppDirectives(value) {
+  return String(value ?? "")
+    .replace(/\r\n/g, "\n")
+    .replace(/^[ \t]*::(?:git-(?:stage|commit|push|create-branch|create-pr)|archive|code-comment)\{[^\n]*\}[ \t]*$/gm, "")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function stripCodexAppDirectiveHtml(value) {
+  return String(value || "")
+    .replace(/<p>\s*::(?:git-(?:stage|commit|push|create-branch|create-pr)|archive|code-comment)\{[\s\S]*?\}\s*<\/p>/g, "")
+    .trim();
+}
+
 function renderHome() {
   return `<!doctype html>
 <html lang="en">
@@ -356,6 +380,7 @@ function renderHome() {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Codex Snapshots Share API</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <style>${shareCss()}</style>
 </head>
 <body>
@@ -380,6 +405,7 @@ function renderSharePage(initialId) {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Codex Snapshot Share</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <style>${shareCss()}</style>
 </head>
 <body>
@@ -400,7 +426,9 @@ const meta = document.getElementById("meta");
 const content = document.getElementById("content");
 
 function renderPlainText(value) {
-  return String(value || "").split(/\\n{2,}/).map((block) => "<p>" + esc(block).replace(/\\n/g, "<br>") + "</p>").join("");
+  const visibleText = stripAppDirectives(value);
+  if (!visibleText) return "";
+  return visibleText.split(/\\n{2,}/).map((block) => "<p>" + esc(block).replace(/\\n/g, "<br>") + "</p>").join("");
 }
 
 function renderImages(images) {
@@ -425,13 +453,144 @@ function renderSnapshot(payload) {
     (share.turnCount ?? turns.length) + " entries",
     "redacted: " + ((share.redacted ?? snapshot.redacted) ? "yes" : "no"),
   ].join(" | ");
-  content.innerHTML = turns.map((turn, index) => {
-    const role = turn.kind === "tool" ? "tool" : turn.role === "user" ? "user" : "assistant";
-    const body = turn.kind === "tool"
-      ? "<details class='tool-details' open><summary>Tool" + (turn.name ? " / " + esc(turn.name) : "") + "</summary><pre>" + esc(turn.text || "") + "</pre></details>"
-      : (turn.html || renderPlainText(turn.text)) + renderImages(turn.images || []);
-    return "<article class='turn " + esc(role) + "'><div class='message-card'><div class='body'>" + body + "</div></div></article>";
-  }).join("") || "<div class='empty'>This snapshot has no shareable turns.</div>";
+  content.innerHTML = turns.length
+    ? buildTranscriptItems(turns).map(renderTranscriptItem).join("")
+    : "<div class='empty'>This snapshot has no shareable turns.</div>";
+}
+
+function buildTranscriptItems(turns) {
+  const items = [];
+  let index = 0;
+  let previousUserTurn = null;
+  while (index < turns.length) {
+    const turn = turns[index];
+    if (isUserMessageTurn(turn)) {
+      items.push({ kind: "turn", turn });
+      previousUserTurn = turn;
+      index += 1;
+      continue;
+    }
+
+    const segment = [];
+    while (index < turns.length && !isUserMessageTurn(turns[index])) {
+      segment.push(turns[index]);
+      index += 1;
+    }
+
+    const finalIndex = segment.map(isAssistantMessageTurn).lastIndexOf(true);
+    if (finalIndex === -1) {
+      if (segment.length) {
+        items.push({
+          kind: "process",
+          turns: segment,
+          durationTurns: buildProcessDurationTurns(previousUserTurn, segment),
+        });
+      }
+      continue;
+    }
+    if (finalIndex === segment.length - 1) {
+      const processTurns = segment.slice(0, finalIndex);
+      const finalTurn = segment[finalIndex];
+      if (processTurns.length) {
+        items.push({
+          kind: "process",
+          turns: processTurns,
+          durationTurns: buildProcessDurationTurns(previousUserTurn, processTurns.concat(finalTurn)),
+        });
+      }
+      items.push({ kind: "turn", turn: finalTurn });
+      continue;
+    }
+    items.push({
+      kind: "process",
+      turns: segment,
+      durationTurns: buildProcessDurationTurns(previousUserTurn, segment),
+    });
+  }
+  return items;
+}
+
+function buildProcessDurationTurns(startTurn, turns) {
+  return [startTurn, ...turns].filter(Boolean);
+}
+
+function isUserMessageTurn(turn) {
+  return turn && turn.kind !== "tool" && turn.role === "user";
+}
+
+function isAssistantMessageTurn(turn) {
+  return turn && turn.kind !== "tool" && turn.role === "assistant";
+}
+
+function renderTranscriptItem(item, index) {
+  if (item.kind === "process") {
+    return renderProcessGroup(item, index);
+  }
+  return renderTurn(item.turn);
+}
+
+function renderTurn(turn) {
+  const role = turn.kind === "tool" ? "tool" : turn.role === "user" ? "user" : "assistant";
+  return "<article class='turn " + esc(role) + "'><div class='message-card'><div class='body'>" + renderTurnBody(turn) + "</div></div></article>";
+}
+
+function renderProcessGroup(item, index) {
+  const turns = item.turns || [];
+  if (!turns.length) {
+    return "";
+  }
+  return "<article class='turn process'><details class='process-details' data-process-index='" + esc(index) + "'><summary class='process-summary'><span>" + esc(processLabel(item.durationTurns || turns)) + "</span></summary><div class='process-body'>" + turns.map(renderProcessEntry).join("") + "</div></details></article>";
+}
+
+function renderProcessEntry(turn) {
+  const role = turn.kind === "tool" ? "tool" : turn.role === "user" ? "user" : "assistant";
+  return "<section class='process-entry process-" + esc(role) + "'><div class='body'>" + renderTurnBody(turn) + "</div></section>";
+}
+
+function renderTurnBody(turn) {
+  if (turn.kind === "tool") {
+    return "<details class='tool-details'><summary>Tool" + (turn.name ? " / " + esc(turn.name) : "") + "</summary><pre>" + esc(turn.text || "") + "</pre></details>";
+  }
+  return (stripAppDirectiveHtml(turn.html || "") || renderPlainText(turn.text)) + renderImages(turn.images || []);
+}
+
+function processLabel(turns) {
+  const duration = processDurationLabel(turns);
+  return duration ? "Processed " + duration : "Processed";
+}
+
+function processDurationLabel(turns) {
+  const times = turns.map((turn) => new Date(turn.timestamp || "").getTime()).filter(Number.isFinite);
+  if (times.length < 2) {
+    return "";
+  }
+  const seconds = Math.max(1, Math.round((Math.max(...times) - Math.min(...times)) / 1000));
+  if (seconds < 60) {
+    return seconds + "s";
+  }
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  if (minutes < 60) {
+    return rest ? minutes + "m " + rest + "s" : minutes + "m";
+  }
+  const hours = Math.floor(minutes / 60);
+  const minuteRest = minutes % 60;
+  return minuteRest ? hours + "h " + minuteRest + "m" : hours + "h";
+}
+
+function stripAppDirectives(value) {
+  return String(value || "")
+    .replace(/\\r\\n/g, "\\n")
+    .replace(/^[ \\t]*::(?:git-(?:stage|commit|push|create-branch|create-pr)|archive|code-comment)\\{[^\\n]*\\}[ \\t]*$/gm, "")
+    .replace(/[ \\t]+\\n/g, "\\n")
+    .replace(/\\n{3,}/g, "\\n\\n")
+    .trim();
+}
+
+function stripAppDirectiveHtml(value) {
+  return String(value || "")
+    .replace(/<p>\\s*::(?:git-(?:stage|commit|push|create-branch|create-pr)|archive|code-comment)\\{[\\s\\S]*?\\}\\s*<\\/p>/g, "")
+    .trim();
 }
 
 async function load() {
@@ -511,7 +670,7 @@ dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
 .turns { display: grid; gap: 34px; margin-top: 34px; }
 .turn { display: flex; min-width: 0; }
 .turn.user { justify-content: flex-end; }
-.turn.assistant, .turn.tool { justify-content: flex-start; }
+.turn.assistant, .turn.tool, .turn.process { justify-content: flex-start; }
 .message-card { min-width: 0; max-width: min(960px, 76%); }
 .turn.user .message-card {
   border: 1px solid #d6e9e5;
@@ -526,6 +685,45 @@ dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
   border-radius: 8px;
   background: #fff8df;
   padding: 16px 18px;
+}
+.process-details {
+  width: min(960px, 76%);
+  border-top: 1px solid rgba(22, 25, 31, 0.12);
+  color: rgba(22, 25, 31, 0.62);
+}
+.process-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 42px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+  font: 800 17px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.process-summary::-webkit-details-marker { display: none; }
+.process-summary::after {
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  content: "";
+  transform: translateY(-2px) rotate(45deg);
+  transition: transform 0.16s ease;
+}
+.process-details[open] .process-summary::after {
+  transform: translateY(2px) rotate(225deg);
+}
+.process-body {
+  display: grid;
+  gap: 22px;
+  padding: 6px 0 8px;
+}
+.process-entry { min-width: 0; }
+.process-tool {
+  max-width: min(880px, 100%);
+  border-left: 3px solid rgba(183, 121, 31, 0.32);
+  padding-left: 12px;
 }
 .body {
   min-width: 0;
@@ -575,7 +773,7 @@ dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
 }
 .empty { border: 1px solid var(--line); background: var(--panel); padding: 18px; color: var(--muted); }
 @media (max-width: 820px) {
-  .message-card, .turn.user .message-card, .turn.tool .message-card { max-width: 100%; width: 100%; }
+  .message-card, .process-details, .turn.user .message-card, .turn.tool .message-card { max-width: 100%; width: 100%; }
   .body { font-size: 17px; }
 }
 `;

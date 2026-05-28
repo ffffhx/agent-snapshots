@@ -24,6 +24,7 @@ const DEFAULT_TRAE_RECORDER_PORT = 4732;
 const MAX_TRAE_CAPTURE_POST_BYTES = 64 * 1024 * 1024;
 const DEFAULT_SNAPSHOT_SHARE_API_URL = "http://127.0.0.1:8787";
 const DEFAULT_SNAPSHOT_SHARE_SITE_URL = "http://127.0.0.1:8787";
+const SNAPSHOT_LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Codex Snapshots"><rect width="64" height="64" rx="14" fill="#17202a"/><path d="M19 16h26a3 3 0 0 1 3 3v26a3 3 0 0 1-3 3H19a3 3 0 0 1-3-3V19a3 3 0 0 1 3-3Z" fill="none" stroke="#eef9f6" stroke-width="4"/><path d="M23 22h11M22 23v11M41 42H30M42 41V30" fill="none" stroke="#7dd3c7" stroke-width="4" stroke-linecap="round"/><circle cx="32" cy="32" r="9" fill="#f2cc60"/><path d="M27 32h10M32 27v10" stroke="#17202a" stroke-width="3" stroke-linecap="round"/></svg>`;
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const execFileAsync = promisify(execFile);
 
@@ -711,7 +712,7 @@ async function scanSessionSummary(filePath, fileInfo, titleIndex) {
     if (row.type === "response_item" && row.payload) {
       if (row.payload.type === "message" && (row.payload.role === "user" || row.payload.role === "assistant")) {
         const message = extractMessageParts(row.payload);
-        const text = message.text;
+        const text = stripCodexAppDirectives(message.text);
         if (!isBootstrapUserMessage(row.payload.role, text) && (text || message.images.length)) {
           summary.messageCount += 1;
           if (!firstUser && row.payload.role === "user") {
@@ -740,10 +741,27 @@ async function scanSessionSummary(filePath, fileInfo, titleIndex) {
   summary.title = titleIndex.get(summary.id) || firstUser || summary.id;
   summary.engine = "codex";
   summary.engineLabel = "Codex";
+  summary.projectKind = projectKindForCodexCwd(summary.cwd);
   summary.ref = `codex:${summary.id}`;
   summary.displayCwd = redactText(summary.cwd || "");
   summary.displayFilePath = redactText(summary.filePath || "");
   return summary;
+}
+
+function projectKindForCodexCwd(cwd) {
+  if (!cwd) {
+    return "none";
+  }
+  return isCodexStandaloneConversationCwd(cwd) ? "conversation" : "project";
+}
+
+function isCodexStandaloneConversationCwd(cwd) {
+  const parts = String(cwd || "").trim().replace(/\\/g, "/").replace(/\/+$/, "").split("/").filter(Boolean);
+  const codexIndex = parts.findIndex((part, index) => part === "Codex" && parts[index - 1] === "Documents");
+  if (codexIndex < 0 || codexIndex + 3 !== parts.length) {
+    return false;
+  }
+  return /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(parts[codexIndex + 1]) && Boolean(parts[codexIndex + 2]);
 }
 
 async function loadSnapshot(ref, { codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir, includeTools, includeToolOutput, redact }) {
@@ -798,10 +816,11 @@ async function loadCodexSnapshot(ref, { codexHome, includeTools, includeToolOutp
         continue;
       }
       const message = extractMessageParts(item);
-      const rawText = message.text;
-      if (isBootstrapUserMessage(item.role, rawText)) {
+      const rawMessageText = message.text;
+      if (isBootstrapUserMessage(item.role, rawMessageText)) {
         continue;
       }
+      const rawText = stripCodexAppDirectives(rawMessageText);
       if (!rawText.trim() && !message.images.length) {
         continue;
       }
@@ -933,7 +952,7 @@ async function scanClaudeFileSessionSummary(filePath, fileInfo, claudeHome) {
       continue;
     }
     const message = extractClaudeMessageParts(row.message || row);
-    const rawText = message.text;
+    const rawText = stripCodexAppDirectives(message.text);
     summary.toolCallCount += message.toolCalls.length + message.toolResults.length;
     if (rawText || message.images.length) {
       summary.messageCount += 1;
@@ -1067,7 +1086,7 @@ async function loadClaudeFileSnapshot(filePath, { claudeHome, includeTools, incl
       continue;
     }
     const message = extractClaudeMessageParts(row.message || row);
-    const rawText = message.text;
+    const rawText = stripCodexAppDirectives(message.text);
     if (rawText.trim() || message.images.length) {
       turnNumber += 1;
       addRisks(risks, rawText, turnNumber);
@@ -1129,7 +1148,7 @@ async function loadClaudeHistorySnapshot(group, { includeTools, includeToolOutpu
   const turns = [];
   let turnNumber = 0;
   for (const row of group.entries || []) {
-    const rawText = String(row.display || "").trim();
+    const rawText = stripCodexAppDirectives(row.display);
     if (!rawText) {
       continue;
     }
@@ -1919,7 +1938,7 @@ function cleanCapturedMessageText(text) {
     .replace(/\u00a0/g, " ")
     .replace(/\r\n/g, "\n")
     .trim();
-  return repairTraeFlattenedCodeBlocks(cleaned);
+  return repairTraeFlattenedCodeBlocks(stripCodexAppDirectives(cleaned));
 }
 
 const TRAE_FLATTENED_CODE_LANGUAGES = new Map([
@@ -2475,7 +2494,7 @@ async function loadTraeMemorySnapshot(summary, { includeTools, includeToolOutput
 
   for (const filePath of summary.filePaths || [summary.filePath]) {
     for await (const row of readJsonl(filePath)) {
-      const rawText = renderTraeMemoryText(row);
+      const rawText = stripCodexAppDirectives(renderTraeMemoryText(row));
       if (!rawText.trim()) {
         continue;
       }
@@ -2519,7 +2538,7 @@ async function loadTraeInputHistorySnapshot(summary, { includeTools, includeTool
   let turnNumber = 0;
 
   for (const entry of entries) {
-    const rawText = traeInputEntryText(entry);
+    const rawText = stripCodexAppDirectives(traeInputEntryText(entry));
     if (!rawText.trim()) {
       continue;
     }
@@ -2964,8 +2983,9 @@ function renderTextPreview(snapshot) {
   ];
   for (const turn of snapshot.turns) {
     lines.push(`--- ${turn.role}${turn.kind === "tool" ? `:${turn.name}` : ""} #${turn.turn} ---`);
-    if (turn.text) {
-      lines.push(turn.text);
+    const visibleText = stripCodexAppDirectives(turn.text);
+    if (visibleText) {
+      lines.push(visibleText);
     }
     for (const image of turn.images || []) {
       lines.push(`[image: ${image.mimeType || "image"}${image.size ? `, ${image.size}` : ""}${image.src ? "" : `, ${image.unavailableReason || "unavailable"}`}]`);
@@ -3015,8 +3035,9 @@ function renderMarkdown(snapshot) {
     if (turn.kind === "tool") {
       lines.push("```text", turn.text, "```", "");
     } else {
-      if (turn.text) {
-        lines.push(turn.text, "");
+      const visibleText = stripCodexAppDirectives(turn.text);
+      if (visibleText) {
+        lines.push(visibleText, "");
       }
       for (const image of turn.images || []) {
         if (image.src) {
@@ -3053,18 +3074,7 @@ function renderHtml(snapshot) {
       </div>
       <ul>${noticeRows}${riskRows}</ul>
     </section>`;
-  const turns = snapshot.turns.map((turn) => {
-    const label = turn.kind === "tool" ? `Tool / ${turn.name || "call"}` : turn.role;
-    const body = turn.kind === "tool"
-      ? `<details class="tool-details" open><summary>${escapeHtml(label)}</summary><pre>${escapeHtml(turn.text)}</pre></details>`
-      : `<div class="markdown-body">${turn.html || renderMarkdownHtml(turn.text)}${renderImageAttachments(turn.images || [])}</div>`;
-    return `
-      <article class="turn turn-${escapeHtml(turn.kind === "tool" ? "tool" : turn.role)}">
-        <div class="message-card">
-          ${body}
-        </div>
-      </article>`;
-  }).join("");
+  const turns = buildStaticTranscriptItems(snapshot.turns || []).map(renderStaticTranscriptItem).join("");
 
   return `<!doctype html>
 <html lang="en">
@@ -3073,6 +3083,7 @@ function renderHtml(snapshot) {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex,nofollow">
   <title>${escapeHtml(snapshot.title)} - Codex Snapshot</title>
+  <link rel="icon" type="image/svg+xml" href="${snapshotLogoDataUri()}">
   <style>${snapshotCss()}</style>
 </head>
 <body>
@@ -3104,6 +3115,142 @@ function renderHtml(snapshot) {
 </html>`;
 }
 
+function buildStaticTranscriptItems(turns) {
+  const items = [];
+  let index = 0;
+  let previousUserTurn = null;
+  while (index < turns.length) {
+    const turn = turns[index];
+    if (isStaticUserMessageTurn(turn)) {
+      items.push({ kind: "turn", turn });
+      previousUserTurn = turn;
+      index += 1;
+      continue;
+    }
+
+    const segment = [];
+    while (index < turns.length && !isStaticUserMessageTurn(turns[index])) {
+      segment.push(turns[index]);
+      index += 1;
+    }
+
+    const finalIndex = segment.map(isStaticAssistantMessageTurn).lastIndexOf(true);
+    if (finalIndex === -1) {
+      if (segment.length) {
+        items.push({
+          kind: "process",
+          turns: segment,
+          durationTurns: buildStaticProcessDurationTurns(previousUserTurn, segment),
+        });
+      }
+      continue;
+    }
+    if (finalIndex === segment.length - 1) {
+      const processTurns = segment.slice(0, finalIndex);
+      const finalTurn = segment[finalIndex];
+      if (processTurns.length) {
+        items.push({
+          kind: "process",
+          turns: processTurns,
+          durationTurns: buildStaticProcessDurationTurns(previousUserTurn, processTurns.concat(finalTurn)),
+        });
+      }
+      items.push({ kind: "turn", turn: finalTurn });
+      continue;
+    }
+    items.push({
+      kind: "process",
+      turns: segment,
+      durationTurns: buildStaticProcessDurationTurns(previousUserTurn, segment),
+    });
+  }
+  return items;
+}
+
+function buildStaticProcessDurationTurns(startTurn, turns) {
+  return [startTurn, ...turns].filter(Boolean);
+}
+
+function isStaticUserMessageTurn(turn) {
+  return turn && turn.kind !== "tool" && turn.role === "user";
+}
+
+function isStaticAssistantMessageTurn(turn) {
+  return turn && turn.kind !== "tool" && turn.role === "assistant";
+}
+
+function renderStaticTranscriptItem(item, index) {
+  if (item.kind === "process") {
+    return renderStaticProcessGroup(item, index);
+  }
+  return renderStaticTurnArticle(item.turn);
+}
+
+function renderStaticTurnArticle(turn) {
+  const role = turn.kind === "tool" ? "tool" : turn.role || "assistant";
+  return `
+      <article class="turn turn-${escapeHtml(role)}">
+        <div class="message-card">
+          ${renderStaticTurnBody(turn)}
+        </div>
+      </article>`;
+}
+
+function renderStaticProcessGroup(item, index) {
+  const turns = item.turns || [];
+  if (!turns.length) {
+    return "";
+  }
+  return `
+      <article class="turn turn-process">
+        <details class="process-details" data-process-index="${escapeHtml(index)}">
+          <summary class="process-summary"><span>${escapeHtml(staticProcessLabel(item.durationTurns || turns))}</span></summary>
+          <div class="process-body">${turns.map(renderStaticProcessEntry).join("")}</div>
+        </details>
+      </article>`;
+}
+
+function renderStaticProcessEntry(turn) {
+  const role = turn.kind === "tool" ? "tool" : turn.role || "assistant";
+  return `
+            <section class="process-entry process-${escapeHtml(role)}">
+              ${renderStaticTurnBody(turn)}
+            </section>`;
+}
+
+function renderStaticTurnBody(turn) {
+  if (turn.kind === "tool") {
+    const label = `Tool / ${turn.name || "call"}`;
+    return `<details class="tool-details"><summary>${escapeHtml(label)}</summary><pre>${escapeHtml(turn.text || "")}</pre></details>`;
+  }
+  const html = stripCodexAppDirectiveHtml(turn.html || "") || renderMarkdownHtml(turn.text);
+  return `<div class="markdown-body">${html}${renderImageAttachments(turn.images || [])}</div>`;
+}
+
+function staticProcessLabel(turns) {
+  const duration = staticProcessDurationLabel(turns);
+  return duration ? `Processed ${duration}` : "Processed";
+}
+
+function staticProcessDurationLabel(turns) {
+  const times = turns.map((turn) => new Date(turn.timestamp || "").getTime()).filter(Number.isFinite);
+  if (times.length < 2) {
+    return "";
+  }
+  const seconds = Math.max(1, Math.round((Math.max(...times) - Math.min(...times)) / 1000));
+  if (seconds < 60) {
+    return `${seconds}s`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  if (minutes < 60) {
+    return rest ? `${minutes}m ${rest}s` : `${minutes}m`;
+  }
+  const hours = Math.floor(minutes / 60);
+  const minuteRest = minutes % 60;
+  return minuteRest ? `${hours}h ${minuteRest}m` : `${hours}h`;
+}
+
 function renderImageAttachments(images) {
   if (!images?.length) {
     return "";
@@ -3128,7 +3275,22 @@ function renderImageAttachment(image, index) {
 }
 
 function renderMarkdownHtml(text) {
-  return markdownRenderer.render(String(text || "").replace(/\r\n/g, "\n")).trim();
+  return markdownRenderer.render(stripCodexAppDirectives(text)).trim();
+}
+
+function stripCodexAppDirectives(value) {
+  return String(value ?? "")
+    .replace(/\r\n/g, "\n")
+    .replace(/^[ \t]*::(?:git-(?:stage|commit|push|create-branch|create-pr)|archive|code-comment)\{[^\n]*\}[ \t]*$/gm, "")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function stripCodexAppDirectiveHtml(value) {
+  return String(value || "")
+    .replace(/<p>\s*::(?:git-(?:stage|commit|push|create-branch|create-pr)|archive|code-comment)\{[\s\S]*?\}\s*<\/p>/g, "")
+    .trim();
 }
 
 function renderHighlightedCode(source, rawLanguage) {
@@ -3266,7 +3428,7 @@ code, pre {
   min-width: 0;
 }
 .turn-user { justify-content: flex-end; }
-.turn-assistant, .turn-tool { justify-content: flex-start; }
+.turn-assistant, .turn-tool, .turn-process { justify-content: flex-start; }
 .message-card {
   min-width: 0;
   max-width: min(1160px, 74%);
@@ -3292,6 +3454,49 @@ code, pre {
   border-radius: 10px;
   background: #fff8df;
   padding: 16px 18px;
+}
+.process-details {
+  width: min(1120px, 74%);
+  border-top: 1px solid rgba(22, 25, 31, 0.12);
+  color: rgba(22, 25, 31, 0.62);
+}
+.process-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 42px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+  font: 800 17px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.process-summary::-webkit-details-marker {
+  display: none;
+}
+.process-summary::after {
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  content: "";
+  transform: translateY(-2px) rotate(45deg);
+  transition: transform 0.16s ease;
+}
+.process-details[open] .process-summary::after {
+  transform: translateY(2px) rotate(225deg);
+}
+.process-body {
+  display: grid;
+  gap: 24px;
+  padding: 6px 0 8px;
+}
+.process-entry {
+  min-width: 0;
+}
+.process-tool {
+  max-width: min(980px, 100%);
+  border-left: 3px solid rgba(183, 121, 31, 0.32);
+  padding-left: 12px;
 }
 .turn-meta {
   margin-bottom: 20px;
@@ -3424,7 +3629,7 @@ pre {
   .risk { grid-template-columns: 1fr; }
   .risk em { grid-column: auto; }
   .transcript { gap: 36px; }
-  .message-card, .turn-user .message-card { max-width: 94%; }
+  .message-card, .process-details, .turn-user .message-card { max-width: 94%; }
   .turn-assistant .message-card { max-width: 100%; }
   .turn-user .message-card { padding: 18px 20px 20px; }
   .markdown-body { font-size: 18px; }
@@ -3439,6 +3644,10 @@ function escapeHtml(value) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+function snapshotLogoDataUri() {
+  return `data:image/svg+xml,${encodeURIComponent(SNAPSHOT_LOGO_SVG)}`;
 }
 
 function escapeMarkdown(value) {
@@ -3486,6 +3695,10 @@ async function serve({ codexHome, claudeHome, traeHome, traeAppHome, traeRecordi
       const url = new URL(request.url || "/", `http://${request.headers.host || `${host}:${port}`}`);
       if (url.pathname === "/") {
         send(response, 200, "text/html; charset=utf-8", renderServerApp());
+        return;
+      }
+      if (url.pathname === "/favicon.svg" || url.pathname === "/favicon.ico") {
+        send(response, 200, "image/svg+xml; charset=utf-8", SNAPSHOT_LOGO_SVG);
         return;
       }
       if (url.pathname === "/api/sessions") {
@@ -4896,6 +5109,7 @@ function renderServerApp() {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Codex Snapshots</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <style>${serverCss()}</style>
 </head>
 <body>
@@ -4971,11 +5185,7 @@ body {
   margin: 0;
   overflow: hidden;
   color: var(--ink);
-  background:
-    linear-gradient(90deg, var(--grid-strong) 1px, transparent 1px),
-    linear-gradient(var(--grid-soft) 1px, transparent 1px),
-    var(--paper);
-  background-size: 24px 24px, 24px 24px, auto;
+  background: var(--paper);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -4995,11 +5205,7 @@ body {
 }
 .sidebar {
   min-height: 0;
-  background:
-    linear-gradient(90deg, var(--grid-strong) 1px, transparent 1px),
-    linear-gradient(var(--grid-soft) 1px, transparent 1px),
-    rgba(248, 251, 249, 0.94);
-  background-size: 24px 24px, 24px 24px, auto;
+  background: var(--panel-soft);
   padding: 12px 14px 24px;
   overflow-x: hidden;
   overflow-y: auto;
@@ -5066,11 +5272,7 @@ body {
   z-index: 6;
   margin: -12px -14px 0;
   padding: 14px 14px 12px;
-  background:
-    linear-gradient(90deg, var(--grid-strong) 1px, transparent 1px),
-    linear-gradient(var(--grid-soft) 1px, transparent 1px),
-    rgba(248, 251, 249, 0.96);
-  background-size: 24px 24px;
+  background: var(--panel-soft);
   box-shadow: 0 16px 30px -30px rgba(23, 32, 42, 0.78);
 }
 .eyebrow {
@@ -5382,7 +5584,14 @@ button:disabled {
   color: var(--red);
 }
 .project-group.no-project .project-header {
+  grid-template-columns: minmax(0, 1fr) auto;
+  margin-left: 34px;
   color: rgba(23, 32, 42, 0.58);
+  font-size: 13px;
+  letter-spacing: 0;
+}
+.project-group.no-project .project-icon {
+  display: none;
 }
 .viewer-top {
   position: sticky;
@@ -5395,11 +5604,7 @@ button:disabled {
   border-bottom: 1px solid rgba(23, 32, 42, 0.12);
   margin: -14px clamp(-34px, -2vw, -18px) 14px;
   padding: 12px clamp(18px, 2vw, 34px);
-  background:
-    linear-gradient(90deg, rgba(23, 32, 42, 0.026) 1px, transparent 1px),
-    linear-gradient(rgba(23, 32, 42, 0.022) 1px, transparent 1px),
-    var(--paper);
-  background-size: 24px 24px;
+  background: var(--paper);
   box-shadow: 0 18px 42px -38px rgba(23, 32, 42, 0.72);
   isolation: isolate;
 }
@@ -5409,11 +5614,7 @@ button:disabled {
   bottom: 100%;
   left: 0;
   height: 36px;
-  background:
-    linear-gradient(90deg, rgba(23, 32, 42, 0.026) 1px, transparent 1px),
-    linear-gradient(rgba(23, 32, 42, 0.022) 1px, transparent 1px),
-    var(--paper);
-  background-size: 24px 24px;
+  background: var(--paper);
   content: "";
   pointer-events: none;
 }
@@ -5558,6 +5759,7 @@ button:disabled {
 }
 .user { justify-content: flex-end; }
 .assistant, .tool { justify-content: flex-start; }
+.process { justify-content: flex-start; }
 .message-card {
   min-width: 0;
   max-width: min(1160px, 74%);
@@ -5571,7 +5773,7 @@ button:disabled {
   border: 1px solid rgba(15, 118, 110, 0.18);
   border-radius: 8px;
   background: #eef9f6;
-  padding: 20px 26px 22px;
+  padding: 12px 18px;
   box-shadow: 0 26px 64px -56px rgba(23, 32, 42, 0.48);
 }
 .assistant .message-card {
@@ -5591,6 +5793,53 @@ button:disabled {
   text-transform: uppercase;
 }
 .turn-meta span { font-weight: 700; }
+.process-details {
+  width: min(1120px, 74%);
+  border-top: 1px solid rgba(23, 32, 42, 0.1);
+  color: rgba(23, 32, 42, 0.62);
+}
+.process-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 42px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+  font: 800 17px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.process-summary::-webkit-details-marker {
+  display: none;
+}
+.process-summary::after {
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  content: "";
+  transform: translateY(-2px) rotate(45deg);
+  transition: transform 0.16s ease;
+}
+.process-details[open] .process-summary::after {
+  transform: translateY(2px) rotate(225deg);
+}
+.process-body {
+  display: grid;
+  gap: 24px;
+  padding: 6px 0 8px;
+}
+.process-entry {
+  min-width: 0;
+}
+.process-entry .body {
+  color: var(--ink);
+  font-size: 17px;
+}
+.process-tool {
+  max-width: min(980px, 100%);
+  border-left: 3px solid rgba(183, 121, 31, 0.32);
+  padding-left: 12px;
+}
 .body {
   min-width: 0;
   max-width: 78ch;
@@ -5737,7 +5986,7 @@ pre {
   .turns { gap: 36px; }
   .message-card, .user .message-card { max-width: 94%; }
   .assistant .message-card { max-width: 100%; }
-  .user .message-card { padding: 18px 20px 20px; }
+  .user .message-card { padding: 12px 16px; }
   .body { font-size: 18px; }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -6037,12 +6286,13 @@ function groupSessions(sessions, filter) {
   const groupMap = new Map();
   for (const session of sessions) {
     const key = projectKey(session);
+    const isNoProject = isNoProjectSession(session);
     if (!groupMap.has(key)) {
       groupMap.set(key, {
         key,
         label: projectLabel(session),
-        displayPath: session.displayCwd || session.cwd || "No project",
-        isNoProject: isNoProjectSession(session),
+        displayPath: projectDisplayPath(session),
+        isNoProject,
         newestMs: 0,
         sessions: [],
       });
@@ -6069,12 +6319,46 @@ function groupSessions(sessions, filter) {
 }
 
 function projectKey(session) {
-  return sessionEngine(session) + "::" + (session.cwd || session.displayCwd || "no-project");
+  if (isNoProjectSession(session)) {
+    return sessionEngine(session) + "::no-project";
+  }
+  return sessionEngine(session) + "::" + projectPath(session);
 }
 
 function isNoProjectSession(session) {
-  const cwd = String(session.cwd || session.displayCwd || "").trim();
-  return !cwd || cwd === "/" || cwd === "No project";
+  if (session.projectKind === "none" || session.projectKind === "conversation") {
+    return true;
+  }
+  const cwd = projectPath(session);
+  return !cwd || cwd === "/" || cwd === "No project" || isCodexStandaloneConversationPath(session);
+}
+
+function isCodexStandaloneConversationPath(session) {
+  if (sessionEngine(session) !== "codex") {
+    return false;
+  }
+  return [session.cwd, session.displayCwd].some(isStandaloneConversationPath);
+}
+
+function isStandaloneConversationPath(value) {
+  const parts = normalizeProjectPath(value).split("/").filter(Boolean);
+  const codexIndex = parts.findIndex((part, index) => part === "Codex" && parts[index - 1] === "Documents");
+  if (codexIndex < 0 || codexIndex + 3 !== parts.length) {
+    return false;
+  }
+  return /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(parts[codexIndex + 1]) && Boolean(parts[codexIndex + 2]);
+}
+
+function projectDisplayPath(session) {
+  return isNoProjectSession(session) ? "普通会话" : projectPath(session);
+}
+
+function projectPath(session) {
+  return String(session.cwd || session.displayCwd || "").trim();
+}
+
+function normalizeProjectPath(value) {
+  return String(value || "").trim().replace(/\\\\/g, "/").replace(/\\/+$/, "");
 }
 
 function sortProjectGroups(groups) {
@@ -6087,6 +6371,9 @@ function sortProjectGroups(groups) {
 }
 
 function projectLabel(session) {
+  if (isNoProjectSession(session)) {
+    return "普通会话";
+  }
   const value = String(session.displayCwd || session.cwd || "No project").replace(/[\\\\/]+$/, "");
   const parts = value.split(/[\\\\/]/).filter(Boolean);
   return parts[parts.length - 1] || value || "No project";
@@ -6207,20 +6494,145 @@ function renderSnapshot(snapshot) {
   $("risks").innerHTML = snapshot.safetyChecks === false ? "" : notices + risks;
   const options = activeOptions();
   $("exports").innerHTML = "<a href='/export?" + options.toString() + "&format=html'>导出 HTML</a><a href='/export?" + options.toString() + "&format=md'>导出 Markdown</a><button type='button' data-publish-cloud='1'>发布分享</button><span id='publishStatus' class='publish-status'></span>";
-  $("turns").innerHTML = snapshot.turns.map((turn) => {
-    const role = turn.kind === "tool" ? "tool" : turn.role;
-    const label = "Tool" + (turn.name ? " / " + esc(turn.name) : "");
-    const text = turn.kind === "tool" ? "<details class='tool-details' open><summary>" + label + "</summary><pre>" + esc(turn.text) + "</pre></details>" : (turn.html || renderText(turn.text)) + renderImages(turn.images || []);
-    return "<article class='turn " + esc(role) + "'><div class='message-card'><div class='turn-meta'>" + esc(turnLabel(role, turn)) + "</div><div class='body'>" + text + "</div></div></article>";
-  }).join("") || "<div class='meta'>没有找到可分享的用户或助手消息。</div>";
+  $("turns").innerHTML = buildTranscriptItems(snapshot.turns || []).map(renderTranscriptItem).join("") || "<div class='meta'>没有找到可分享的用户或助手消息。</div>";
   postSnapshotState(snapshot);
+}
+
+function buildTranscriptItems(turns) {
+  const items = [];
+  let index = 0;
+  let previousUserTurn = null;
+  while (index < turns.length) {
+    const turn = turns[index];
+    if (isUserMessageTurn(turn)) {
+      items.push({ kind: "turn", turn });
+      previousUserTurn = turn;
+      index += 1;
+      continue;
+    }
+
+    const segment = [];
+    while (index < turns.length && !isUserMessageTurn(turns[index])) {
+      segment.push(turns[index]);
+      index += 1;
+    }
+
+    const finalIndex = segment.map(isAssistantMessageTurn).lastIndexOf(true);
+    if (finalIndex === -1) {
+      if (segment.length) {
+        items.push({
+          kind: "process",
+          turns: segment,
+          durationTurns: buildProcessDurationTurns(previousUserTurn, segment),
+        });
+      }
+      continue;
+    }
+    if (finalIndex === segment.length - 1) {
+      const processTurns = segment.slice(0, finalIndex);
+      const finalTurn = segment[finalIndex];
+      if (processTurns.length) {
+        items.push({
+          kind: "process",
+          turns: processTurns,
+          durationTurns: buildProcessDurationTurns(previousUserTurn, processTurns.concat(finalTurn)),
+        });
+      }
+      items.push({ kind: "turn", turn: finalTurn });
+      continue;
+    }
+    items.push({
+      kind: "process",
+      turns: segment,
+      durationTurns: buildProcessDurationTurns(previousUserTurn, segment),
+    });
+  }
+  return items;
+}
+
+function buildProcessDurationTurns(startTurn, turns) {
+  return [startTurn, ...turns].filter(Boolean);
+}
+
+function isUserMessageTurn(turn) {
+  return turn && turn.kind !== "tool" && turn.role === "user";
+}
+
+function isAssistantMessageTurn(turn) {
+  return turn && turn.kind !== "tool" && turn.role === "assistant";
+}
+
+function renderTranscriptItem(item, index) {
+  if (item.kind === "process") {
+    return renderProcessGroup(item, index);
+  }
+  return renderTurnArticle(item.turn);
+}
+
+function renderTurnArticle(turn) {
+  const role = turn.kind === "tool" ? "tool" : turn.role;
+  const meta = role === "tool" ? "<div class='turn-meta'>" + esc(turnLabel(role, turn)) + "</div>" : "";
+  return "<article class='turn " + esc(role) + "'><div class='message-card'>" + meta + "<div class='body'>" + renderTurnBody(turn) + "</div></div></article>";
+}
+
+function renderProcessGroup(item, index) {
+  const turns = item.turns || [];
+  if (!turns.length) {
+    return "";
+  }
+  return "<article class='turn process'>" +
+    "<details class='process-details' data-process-index='" + esc(index) + "'>" +
+      "<summary class='process-summary'><span>" + esc(processLabel(item.durationTurns || turns)) + "</span></summary>" +
+      "<div class='process-body'>" + turns.map(renderProcessEntry).join("") + "</div>" +
+    "</details>" +
+  "</article>";
+}
+
+function renderProcessEntry(turn) {
+  const role = turn.kind === "tool" ? "tool" : turn.role;
+  return "<section class='process-entry process-" + esc(role) + "'>" +
+    (role === "tool" ? "" : "<div class='turn-meta'>" + esc(turnLabel(role, turn)) + "</div>") +
+    "<div class='body'>" + renderTurnBody(turn) + "</div>" +
+  "</section>";
+}
+
+function renderTurnBody(turn) {
+  if (turn.kind === "tool") {
+    const label = "Tool" + (turn.name ? " / " + esc(turn.name) : "");
+    return "<details class='tool-details'><summary>" + label + "</summary><pre>" + esc(turn.text) + "</pre></details>";
+  }
+  return (stripAppDirectiveHtml(turn.html || "") || renderText(turn.text)) + renderImages(turn.images || []);
+}
+
+function processLabel(turns) {
+  const duration = processDurationLabel(turns);
+  return duration ? "已处理 " + duration : "已处理";
+}
+
+function processDurationLabel(turns) {
+  const times = turns.map((turn) => new Date(turn.timestamp || "").getTime()).filter(Number.isFinite);
+  if (times.length < 2) {
+    return "";
+  }
+  const seconds = Math.max(1, Math.round((Math.max(...times) - Math.min(...times)) / 1000));
+  if (seconds < 60) {
+    return seconds + "s";
+  }
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  if (minutes < 60) {
+    return rest ? minutes + "m " + rest + "s" : minutes + "m";
+  }
+  const hours = Math.floor(minutes / 60);
+  const minuteRest = minutes % 60;
+  return minuteRest ? hours + "h " + minuteRest + "m" : hours + "h";
 }
 
 function renderSnapshotMeta(snapshot) {
   const items = [
     ["来源", (snapshot.engineLabel || "Codex") + (snapshot.sourceDetail ? " / " + snapshot.sourceDetail : "")],
     ["会话", snapshot.id || "unknown"],
-    ["项目", snapshot.displayCwd || snapshot.cwd || "no cwd"],
+    ["项目", projectDisplayPath(snapshot) || "no cwd"],
     ["记录", String((snapshot.turns || []).length) + " 条"],
     ["脱敏", snapshot.redacted ? "已开启" : "未开启"],
   ];
@@ -6300,7 +6712,26 @@ function formatRiskTurns(risk) {
 }
 
 function renderText(text) {
-  return String(text || "").split(/\\n{2,}/).map((block) => "<p>" + esc(block).replace(/\\n/g, "<br>") + "</p>").join("");
+  const visibleText = stripAppDirectives(text);
+  if (!visibleText) {
+    return "";
+  }
+  return visibleText.split(/\\n{2,}/).map((block) => "<p>" + esc(block).replace(/\\n/g, "<br>") + "</p>").join("");
+}
+
+function stripAppDirectives(value) {
+  return String(value || "")
+    .replace(/\\r\\n/g, "\\n")
+    .replace(/^[ \\t]*::(?:git-(?:stage|commit|push|create-branch|create-pr)|archive|code-comment)\\{[^\\n]*\\}[ \\t]*$/gm, "")
+    .replace(/[ \\t]+\\n/g, "\\n")
+    .replace(/\\n{3,}/g, "\\n\\n")
+    .trim();
+}
+
+function stripAppDirectiveHtml(value) {
+  return String(value || "")
+    .replace(/<p>\\s*::(?:git-(?:stage|commit|push|create-branch|create-pr)|archive|code-comment)\\{[\\s\\S]*?\\}\\s*<\\/p>/g, "")
+    .trim();
 }
 
 function renderImages(images) {

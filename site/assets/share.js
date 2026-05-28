@@ -50,24 +50,154 @@ function renderSnapshot(payload) {
   ].join(" | ");
 
   content.innerHTML = turns.length
-    ? turns.map(renderTurn).join("")
+    ? buildTranscriptItems(turns).map(renderTranscriptItem).join("")
     : '<div class="empty">这个快照没有可分享的对话记录。</div>';
+}
+
+function buildTranscriptItems(turns) {
+  const items = [];
+  let index = 0;
+  let previousUserTurn = null;
+  while (index < turns.length) {
+    const turn = turns[index];
+    if (isUserMessageTurn(turn)) {
+      items.push({ kind: "turn", turn });
+      previousUserTurn = turn;
+      index += 1;
+      continue;
+    }
+
+    const segment = [];
+    while (index < turns.length && !isUserMessageTurn(turns[index])) {
+      segment.push(turns[index]);
+      index += 1;
+    }
+
+    const finalIndex = segment.map(isAssistantMessageTurn).lastIndexOf(true);
+    if (finalIndex === -1) {
+      if (segment.length) {
+        items.push({
+          kind: "process",
+          turns: segment,
+          durationTurns: buildProcessDurationTurns(previousUserTurn, segment),
+        });
+      }
+      continue;
+    }
+    if (finalIndex === segment.length - 1) {
+      const processTurns = segment.slice(0, finalIndex);
+      const finalTurn = segment[finalIndex];
+      if (processTurns.length) {
+        items.push({
+          kind: "process",
+          turns: processTurns,
+          durationTurns: buildProcessDurationTurns(previousUserTurn, processTurns.concat(finalTurn)),
+        });
+      }
+      items.push({ kind: "turn", turn: finalTurn });
+      continue;
+    }
+    items.push({
+      kind: "process",
+      turns: segment,
+      durationTurns: buildProcessDurationTurns(previousUserTurn, segment),
+    });
+  }
+  return items;
+}
+
+function buildProcessDurationTurns(startTurn, turns) {
+  return [startTurn, ...turns].filter(Boolean);
+}
+
+function isUserMessageTurn(turn) {
+  return turn && turn.kind !== "tool" && turn.role === "user";
+}
+
+function isAssistantMessageTurn(turn) {
+  return turn && turn.kind !== "tool" && turn.role === "assistant";
+}
+
+function renderTranscriptItem(item, index) {
+  if (item.kind === "process") {
+    return renderProcessGroup(item, index);
+  }
+  return renderTurn(item.turn);
 }
 
 function renderTurn(turn) {
   const role = turn.kind === "tool" ? "tool" : turn.role === "user" ? "user" : "assistant";
-  const body = turn.kind === "tool"
-    ? `<details class="tool-details" open><summary>工具${turn.name ? ` / ${escapeHtml(turn.name)}` : ""}</summary><pre>${escapeHtml(turn.text || "")}</pre></details>`
-    : `${turn.html || renderPlainText(turn.text)}${renderImages(turn.images || [])}`;
+  return `<article class="turn ${escapeHtml(role)}"><div class="message-card"><div class="body">${sanitizeClientHtml(renderTurnBody(turn))}</div></div></article>`;
+}
 
-  return `<article class="turn ${escapeHtml(role)}"><div class="message-card"><div class="body">${sanitizeClientHtml(body)}</div></div></article>`;
+function renderProcessGroup(item, index) {
+  const turns = item.turns || [];
+  if (!turns.length) {
+    return "";
+  }
+  return `<article class="turn process"><details class="process-details" data-process-index="${escapeHtml(index)}"><summary class="process-summary"><span>${escapeHtml(processLabel(item.durationTurns || turns))}</span></summary><div class="process-body">${turns.map(renderProcessEntry).join("")}</div></details></article>`;
+}
+
+function renderProcessEntry(turn) {
+  const role = turn.kind === "tool" ? "tool" : turn.role === "user" ? "user" : "assistant";
+  return `<section class="process-entry process-${escapeHtml(role)}"><div class="body">${sanitizeClientHtml(renderTurnBody(turn))}</div></section>`;
+}
+
+function renderTurnBody(turn) {
+  if (turn.kind === "tool") {
+    return `<details class="tool-details"><summary>工具${turn.name ? ` / ${escapeHtml(turn.name)}` : ""}</summary><pre>${escapeHtml(turn.text || "")}</pre></details>`;
+  }
+  return `${stripAppDirectiveHtml(turn.html || "") || renderPlainText(turn.text)}${renderImages(turn.images || [])}`;
+}
+
+function processLabel(turns) {
+  const duration = processDurationLabel(turns);
+  return duration ? `已处理 ${duration}` : "已处理";
+}
+
+function processDurationLabel(turns) {
+  const times = turns.map((turn) => new Date(turn.timestamp || "").getTime()).filter(Number.isFinite);
+  if (times.length < 2) {
+    return "";
+  }
+  const seconds = Math.max(1, Math.round((Math.max(...times) - Math.min(...times)) / 1000));
+  if (seconds < 60) {
+    return `${seconds}s`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  if (minutes < 60) {
+    return rest ? `${minutes}m ${rest}s` : `${minutes}m`;
+  }
+  const hours = Math.floor(minutes / 60);
+  const minuteRest = minutes % 60;
+  return minuteRest ? `${hours}h ${minuteRest}m` : `${hours}h`;
 }
 
 function renderPlainText(value) {
-  return String(value || "")
+  const visibleText = stripAppDirectives(value);
+  if (!visibleText) {
+    return "";
+  }
+  return visibleText
     .split(/\n{2,}/)
     .map((block) => `<p>${escapeHtml(block).replace(/\n/g, "<br>")}</p>`)
     .join("");
+}
+
+function stripAppDirectives(value) {
+  return String(value || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/^[ \t]*::(?:git-(?:stage|commit|push|create-branch|create-pr)|archive|code-comment)\{[^\n]*\}[ \t]*$/gm, "")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function stripAppDirectiveHtml(value) {
+  return String(value || "")
+    .replace(/<p>\s*::(?:git-(?:stage|commit|push|create-branch|create-pr)|archive|code-comment)\{[\s\S]*?\}\s*<\/p>/g, "")
+    .trim();
 }
 
 function renderImages(images) {

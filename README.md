@@ -8,7 +8,7 @@
 
 ## 快速开始
 
-不需要克隆仓库，可以直接通过 npm 临时运行：
+临时审阅时，不需要克隆仓库，可以直接通过 npm 启动本地查看器：
 
 ```bash
 npx codex-snapshots@latest serve --port 4321
@@ -16,11 +16,19 @@ npx codex-snapshots@latest serve --port 4321
 
 打开 <http://127.0.0.1:4321/>。
 
-也可以全局安装：
+也可以全局安装后手动启动：
 
 ```bash
 npm install -g codex-snapshots
 codex-snapshot serve --port 4321
+```
+
+如果需要在 macOS 登录后自动保持查看器可用，可以从源码目录安装为用户级 LaunchAgent：
+
+```bash
+pnpm install
+pnpm snapshot:install-daemon
+pnpm snapshot:daemon:status
 ```
 
 要求 Node.js 18 或更高版本。
