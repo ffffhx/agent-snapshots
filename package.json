@@ -42,6 +42,7 @@
     "registry": "https://registry.npmjs.org/"
   },
   "scripts": {
+    "build:site": "node scripts/build-site.mjs",
     "dev": "node bin/codex-snapshot.mjs serve --port 4321",
     "snapshot": "node bin/codex-snapshot.mjs",
     "snapshot:daemon": "node bin/codex-snapshot.mjs serve --port 4321",
@@ -51,12 +52,13 @@
     "snapshot:daemon:logs": "node scripts/launch-agent.mjs logs",
     "site:dev": "node scripts/serve-site.mjs",
     "share:server": "node server/share-api.mjs",
-    "test:smoke": "node bin/codex-snapshot.mjs --help && node server/share-api.mjs --help && node scripts/serve-site.mjs --help && node --check bin/codex-snapshot.mjs && node --check server/share-api.mjs && node --check scripts/launch-agent.mjs && node --check scripts/serve-site.mjs && node --check scripts/test-share-api.mjs && node --check scripts/test-static-site.mjs && node --check scripts/write-site-config.mjs && node --check scripts/test-site-config.mjs && node --check deploy/aliyun/doctor.mjs && node --check deploy/aliyun/preflight.mjs && node --check deploy/aliyun/verify-public-share.mjs && bash -n deploy/aliyun/*.sh scripts/test-aliyun-deploy-config.sh",
+    "test:smoke": "node bin/codex-snapshot.mjs --help && node server/share-api.mjs --help && node scripts/serve-site.mjs --help && node --check bin/codex-snapshot.mjs && node --check server/share-api.mjs && node --check scripts/build-site.mjs && node --check scripts/launch-agent.mjs && node --check scripts/serve-site.mjs && node --check scripts/test-share-api.mjs && node --check scripts/test-static-site.mjs && node --check scripts/write-site-config.mjs && node --check scripts/test-site-config.mjs && node --check deploy/aliyun/doctor.mjs && node --check deploy/aliyun/preflight.mjs && node --check deploy/aliyun/verify-public-share.mjs && bash -n deploy/aliyun/*.sh scripts/test-aliyun-deploy-config.sh",
     "test:share-api": "node scripts/test-share-api.mjs",
-    "test:static-site": "node scripts/test-static-site.mjs",
+    "test:static-site": "pnpm build:site && node scripts/test-static-site.mjs",
     "test:site-config": "node scripts/test-site-config.mjs",
     "test:deploy-config": "bash scripts/test-aliyun-deploy-config.sh",
-    "test": "pnpm test:smoke && pnpm test:share-api && pnpm test:static-site && pnpm test:site-config && pnpm test:deploy-config"
+    "typecheck": "tsc --noEmit",
+    "test": "pnpm typecheck && pnpm test:smoke && pnpm test:share-api && pnpm test:static-site && pnpm test:site-config && pnpm test:deploy-config"
   },
   "engines": {
     "node": ">=18"
@@ -64,6 +66,18 @@
   "license": "MIT",
   "dependencies": {
     "highlight.js": "^11.11.1",
-    "markdown-it": "^14.1.1"
+    "markdown-it": "^14.1.1",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.0",
+    "@types/react": "^19.2.15",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.2",
+    "jsdom": "^29.1.1",
+    "tailwindcss": "^4.3.0",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.14"
   }
 }
