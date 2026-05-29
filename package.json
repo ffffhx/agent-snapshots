@@ -30,6 +30,7 @@
   "author": "ffffhx",
   "files": [
     "bin",
+    "deploy",
     "server",
     "scripts",
     "site",
@@ -50,7 +51,12 @@
     "snapshot:daemon:logs": "node scripts/launch-agent.mjs logs",
     "site:dev": "node scripts/serve-site.mjs",
     "share:server": "node server/share-api.mjs",
-    "test:smoke": "node bin/codex-snapshot.mjs --help && node server/share-api.mjs --help && node scripts/serve-site.mjs --help && node --check bin/codex-snapshot.mjs && node --check server/share-api.mjs && node --check scripts/launch-agent.mjs && node --check scripts/serve-site.mjs"
+    "test:smoke": "node bin/codex-snapshot.mjs --help && node server/share-api.mjs --help && node scripts/serve-site.mjs --help && node --check bin/codex-snapshot.mjs && node --check server/share-api.mjs && node --check scripts/launch-agent.mjs && node --check scripts/serve-site.mjs && node --check scripts/test-share-api.mjs && node --check scripts/test-static-site.mjs && node --check scripts/write-site-config.mjs && node --check scripts/test-site-config.mjs && node --check deploy/aliyun/doctor.mjs && node --check deploy/aliyun/preflight.mjs && node --check deploy/aliyun/verify-public-share.mjs && bash -n deploy/aliyun/*.sh scripts/test-aliyun-deploy-config.sh",
+    "test:share-api": "node scripts/test-share-api.mjs",
+    "test:static-site": "node scripts/test-static-site.mjs",
+    "test:site-config": "node scripts/test-site-config.mjs",
+    "test:deploy-config": "bash scripts/test-aliyun-deploy-config.sh",
+    "test": "pnpm test:smoke && pnpm test:share-api && pnpm test:static-site && pnpm test:site-config && pnpm test:deploy-config"
   },
   "engines": {
     "node": ">=18"

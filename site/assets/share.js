@@ -1,7 +1,8 @@
 const DEFAULT_API_URL = "http://127.0.0.1:8787";
 const params = new URLSearchParams(window.location.search);
+const config = window.CODEX_SNAPSHOTS_CONFIG || {};
 const shareId = params.get("id") || "";
-const apiUrl = normalizeApiUrl(params.get("api") || localStorage.getItem("codex-snapshots.api") || DEFAULT_API_URL);
+const apiUrl = resolveInitialApiUrl();
 
 const title = document.getElementById("share-title");
 const meta = document.getElementById("share-meta");
@@ -18,6 +19,12 @@ async function loadShare() {
     title.textContent = "缺少分享 ID";
     meta.textContent = "请打开带有 ?id=snap_... 的链接。";
     content.innerHTML = '<div class="empty">没有提供分享 ID。</div>';
+    return;
+  }
+  if (!apiUrl) {
+    title.textContent = "缺少分享 API";
+    meta.textContent = "公开站点需要配置分享 API。";
+    content.innerHTML = '<div class="empty">请使用带有 ?api=https://... 的分享链接，或先配置 CODEX_SNAPSHOTS_PUBLIC_API_URL。</div>';
     return;
   }
 
@@ -232,5 +239,36 @@ function escapeHtml(value) {
 }
 
 function normalizeApiUrl(value) {
-  return String(value || DEFAULT_API_URL).trim().replace(/\/+$/, "");
+  return String(value || "").trim().replace(/\/+$/, "");
+}
+
+function resolveInitialApiUrl() {
+  const storedApiUrl = localStorage.getItem("codex-snapshots.api") || "";
+  const resolved = params.get("api") || config.apiUrl || safeStoredApiUrl(storedApiUrl);
+  return normalizeApiUrl(resolved || (isLocalPage() ? DEFAULT_API_URL : ""));
+}
+
+function safeStoredApiUrl(value) {
+  const normalized = normalizeApiUrl(value);
+  if (!normalized) {
+    return "";
+  }
+  return isLocalPage() || !isLoopbackUrl(normalized) ? normalized : "";
+}
+
+function isLocalPage() {
+  return isLoopbackHost(window.location.hostname);
+}
+
+function isLoopbackUrl(value) {
+  try {
+    return isLoopbackHost(new URL(value).hostname);
+  } catch {
+    return false;
+  }
+}
+
+function isLoopbackHost(hostname) {
+  const host = String(hostname || "").toLowerCase();
+  return host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]";
 }

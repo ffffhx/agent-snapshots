@@ -343,23 +343,9 @@ function readNonNegativeInteger(value, label) {
 }
 
 async function publishSnapshot(snapshot, { apiUrl, token, siteUrl, expiresInDays, shareId }) {
-  const normalizedApiUrl = normalizeUrl(
-    apiUrl ||
-      process.env.SNAPSHOT_SHARE_API_URL ||
-      process.env.TOKEN_BOARD_API_URL ||
-      process.env.NEXT_PUBLIC_TOKEN_BOARD_API_URL ||
-      process.env.CODEX_SNAPSHOTS_SHARE_API_URL ||
-      DEFAULT_SNAPSHOT_SHARE_API_URL
-  );
-  const shareToken =
-    token ||
-    process.env.SNAPSHOT_SHARE_TOKEN ||
-    process.env.CODEX_SNAPSHOTS_SHARE_TOKEN ||
-    process.env.TOKEN_BOARD_AGENT_TOKEN ||
-    process.env.TOKEN_BOARD_UPLOAD_TOKEN ||
-    readDefaultShareToken() ||
-    "";
-  const normalizedSiteUrl = normalizeUrl(siteUrl || process.env.SNAPSHOT_SHARE_SITE_URL || DEFAULT_SNAPSHOT_SHARE_SITE_URL);
+  const normalizedApiUrl = resolveShareApiUrl(apiUrl);
+  const shareToken = resolveShareToken(token);
+  const normalizedSiteUrl = resolveShareSiteUrl(siteUrl);
 
   if (!normalizedApiUrl) {
     throw new Error("Missing share API URL. Set SNAPSHOT_SHARE_API_URL or pass --api-url.");
@@ -368,20 +354,28 @@ async function publishSnapshot(snapshot, { apiUrl, token, siteUrl, expiresInDays
     throw new Error("Missing share API token. Set SNAPSHOT_SHARE_TOKEN, pass --share-token, or create ~/.codex-snapshots-agent.json.");
   }
 
-  const response = await fetch(`${normalizedApiUrl}/api/snapshots`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${shareToken}`,
-      "Content-Type": "application/json",
-      "User-Agent": `codex-snapshot/${VERSION}`,
-    },
-    body: JSON.stringify({
-      snapshot: prepareSnapshotForCloud(snapshot),
-      siteUrl: normalizedSiteUrl,
-      expiresInDays: expiresInDays || undefined,
-      shareId: shareId || undefined,
-    }),
-  });
+  let response;
+
+  try {
+    response = await fetch(`${normalizedApiUrl}/api/snapshots`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${shareToken}`,
+        "Content-Type": "application/json",
+        "User-Agent": `codex-snapshot/${VERSION}`,
+      },
+      body: JSON.stringify({
+        snapshot: prepareSnapshotForCloud(snapshot),
+        siteUrl: normalizedSiteUrl,
+        apiUrl: normalizedApiUrl,
+        expiresInDays: expiresInDays || undefined,
+        shareId: shareId || undefined,
+      }),
+    });
+  } catch (error) {
+    throw new Error(formatShareApiNetworkError(error, normalizedApiUrl));
+  }
+
   const text = await response.text();
   let payload;
 
@@ -399,6 +393,49 @@ async function publishSnapshot(snapshot, { apiUrl, token, siteUrl, expiresInDays
   }
 
   return payload;
+}
+
+function formatShareApiNetworkError(error, apiUrl) {
+  const reason = error?.cause?.code || error?.cause?.message || error?.message || String(error);
+  return `Could not connect to share API at ${apiUrl}: ${reason}. Start codex-snapshot-share or set SNAPSHOT_SHARE_API_URL to the running share API.`;
+}
+
+function resolveShareApiUrl(apiUrl) {
+  const config = readDefaultShareConfig();
+  return normalizeUrl(
+    apiUrl ||
+      process.env.SNAPSHOT_SHARE_API_URL ||
+      process.env.TOKEN_BOARD_API_URL ||
+      process.env.NEXT_PUBLIC_TOKEN_BOARD_API_URL ||
+      process.env.CODEX_SNAPSHOTS_SHARE_API_URL ||
+      config.apiUrl ||
+      DEFAULT_SNAPSHOT_SHARE_API_URL
+  );
+}
+
+function resolveShareToken(token) {
+  const config = readDefaultShareConfig();
+  return (
+    token ||
+    process.env.SNAPSHOT_SHARE_TOKEN ||
+    process.env.CODEX_SNAPSHOTS_SHARE_TOKEN ||
+    process.env.TOKEN_BOARD_AGENT_TOKEN ||
+    process.env.TOKEN_BOARD_UPLOAD_TOKEN ||
+    config.token ||
+    ""
+  );
+}
+
+function resolveShareSiteUrl(siteUrl) {
+  const config = readDefaultShareConfig();
+  return normalizeUrl(siteUrl || process.env.SNAPSHOT_SHARE_SITE_URL || config.siteUrl || DEFAULT_SNAPSHOT_SHARE_SITE_URL);
+}
+
+function browserShareConfig() {
+  return {
+    apiUrl: resolveShareApiUrl(""),
+    siteUrl: resolveShareSiteUrl(""),
+  };
 }
 
 async function publishAllSnapshots({
@@ -494,7 +531,19 @@ function stableSnapshotShareId(snapshot) {
   return `snap_${digest}`;
 }
 
-function readDefaultShareToken() {
+let defaultShareConfigCache;
+
+function readDefaultShareConfig() {
+  if (defaultShareConfigCache) {
+    return defaultShareConfigCache;
+  }
+
+  defaultShareConfigCache = {
+    apiUrl: "",
+    siteUrl: "",
+    token: "",
+  };
+
   const filePaths = [
     process.env.CODEX_SNAPSHOTS_AGENT_FILE,
     process.env.SNAPSHOT_SHARE_TOKEN_FILE,
@@ -506,13 +555,33 @@ function readDefaultShareToken() {
   for (const filePath of filePaths) {
     try {
       const payload = JSON.parse(readFileSync(filePath, "utf8"));
-      const token = payload.snapshotShareToken || payload.agentToken || payload.token || payload.uploadToken || "";
-      if (token) {
-        return token;
+      const config = {
+        apiUrl: firstNonEmptyString(
+          payload.snapshotShareApiUrl,
+          payload.snapshotSharePublicApiUrl,
+          payload.shareApiUrl,
+          payload.publicApiUrl,
+          payload.apiUrl
+        ),
+        siteUrl: firstNonEmptyString(payload.snapshotShareSiteUrl, payload.shareSiteUrl, payload.siteUrl),
+        token: firstNonEmptyString(payload.snapshotShareToken, payload.agentToken, payload.token, payload.uploadToken),
+      };
+      if (config.apiUrl || config.siteUrl || config.token) {
+        defaultShareConfigCache = config;
+        return defaultShareConfigCache;
       }
     } catch {}
   }
 
+  return defaultShareConfigCache;
+}
+
+function firstNonEmptyString(...values) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
   return "";
 }
 
@@ -5146,9 +5215,20 @@ function renderServerApp() {
       <div id="turns" class="turns"></div>
     </section>
   </main>
+  <script>window.CODEX_SNAPSHOT_SHARE_CONFIG=${inlineJson(browserShareConfig())};</script>
   <script>${serverJs()}</script>
 </body>
 </html>`;
+}
+
+function inlineJson(value) {
+  return JSON.stringify(value).replace(/[<>&\u2028\u2029]/g, (char) => {
+    if (char === "<") return "\\u003c";
+    if (char === ">") return "\\u003e";
+    if (char === "&") return "\\u0026";
+    if (char === "\u2028") return "\\u2028";
+    return "\\u2029";
+  });
 }
 
 function serverCss() {
@@ -6010,6 +6090,7 @@ const SIDEBAR_MIN = 280;
 const SIDEBAR_MAX = 680;
 const $ = (id) => document.getElementById(id);
 const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
+const shareConfig = window.CODEX_SNAPSHOT_SHARE_CONFIG || {};
 
 function renderLoading(message) {
   return "<div class='loading-state' role='status' aria-live='polite' aria-busy='true'>" +
@@ -6678,7 +6759,7 @@ async function publishSelectedSession() {
   const button = document.querySelector("[data-publish-cloud]");
   if (button) button.disabled = true;
   if (status) {
-    status.textContent = "正在发布...";
+    status.textContent = shareConfig.apiUrl ? "正在发布到 " + shareConfig.apiUrl + "..." : "正在发布...";
     status.classList.remove("error");
   }
   try {
@@ -6819,8 +6900,10 @@ Options:
   --no-redact              Disable automatic redaction
   --allow-unredacted       For publish only: allow publishing a --no-redact snapshot
   --with-safety            For publish only: include local safety review rows in the cloud snapshot
-  --api-url URL            For publish only: cloud API base. Defaults to $SNAPSHOT_SHARE_API_URL or http://127.0.0.1:8787
-  --site-url URL           For publish only: public site base used to print the share link
+  --api-url URL            For publish only: cloud API base. Defaults to $SNAPSHOT_SHARE_API_URL,
+                           ~/.codex-snapshots-agent.json, or http://127.0.0.1:8787
+  --site-url URL           For publish only: public site base used to print the share link.
+                           Defaults to $SNAPSHOT_SHARE_SITE_URL, ~/.codex-snapshots-agent.json, or local share API
   --share-token TOKEN      For publish only: API token. Defaults to $SNAPSHOT_SHARE_TOKEN or ~/.codex-snapshots-agent.json
   --expires-in-days N      For publish only: ask the server to expire the share after N days
   --live-only              Ignore archived_sessions when listing

@@ -113,6 +113,53 @@ codex-snapshot publish <session-id> \
 
 服务端默认把分享内容保存在 `.codex-snapshots/shares.json`。如果需要使用其他路径，可以配置 `SNAPSHOT_SHARE_DATA_FILE`。
 
+公开列表接口会返回最近发布的分享摘要，不包含完整会话内容：
+
+```bash
+curl http://127.0.0.1:8787/api/snapshots
+```
+
+官网首页会使用同一个分享 API 地址展示“公开 Session”卡片列表。
+
+如果要让发布的 Session 出现在公开官网上，需要把分享 API 部署到公网，并让 GitHub Pages 默认读取这个公网 API。`127.0.0.1` 只对本机可见，不能作为公开分享地址。
+
+公网分享服务建议配置：
+
+```bash
+SNAPSHOT_SHARE_TOKEN=change-me \
+SNAPSHOT_SHARE_SITE_URL=https://ffffhx.github.io/codex-snapshots/ \
+SNAPSHOT_SHARE_PUBLIC_API_URL=https://your-share-api.example.com \
+SNAPSHOT_SHARE_VIEWER_PATH=/share/ \
+codex-snapshot-share
+```
+
+然后在 GitHub 仓库变量中设置：
+
+```text
+CODEX_SNAPSHOTS_PUBLIC_API_URL=https://your-share-api.example.com
+```
+
+Pages 部署时会写入 `site/assets/config.js`，官网首页和 `/share/` 页面会默认读取这个公网 API。发布时本地查看器也需要指向同一个公网 API，可以写入本地发布配置：
+
+```bash
+SNAPSHOT_SHARE_TOKEN=change-me \
+SNAPSHOT_SHARE_API_URL=https://your-share-api.example.com \
+SNAPSHOT_SHARE_SITE_URL=https://ffffhx.github.io/codex-snapshots/ \
+deploy/aliyun/configure-local-publisher.sh
+```
+
+这个配置会写入 `~/.codex-snapshots-agent.json`。之后直接启动本地查看器即可：
+
+```bash
+codex-snapshot serve --port 4321
+```
+
+本地查看器里的“发布分享”按钮会调用本机 `/api/publish`，再由本机 Node 进程带着 token 转发到 `SNAPSHOT_SHARE_API_URL` 或 `~/.codex-snapshots-agent.json` 中的公网 API。页面发布状态会显示当前目标 API，方便确认没有仍然指向 `127.0.0.1`。
+公开官网如果没有配置 `CODEX_SNAPSHOTS_PUBLIC_API_URL`，会显示“公开分享 API 尚未配置”，不会回退请求访问者自己的 `127.0.0.1`。
+Pages workflow 会校验 `CODEX_SNAPSHOTS_PUBLIC_API_URL`，拒绝 localhost、示例域名、内网 IP 和非 http/https 地址。
+
+阿里云 ECS 的 systemd、Nginx、SSH 部署脚本、部署前检查脚本、公网验证脚本、GitHub Pages 配置脚本和本地发布配置脚本见 [`deploy/aliyun`](deploy/aliyun/README.md)。
+
 ## macOS LaunchAgent
 
 从源码运行时，可以把本地查看器安装为用户级 LaunchAgent：

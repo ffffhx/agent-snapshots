@@ -125,6 +125,19 @@
       </article>
     </section>
 
+    <section class="public-sessions" aria-labelledby="public-sessions-title">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">公开 Session</p>
+          <h2 id="public-sessions-title">最近发布的分享快照</h2>
+        </div>
+        <button class="button" id="public-sessions-refresh" type="button"><span aria-hidden="true">↻</span>刷新</button>
+      </div>
+      <div class="public-session-grid" id="public-sessions" aria-live="polite">
+        <div class="public-session-empty">正在加载公开 Session...</div>
+      </div>
+    </section>
+
     <section class="commands" aria-label="运行方式">
       <div>
         <p class="eyebrow">运行方式</p>
@@ -164,6 +177,7 @@ pnpm snapshot:daemon:status</code></pre>
     </section>
   </main>
 
+  <script src="./assets/config.js"></script>
   <script src="./assets/site.js"></script>
 </body>
 </html>

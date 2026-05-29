@@ -28,6 +28,11 @@ jobs:
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
+      - name: Configure public share API
+        env:
+          CODEX_SNAPSHOTS_PUBLIC_API_URL: ${{ vars.CODEX_SNAPSHOTS_PUBLIC_API_URL }}
+        run: node scripts/write-site-config.mjs --output site/assets/config.js
+
       - name: Upload static site
         uses: actions/upload-pages-artifact@v3
         with:

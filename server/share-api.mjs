@@ -70,7 +70,6 @@ async function main() {
         sendJson(response, 200, {
           ok: true,
           service: "codex-snapshots-share-api",
-          storage: dataFile,
           auth: shareToken ? "token" : "disabled",
         });
         return;
@@ -80,13 +79,31 @@ async function main() {
         sendJson(response, 200, {
           ok: true,
           shares: await storage.countShares(),
-          storage: dataFile,
         });
         return;
       }
 
       if (request.method === "GET" && url.pathname === "/snapshots/share/") {
         send(response, 200, "text/html; charset=utf-8", renderSharePage(url.searchParams.get("id") || ""));
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/snapshots") {
+        const limit = readIntegerParam(url.searchParams.get("limit"), 50, 100);
+        const offset = readIntegerParam(url.searchParams.get("offset"), 0, 100_000);
+        const records = await storage.listShares();
+        const page = records.slice(offset, offset + limit);
+
+        sendJson(response, 200, {
+          schemaVersion: 1,
+          shares: page.map((record) =>
+            toShareSummary(record, request, url.searchParams.get("siteUrl"), url.searchParams.get("apiUrl"))
+          ),
+          count: page.length,
+          total: records.length,
+          limit,
+          offset,
+        });
         return;
       }
 
@@ -127,7 +144,7 @@ async function main() {
           turnCount: record.turnCount,
           redacted: record.redacted,
           expiresAt: record.expiresAt || null,
-          url: snapshotShareUrl(request, record.id, body.siteUrl),
+          url: snapshotShareUrl(request, record.id, body.siteUrl, body.apiUrl),
         });
         return;
       }
@@ -203,6 +220,11 @@ function createFileShareStore(filePath) {
       const record = (await readShares(filePath)).find((share) => share.id === id);
       return isExpired(record) ? undefined : record;
     },
+    async listShares() {
+      return (await readShares(filePath))
+        .filter((share) => !isExpired(share))
+        .sort(compareSharesNewestFirst);
+    },
     deleteShare(id) {
       return enqueue(async () => {
         const existing = await readShares(filePath);
@@ -217,6 +239,29 @@ function createFileShareStore(filePath) {
     async countShares() {
       return (await readShares(filePath)).filter((share) => !isExpired(share)).length;
     },
+  };
+}
+
+function compareSharesNewestFirst(left, right) {
+  const leftTime = new Date(left.updatedAt || left.createdAt || "").getTime();
+  const rightTime = new Date(right.updatedAt || right.createdAt || "").getTime();
+  const delta = (Number.isFinite(rightTime) ? rightTime : 0) - (Number.isFinite(leftTime) ? leftTime : 0);
+  return delta || String(right.id).localeCompare(String(left.id));
+}
+
+function toShareSummary(record, request, rawSiteUrl, rawApiUrl) {
+  return {
+    id: record.id,
+    title: record.title,
+    engine: record.engine,
+    engineLabel: record.engineLabel,
+    sourceRef: record.sourceRef,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+    expiresAt: record.expiresAt || null,
+    redacted: record.redacted,
+    turnCount: record.turnCount,
+    url: snapshotShareUrl(request, record.id, rawSiteUrl, rawApiUrl),
   };
 }
 
@@ -840,12 +885,46 @@ function expiryFromDays(value) {
   return new Date(Date.now() + Math.min(days, 365) * 24 * 60 * 60 * 1000).toISOString();
 }
 
-function snapshotShareUrl(request, id, rawSiteUrl) {
-  const siteUrl =
-    sanitizeUrl(rawSiteUrl) ||
-    sanitizeUrl(process.env.SNAPSHOT_SHARE_SITE_URL) ||
-    `http://${request.headers.host || `${host}:${port}`}`;
-  return `${siteUrl.replace(/\/+$/, "")}/snapshots/share/?id=${encodeURIComponent(id)}`;
+function snapshotShareUrl(request, id, rawSiteUrl, rawApiUrl) {
+  const requestUrl = `http://${request.headers.host || `${host}:${port}`}`;
+  const apiUrl = sanitizeUrl(rawApiUrl) || sanitizeUrl(process.env.SNAPSHOT_SHARE_PUBLIC_API_URL) || requestUrl;
+  const siteUrl = sanitizeUrl(rawSiteUrl) || sanitizeUrl(process.env.SNAPSHOT_SHARE_SITE_URL) || apiUrl;
+  const viewerPath = sanitizeViewerPath(
+    process.env.SNAPSHOT_SHARE_VIEWER_PATH || (sameOrigin(siteUrl, apiUrl) ? "/snapshots/share/" : "/share/")
+  );
+  const url = new URL(`${siteUrl.replace(/\/+$/, "")}${viewerPath}`);
+  url.searchParams.set("id", id);
+
+  if (!sameOrigin(siteUrl, apiUrl)) {
+    url.searchParams.set("api", apiUrl);
+  }
+
+  return url.toString();
+}
+
+function readIntegerParam(value, fallback, max) {
+  if (value === null || value === undefined || value === "") {
+    return fallback;
+  }
+  const parsed = Math.floor(Number(value));
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return fallback;
+  }
+  return Math.min(parsed, max);
+}
+
+function sameOrigin(left, right) {
+  try {
+    return new URL(left).origin === new URL(right).origin;
+  } catch {
+    return false;
+  }
+}
+
+function sanitizeViewerPath(value) {
+  const text = sanitizeText(value, 160) || "/snapshots/share/";
+  const path = text.startsWith("/") ? text : `/${text}`;
+  return path.endsWith("/") ? path : `${path}/`;
 }
 
 function normalizeDate(value) {
@@ -965,6 +1044,10 @@ Environment:
   SNAPSHOT_SHARE_TOKEN       Bearer token required for publish/delete
   SNAPSHOT_SHARE_DATA_FILE   JSON storage file. Defaults to .codex-snapshots/shares.json
   SNAPSHOT_SHARE_SITE_URL    Base URL used in returned share links
+  SNAPSHOT_SHARE_PUBLIC_API_URL
+                             Public API base used in returned share links
+  SNAPSHOT_SHARE_VIEWER_PATH Share page path. Defaults to /snapshots/share/ for same-origin links,
+                             or /share/ when API and site origins differ
   SNAPSHOT_SHARE_ALLOW_UNREDACTED=true
   SNAPSHOT_SHARE_ALLOW_ANONYMOUS=false
 `);
