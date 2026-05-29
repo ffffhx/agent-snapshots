@@ -1,0 +1,468 @@
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import type { PublicShare, StatusState } from "./types";
+import {
+  DEFAULT_VIEWER_URL,
+  normalizeApiUrl,
+  normalizeViewerUrl,
+  openInNewTab,
+  resolveInitialApiUrl,
+  safeLocalStorageSet,
+  timeoutSignal,
+} from "./utils";
+
+type PublicSessionsState =
+  | {
+      kind: "message";
+      text: string;
+    }
+  | {
+      kind: "shares";
+      shares: PublicShare[];
+    };
+
+const STATUS_LABELS: Record<StatusState, string> = {
+  checking: "检查中",
+  ready: "已连接",
+  error: "未启动",
+};
+
+export function HomePage() {
+  const params = useMemo(() => new URLSearchParams(window.location.search), []);
+  const viewerUrl = useMemo(() => normalizeViewerUrl(params.get("viewer") || DEFAULT_VIEWER_URL), [params]);
+  const [apiValue, setApiValue] = useState(() => resolveInitialApiUrl(params));
+  const [shareId, setShareId] = useState(() => params.get("id") || "");
+  const [viewerStatus, setViewerStatus] = useState<StatusState>("checking");
+  const [apiStatus, setApiStatus] = useState<StatusState>("checking");
+  const [apiStatusText, setApiStatusText] = useState("检查中");
+  const [publicSessions, setPublicSessions] = useState<PublicSessionsState>({
+    kind: "message",
+    text: "正在加载公开 Session...",
+  });
+
+  const shareInputRef = useRef<HTMLInputElement | null>(null);
+  const apiInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    checkViewer(viewerUrl, setViewerStatus);
+  }, [viewerUrl]);
+
+  useEffect(() => {
+    checkApi(apiValue, setApiStatus, setApiStatusText);
+    loadPublicSessions(apiValue, setPublicSessions);
+  }, []);
+
+  function commitApiUrl(value: string) {
+    const nextApiUrl = normalizeApiUrl(value);
+    setApiValue(nextApiUrl);
+    safeLocalStorageSet("codex-snapshots.api", nextApiUrl);
+    checkApi(nextApiUrl, setApiStatus, setApiStatusText);
+    loadPublicSessions(nextApiUrl, setPublicSessions);
+  }
+
+  function handleShareSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const id = shareId.trim();
+    const api = normalizeApiUrl(apiValue);
+
+    if (!id) {
+      shareInputRef.current?.focus();
+      return;
+    }
+    if (!api) {
+      setApiStatus("error");
+      setApiStatusText("未配置");
+      apiInputRef.current?.focus();
+      return;
+    }
+
+    safeLocalStorageSet("codex-snapshots.api", api);
+    const target = new URL("./share/index.html", window.location.href);
+    target.searchParams.set("id", id);
+    target.searchParams.set("api", api);
+    openInNewTab(target.toString());
+  }
+
+  return (
+    <main className="shell">
+      <section className="hero" aria-labelledby="hero-title">
+        <div className="hero-copy">
+          <p className="eyebrow">本地优先 / 只读审阅 / 可脱敏分享</p>
+          <h1 id="hero-title">Codex Snapshots</h1>
+          <p className="lede">把 Codex、Claude Code 和 Trae 的本地会话整理成可审阅、可导出、可发布的只读快照。</p>
+          <div className="hero-stats" aria-label="能力概览">
+            <span>
+              <b>3</b> agent sources
+            </span>
+            <span>
+              <b>0</b> cloud sync required
+            </span>
+            <span>
+              <b>HTML</b> / Markdown
+            </span>
+          </div>
+          <div className="actions">
+            <a className="button primary" id="open-local-viewer" href={viewerUrl} target="_blank" rel="noopener noreferrer">
+              <span aria-hidden="true">↗</span>
+              打开本地查看器
+            </a>
+            <a className="button" href="https://www.npmjs.com/package/codex-snapshots" target="_blank" rel="noopener noreferrer">
+              <span aria-hidden="true">pkg</span>
+              npm 包
+            </a>
+            <a className="button" href="https://github.com/ffffhx/codex-snapshots" target="_blank" rel="noopener noreferrer">
+              <span aria-hidden="true">git</span>
+              GitHub 仓库
+            </a>
+          </div>
+        </div>
+        <ProductShot />
+      </section>
+
+      <section className="status-grid" aria-label="连接状态">
+        <article className="status-panel">
+          <div className="panel-heading">
+            <p className="eyebrow">本地服务</p>
+            <StatusPill id="viewer-status" state={viewerStatus} text={STATUS_LABELS[viewerStatus]} />
+          </div>
+          <h2>打开你电脑上的只读查看器</h2>
+          <p>
+            官网只负责引导和分享入口。会话数据仍保留在你的电脑上，并从 <code id="viewer-url-label">{viewerUrl}</code> 读取。
+          </p>
+          <div className="command-line">
+            <pre>
+              <code>npx codex-snapshots@latest serve --port 4321</code>
+            </pre>
+            <CopyButton command="npx codex-snapshots@latest serve --port 4321">复制</CopyButton>
+          </div>
+        </article>
+
+        <article className="status-panel">
+          <div className="panel-heading">
+            <p className="eyebrow">云端分享</p>
+            <StatusPill id="api-status" state={apiStatus} text={apiStatusText} />
+          </div>
+          <h2>打开一个分享快照</h2>
+          <form className="share-form" id="share-form" onSubmit={handleShareSubmit}>
+            <label>
+              <span>分享 ID</span>
+              <input
+                id="share-id"
+                name="id"
+                autoComplete="off"
+                placeholder="snap_..."
+                ref={shareInputRef}
+                spellCheck={false}
+                value={shareId}
+                onChange={(event) => setShareId(event.target.value)}
+              />
+            </label>
+            <label>
+              <span>分享 API</span>
+              <input
+                id="api-url"
+                name="api"
+                autoComplete="off"
+                ref={apiInputRef}
+                spellCheck={false}
+                value={apiValue}
+                onBlur={() => commitApiUrl(apiValue)}
+                onChange={(event) => setApiValue(event.target.value)}
+              />
+            </label>
+            <button className="button primary" type="submit">
+              打开分享
+            </button>
+          </form>
+        </article>
+      </section>
+
+      <section className="public-sessions" aria-labelledby="public-sessions-title">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">公开 Session</p>
+            <h2 id="public-sessions-title">最近发布的分享快照</h2>
+          </div>
+          <button className="button" id="public-sessions-refresh" type="button" onClick={() => loadPublicSessions(normalizeApiUrl(apiValue), setPublicSessions)}>
+            <span aria-hidden="true">↻</span>
+            刷新
+          </button>
+        </div>
+        <div className="public-session-grid" id="public-sessions" aria-live="polite">
+          <PublicSessions state={publicSessions} api={normalizeApiUrl(apiValue)} />
+        </div>
+      </section>
+
+      <section className="commands" aria-label="运行方式">
+        <div>
+          <p className="eyebrow">运行方式</p>
+          <h2>选择临时审阅或常驻运行</h2>
+          <p>临时审阅适合手动开一段时间；macOS LaunchAgent 适合登录后自动保持本地查看器可用。</p>
+        </div>
+        <div className="command-options">
+          <article className="command-option">
+            <div className="command-option-heading">
+              <p className="eyebrow">临时审阅</p>
+              <h3>不用克隆，直接运行</h3>
+            </div>
+            <p>手动启动本地只读查看器；关闭终端或停止进程后服务结束。</p>
+            <div className="command-line large">
+              <pre>
+                <code>{`npx codex-snapshots@latest serve --port 4321
+
+# 或者全局安装
+npm install -g codex-snapshots
+codex-snapshot serve --port 4321`}</code>
+              </pre>
+              <CopyButton command="npx codex-snapshots@latest serve --port 4321">复制 npx 命令</CopyButton>
+            </div>
+          </article>
+          <article className="command-option">
+            <div className="command-option-heading">
+              <p className="eyebrow">macOS LaunchAgent</p>
+              <h3>安装成后台常驻</h3>
+            </div>
+            <p>从源码目录安装为用户级后台服务；登录 macOS 后自动保持查看器可用。</p>
+            <div className="command-line large">
+              <pre>
+                <code>{`pnpm install
+pnpm snapshot:install-daemon
+pnpm snapshot:daemon:status`}</code>
+              </pre>
+              <CopyButton command="pnpm snapshot:install-daemon">复制安装命令</CopyButton>
+            </div>
+          </article>
+        </div>
+      </section>
+    </main>
+  );
+}
+
+function ProductShot() {
+  return (
+    <div className="product-shot" aria-label="Codex Snapshots 产品预览">
+      <aside className="shot-sidebar">
+        <div className="shot-kicker">Local Agents</div>
+        <div className="shot-title">Projects</div>
+        <div className="shot-search">搜索项目或对话</div>
+        <div className="shot-tabs">
+          <span className="active">
+            Codex <b>191</b>
+          </span>
+          <span>
+            Claude <b>0</b>
+          </span>
+          <span>
+            Trae <b>9</b>
+          </span>
+        </div>
+        <div className="shot-project active">
+          <span className="shot-dot"></span>
+          <div>
+            <b>codex-snapshots</b>
+            <small>优化官网和本地查看器</small>
+          </div>
+          <em>刚刚</em>
+        </div>
+        <div className="shot-project">
+          <span className="shot-dot green"></span>
+          <div>
+            <b>garden-lab</b>
+            <small>评估会话快照拆分</small>
+          </div>
+          <em>7 小时</em>
+        </div>
+        <div className="shot-project">
+          <span className="shot-dot amber"></span>
+          <div>
+            <b>coze-monorepo</b>
+            <small>定位订阅跳转调用</small>
+          </div>
+          <em>1 天</em>
+        </div>
+      </aside>
+      <section className="shot-main">
+        <div className="shot-topbar">
+          <div>
+            <div className="shot-kicker">Read-only review</div>
+            <div className="shot-heading">优化官网和本地查看器</div>
+          </div>
+          <div className="shot-switches">
+            <span>Tools</span>
+            <span>Output</span>
+            <span className="on">Redact</span>
+          </div>
+        </div>
+        <div className="shot-meta">
+          <span>Codex</span>
+          <span>~/Code/codex-snapshots</span>
+          <span>7 entries</span>
+          <span>redacted: yes</span>
+        </div>
+        <div className="shot-risk">
+          <b>OK</b>
+          <span>No common high-risk patterns detected</span>
+        </div>
+        <div className="shot-bubble user">使用前端设计相关的 skill，优化一下这个项目的官网和本地查看器。</div>
+        <div className="shot-bubble assistant">我会先看真实页面，再统一视觉系统、提高信息密度，并用浏览器验证响应式效果。</div>
+      </section>
+    </div>
+  );
+}
+
+function StatusPill({ id, state, text }: { id: string; state: StatusState; text: string }) {
+  return (
+    <span className={`status-pill ${state}`} id={id}>
+      {text}
+    </span>
+  );
+}
+
+function CopyButton({ command, children }: { command: string; children: string }) {
+  const [label, setLabel] = useState(children);
+
+  async function copyCommand() {
+    if (!command) {
+      return;
+    }
+
+    await navigator.clipboard?.writeText(command).catch(() => undefined);
+    setLabel("已复制");
+    window.setTimeout(() => {
+      setLabel(children);
+    }, 1400);
+  }
+
+  return (
+    <button className="button copy-button" type="button" data-copy-command={command} onClick={copyCommand}>
+      {label}
+    </button>
+  );
+}
+
+function PublicSessions({ state, api }: { state: PublicSessionsState; api: string }) {
+  if (state.kind === "message") {
+    return <div className="public-session-empty">{state.text}</div>;
+  }
+
+  if (!state.shares.length) {
+    return <div className="public-session-empty">暂无公开 Session。</div>;
+  }
+
+  return state.shares.map((share) => <PublicSessionCard key={share.id} share={share} api={api} />);
+}
+
+function PublicSessionCard({ share, api }: { share: PublicShare; api: string }) {
+  return (
+    <a className="public-session-card" href={sharePageUrl(share.id, api)} target="_blank" rel="noopener noreferrer">
+      <div className="public-session-top">
+        <span className="public-session-engine">{share.engineLabel || share.engine || "Codex"}</span>
+        <time dateTime={share.createdAt || ""}>{formatDateLabel(share.createdAt || share.updatedAt)}</time>
+      </div>
+      <h3>{share.title || share.id}</h3>
+      <p className="public-session-meta">
+        {Number(share.turnCount || 0)} 条记录 · {(share.redacted ?? true) ? "已脱敏" : "未脱敏"}
+      </p>
+    </a>
+  );
+}
+
+async function checkViewer(url: string, setViewerStatus: (state: StatusState) => void) {
+  setViewerStatus("checking");
+
+  try {
+    await fetch(url, {
+      cache: "no-store",
+      mode: "no-cors",
+      signal: timeoutSignal(2500),
+    });
+    setViewerStatus("ready");
+  } catch {
+    setViewerStatus("error");
+  }
+}
+
+async function checkApi(url: string, setApiStatus: (state: StatusState) => void, setApiStatusText: (text: string) => void) {
+  if (!url) {
+    setApiStatus("error");
+    setApiStatusText("未配置");
+    return;
+  }
+
+  setApiStatus("checking");
+  setApiStatusText("检查中");
+
+  try {
+    const response = await fetch(`${url}/api/snapshots/health`, {
+      cache: "no-store",
+      signal: timeoutSignal(2500),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    setApiStatus("ready");
+    setApiStatusText("已连接");
+  } catch {
+    setApiStatus("error");
+    setApiStatusText("可选");
+  }
+}
+
+async function loadPublicSessions(url: string, setPublicSessions: (state: PublicSessionsState) => void) {
+  if (!url) {
+    setPublicSessions({
+      kind: "message",
+      text: "公开分享 API 尚未配置。",
+    });
+    return;
+  }
+
+  setPublicSessions({
+    kind: "message",
+    text: "正在加载公开 Session...",
+  });
+
+  try {
+    const response = await fetch(`${url}/api/snapshots?limit=12`, {
+      cache: "no-store",
+      signal: timeoutSignal(3500),
+    });
+    const payload = (await response.json().catch(() => ({}))) as { shares?: unknown; error?: string };
+
+    if (!response.ok) {
+      throw new Error(payload.error || `HTTP ${response.status}`);
+    }
+
+    const shares = Array.isArray(payload.shares) ? payload.shares.filter((share): share is PublicShare => Boolean(share && typeof share === "object" && "id" in share)) : [];
+    setPublicSessions({
+      kind: "shares",
+      shares,
+    });
+  } catch {
+    setPublicSessions({
+      kind: "message",
+      text: "分享 API 暂不可用，稍后再试。",
+    });
+  }
+}
+
+function sharePageUrl(id: string, api: string): string {
+  const target = new URL("./share/index.html", window.location.href);
+  target.searchParams.set("id", id);
+  target.searchParams.set("api", api);
+  return target.toString();
+}
+
+function formatDateLabel(value: string | undefined): string {
+  const date = new Date(value || "");
+  if (!Number.isFinite(date.getTime())) {
+    return "未知时间";
+  }
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}

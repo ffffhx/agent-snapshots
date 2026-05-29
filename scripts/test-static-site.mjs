@@ -2,28 +2,15 @@
 
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import vm from "node:vm";
 import { fileURLToPath } from "node:url";
+import { JSDOM } from "jsdom";
 
 const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PUBLIC_API_URL = "https://snapshots.example.test";
 
 async function testHomepagePublicSessions() {
-  const { document, elements } = createDocument([
-    "viewer-status",
-    "api-status",
-    "open-local-viewer",
-    "viewer-url-label",
-    "api-url",
-    "share-id",
-    "share-form",
-    "public-sessions",
-    "public-sessions-refresh",
-  ]);
   const requests = [];
-
-  await runBrowserScript("site/assets/site.js", {
-    document,
+  const { document } = await runStaticPage("site/index.html", {
     locationHref: "https://ffffhx.github.io/codex-snapshots/",
     config: { apiUrl: PUBLIC_API_URL },
     fetch: async (url) => {
@@ -59,12 +46,13 @@ async function testHomepagePublicSessions() {
     },
   });
 
-  const publicSessions = elements.get("public-sessions");
-  const card = findElement(publicSessions, (element) => element.tagName === "a" && element.className === "public-session-card");
-  const title = findElement(card, (element) => element.tagName === "h3");
+  await waitFor(() => document.querySelector(".public-session-card"));
+
+  const card = document.querySelector(".public-session-card");
+  const title = card?.querySelector("h3");
 
   assert(requests.includes(`${PUBLIC_API_URL}/api/snapshots?limit=12`), "homepage should fetch the configured public list API");
-  assert(elements.get("api-url").value === PUBLIC_API_URL, "homepage API input should use configured public API");
+  assert(document.getElementById("api-url")?.value === PUBLIC_API_URL, "homepage API input should use configured public API");
   assert(card, "homepage should render a public session card");
   assert(title?.textContent === "Public Session from Aliyun", "homepage should render public session title");
   assert(card.href.includes("/share/index.html?"), `homepage card should link to the static share page: ${card.href}`);
@@ -74,21 +62,8 @@ async function testHomepagePublicSessions() {
 }
 
 async function testShareFormOpensShareInNewTab() {
-  const { document, elements } = createDocument([
-    "viewer-status",
-    "api-status",
-    "open-local-viewer",
-    "viewer-url-label",
-    "api-url",
-    "share-id",
-    "share-form",
-    "public-sessions",
-    "public-sessions-refresh",
-  ]);
   const openedUrls = [];
-
-  await runBrowserScript("site/assets/site.js", {
-    document,
+  const { document, window } = await runStaticPage("site/index.html", {
     locationHref: "https://ffffhx.github.io/codex-snapshots/",
     config: { apiUrl: PUBLIC_API_URL },
     fetch: async (url) => {
@@ -115,17 +90,19 @@ async function testShareFormOpensShareInNewTab() {
     },
   });
 
-  elements.get("share-id").value = "snap_formtarget123456";
-  elements.get("api-url").value = PUBLIC_API_URL;
+  setInputValue(window, document.getElementById("share-id"), "snap_formtarget123456");
+  setInputValue(window, document.getElementById("api-url"), PUBLIC_API_URL);
+  await flushPromises(window);
 
-  let prevented = false;
-  elements.get("share-form").eventListeners.get("submit")({
-    preventDefault() {
-      prevented = true;
-    },
-  });
+  const submitted = document.getElementById("share-form").dispatchEvent(
+    new window.Event("submit", {
+      bubbles: true,
+      cancelable: true,
+    }),
+  );
+  await flushPromises(window);
 
-  assert(prevented, "share form should prevent same-tab form navigation");
+  assert(submitted === false, "share form should prevent same-tab form navigation");
   assert(openedUrls.length === 1, "share form should open one new tab");
   assert(openedUrls[0].target === "_blank", "share form should request a new tab");
   assert(openedUrls[0].focused === true, "share form should focus the opened tab");
@@ -137,21 +114,8 @@ async function testShareFormOpensShareInNewTab() {
 }
 
 async function testPublicHomepageWithoutConfiguredApiDoesNotFetchLoopback() {
-  const { document, elements } = createDocument([
-    "viewer-status",
-    "api-status",
-    "open-local-viewer",
-    "viewer-url-label",
-    "api-url",
-    "share-id",
-    "share-form",
-    "public-sessions",
-    "public-sessions-refresh",
-  ]);
   const requests = [];
-
-  await runBrowserScript("site/assets/site.js", {
-    document,
+  const { document } = await runStaticPage("site/index.html", {
     locationHref: "https://ffffhx.github.io/codex-snapshots/",
     config: {},
     storage: {
@@ -166,34 +130,23 @@ async function testPublicHomepageWithoutConfiguredApiDoesNotFetchLoopback() {
     },
   });
 
-  assert(elements.get("api-url").value === "", "public homepage without config should not default to localhost API");
-  assert(elements.get("api-status").textContent === "未配置", "public homepage should show unconfigured API status");
+  await waitFor(() => document.getElementById("api-status")?.textContent === "未配置");
+
+  assert(document.getElementById("api-url")?.value === "", "public homepage without config should not default to localhost API");
+  assert(document.getElementById("api-status")?.textContent === "未配置", "public homepage should show unconfigured API status");
   assert(
-    elements.get("public-sessions").children[0]?.textContent === "公开分享 API 尚未配置。",
-    "public homepage should explain that the public API is not configured"
+    document.getElementById("public-sessions")?.textContent === "公开分享 API 尚未配置。",
+    "public homepage should explain that the public API is not configured",
   );
   assert(
     !requests.some((request) => request.includes("127.0.0.1:8787")),
-    "public homepage should not fetch the loopback share API when config is missing"
+    "public homepage should not fetch the loopback share API when config is missing",
   );
 }
 
 async function testLocalHomepageDefaultsToLocalApi() {
-  const { document, elements } = createDocument([
-    "viewer-status",
-    "api-status",
-    "open-local-viewer",
-    "viewer-url-label",
-    "api-url",
-    "share-id",
-    "share-form",
-    "public-sessions",
-    "public-sessions-refresh",
-  ]);
   const requests = [];
-
-  await runBrowserScript("site/assets/site.js", {
-    document,
+  const { document } = await runStaticPage("site/index.html", {
     locationHref: "http://127.0.0.1:4323/",
     config: {},
     fetch: async (url) => {
@@ -211,16 +164,15 @@ async function testLocalHomepageDefaultsToLocalApi() {
     },
   });
 
-  assert(elements.get("api-url").value === "http://127.0.0.1:8787", "local homepage should still default to local API");
+  await waitFor(() => document.getElementById("api-url")?.value === "http://127.0.0.1:8787");
+
+  assert(document.getElementById("api-url")?.value === "http://127.0.0.1:8787", "local homepage should still default to local API");
   assert(requests.includes("http://127.0.0.1:8787/api/snapshots?limit=12"), "local homepage should load local public sessions");
 }
 
 async function testSharePageLoadsFromConfiguredApi() {
-  const { document, elements } = createDocument(["share-title", "share-meta", "share-content"]);
   const requests = [];
-
-  await runBrowserScript("site/assets/share.js", {
-    document,
+  const { document } = await runStaticPage("site/share/index.html", {
     locationHref: "https://ffffhx.github.io/codex-snapshots/share/?id=snap_publicsession123456",
     config: { apiUrl: PUBLIC_API_URL },
     fetch: async (url) => {
@@ -264,30 +216,29 @@ async function testSharePageLoadsFromConfiguredApi() {
     },
   });
 
+  await waitFor(() => document.getElementById("share-title")?.textContent === "Public Session from Aliyun");
+
   assert(
     requests.includes(`${PUBLIC_API_URL}/api/snapshots/snap_publicsession123456`),
-    "share page should fetch snapshot detail from the configured public API"
+    "share page should fetch snapshot detail from the configured public API",
   );
-  assert(elements.get("share-title").textContent === "Public Session from Aliyun", "share page should render the public title");
-  assert(elements.get("share-meta").textContent.includes(PUBLIC_API_URL), "share page metadata should show the API URL");
+  assert(document.getElementById("share-title")?.textContent === "Public Session from Aliyun", "share page should render the public title");
+  assert(document.getElementById("share-meta")?.textContent.includes(PUBLIC_API_URL), "share page metadata should show the API URL");
   assert(
-    elements.get("share-content").innerHTML.includes("static share page loaded it from the public API"),
-    "share page should render transcript content"
+    document.getElementById("share-content")?.innerHTML.includes("static share page loaded it from the public API"),
+    "share page should render transcript content",
   );
   assert(
-    !elements.get("share-content").innerHTML.includes("image/png /") &&
-      !elements.get("share-content").innerHTML.includes("148 KB") &&
-      !elements.get("share-content").innerHTML.includes("figcaption"),
-    "share page should not render image mime type or size captions"
+    !document.getElementById("share-content")?.innerHTML.includes("image/png /") &&
+      !document.getElementById("share-content")?.innerHTML.includes("148 KB") &&
+      !document.getElementById("share-content")?.innerHTML.includes("figcaption"),
+    "share page should not render image mime type or size captions",
   );
 }
 
 async function testPublicSharePageWithoutConfiguredApiDoesNotFetchLoopback() {
-  const { document, elements } = createDocument(["share-title", "share-meta", "share-content"]);
   const requests = [];
-
-  await runBrowserScript("site/assets/share.js", {
-    document,
+  const { document } = await runStaticPage("site/share/index.html", {
     locationHref: "https://ffffhx.github.io/codex-snapshots/share/?id=snap_publicsession123456",
     config: {},
     storage: {
@@ -299,111 +250,62 @@ async function testPublicSharePageWithoutConfiguredApiDoesNotFetchLoopback() {
     },
   });
 
-  assert(elements.get("share-title").textContent === "缺少分享 API", "share page should show missing API state");
-  assert(elements.get("share-meta").textContent === "公开站点需要配置分享 API。", "share page should explain missing public API");
+  await waitFor(() => document.getElementById("share-title")?.textContent === "缺少分享 API");
+
+  assert(document.getElementById("share-title")?.textContent === "缺少分享 API", "share page should show missing API state");
+  assert(document.getElementById("share-meta")?.textContent === "公开站点需要配置分享 API。", "share page should explain missing public API");
   assert(requests.length === 0, "share page should not fetch loopback API when public config is missing");
 }
 
-async function runBrowserScript(relativePath, { document, locationHref, config, fetch, storage = {}, open = () => null }) {
-  const code = await readFile(path.join(ROOT_DIR, relativePath), "utf8");
-  const location = new URL(locationHref);
-  const localStorage = createLocalStorage(storage);
-  const context = vm.createContext({
-    AbortSignal,
-    console,
-    document,
-    fetch,
-    Intl,
-    localStorage,
-    navigator: { clipboard: { writeText: async () => undefined } },
-    setTimeout,
-    URL,
-    URLSearchParams,
-    window: {
-      CODEX_SNAPSHOTS_CONFIG: config,
-      location,
-      open,
-      setTimeout,
+async function runStaticPage(relativeHtmlPath, { locationHref, config, fetch, storage = {}, open = () => null }) {
+  const html = await readFile(path.join(ROOT_DIR, relativeHtmlPath), "utf8");
+  const dom = new JSDOM(html, {
+    pretendToBeVisual: true,
+    runScripts: "outside-only",
+    url: locationHref,
+  });
+  const { window } = dom;
+
+  window.CODEX_SNAPSHOTS_CONFIG = config;
+  window.fetch = fetch;
+  window.open = open;
+  Object.defineProperty(window.navigator, "clipboard", {
+    configurable: true,
+    value: {
+      writeText: async () => undefined,
     },
   });
+  if (typeof window.AbortSignal.timeout !== "function") {
+    Object.defineProperty(window.AbortSignal, "timeout", {
+      configurable: true,
+      value: AbortSignal.timeout?.bind(AbortSignal) || (() => undefined),
+    });
+  }
 
-  context.window.window = context.window;
-  context.window.document = document;
-  context.window.localStorage = localStorage;
-  context.window.navigator = context.navigator;
+  for (const [key, value] of Object.entries(storage)) {
+    window.localStorage.setItem(key, value);
+  }
 
-  vm.runInContext(code, context, { filename: relativePath });
-  await flushPromises();
-}
-
-function createDocument(ids) {
-  const elements = new Map(ids.map((id) => [id, new TestElement("div", { id })]));
+  const scriptPath = relativeHtmlPath.includes("/share/") ? "site/assets/share.js" : "site/assets/site.js";
+  const code = await readFile(path.join(ROOT_DIR, scriptPath), "utf8");
+  window.eval(code);
+  await flushPromises(window);
 
   return {
-    document: {
-      createElement(tagName) {
-        return new TestElement(tagName);
-      },
-      getElementById(id) {
-        return elements.get(id) || null;
-      },
-      querySelectorAll() {
-        return [];
-      },
-    },
-    elements,
+    document: window.document,
+    window,
   };
 }
 
-class TestElement {
-  constructor(tagName, { id = "" } = {}) {
-    this.tagName = tagName.toLowerCase();
-    this.id = id;
-    this.children = [];
-    this.dataset = {};
-    this.eventListeners = new Map();
-    this.className = "";
-    this.dateTime = "";
-    this.href = "";
-    this.innerHTML = "";
-    this.rel = "";
-    this.target = "";
-    this.textContent = "";
-    this.value = "";
-  }
-
-  addEventListener(type, listener) {
-    this.eventListeners.set(type, listener);
-  }
-
-  append(...children) {
-    for (const child of children) {
-      this.children.push(child);
-    }
-  }
-
-  replaceChildren(...children) {
-    this.children = [];
-    this.append(...children);
-  }
-
-  focus() {}
-}
-
-function findElement(root, predicate) {
-  if (!root) {
-    return null;
-  }
-  if (predicate(root)) {
-    return root;
-  }
-  for (const child of root.children || []) {
-    const found = findElement(child, predicate);
-    if (found) {
-      return found;
-    }
-  }
-  return null;
+function setInputValue(window, input, value) {
+  assert(input, "input should exist before setting value");
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
+  setter?.call(input, value);
+  input.dispatchEvent(
+    new window.Event("input", {
+      bubbles: true,
+    }),
+  );
 }
 
 function jsonResponse(payload, ok = true, status = ok ? 200 : 500) {
@@ -419,21 +321,20 @@ function jsonResponse(payload, ok = true, status = ok ? 200 : 500) {
   };
 }
 
-function createLocalStorage(initialValues = {}) {
-  const values = new Map(Object.entries(initialValues));
-  return {
-    getItem(key) {
-      return values.get(key) || null;
-    },
-    setItem(key, value) {
-      values.set(key, String(value));
-    },
-  };
+async function waitFor(predicate, { timeoutMs = 1000 } = {}) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (predicate()) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert(predicate(), "timed out waiting for expected DOM state");
 }
 
-async function flushPromises() {
-  for (let index = 0; index < 5; index += 1) {
-    await new Promise((resolve) => setTimeout(resolve, 0));
+async function flushPromises(window) {
+  for (let index = 0; index < 10; index += 1) {
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
   }
 }
 

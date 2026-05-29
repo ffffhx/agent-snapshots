@@ -37,6 +37,7 @@ pnpm snapshot:daemon:status
 
 ```bash
 pnpm install
+pnpm build:site
 pnpm dev
 ```
 
@@ -45,6 +46,7 @@ pnpm dev
 如果想在本地预览公开静态网站：
 
 ```bash
+pnpm build:site
 pnpm site:dev
 ```
 
