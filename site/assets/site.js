@@ -52,7 +52,7 @@ shareForm.addEventListener("submit", (event) => {
   const target = new URL("./share/index.html", window.location.href);
   target.searchParams.set("id", id);
   target.searchParams.set("api", api);
-  window.location.href = target.toString();
+  openInNewTab(target.toString());
 });
 
 publicSessionsRefresh.addEventListener("click", () => {
@@ -157,6 +157,8 @@ function renderPublicSessionCard(share, api) {
   const card = document.createElement("a");
   card.className = "public-session-card";
   card.href = sharePageUrl(share.id, api);
+  card.target = "_blank";
+  card.rel = "noopener noreferrer";
 
   const top = document.createElement("div");
   top.className = "public-session-top";
@@ -198,6 +200,16 @@ function sharePageUrl(id, api) {
   target.searchParams.set("id", id);
   target.searchParams.set("api", api);
   return target.toString();
+}
+
+function openInNewTab(url) {
+  const opened = window.open(url, "_blank");
+  if (opened) {
+    opened.opener = null;
+    opened.focus?.();
+    return;
+  }
+  window.location.href = url;
 }
 
 function formatDateLabel(value) {

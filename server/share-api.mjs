@@ -469,6 +469,7 @@ const id = initialId || new URLSearchParams(location.search).get("id") || "";
 const title = document.getElementById("title");
 const meta = document.getElementById("meta");
 const content = document.getElementById("content");
+content.addEventListener("click", handleContentLinkClick);
 
 function renderPlainText(value) {
   const visibleText = stripAppDirectives(value);
@@ -501,6 +502,7 @@ function renderSnapshot(payload) {
   content.innerHTML = turns.length
     ? buildTranscriptItems(turns).map(renderTranscriptItem).join("")
     : "<div class='empty'>This snapshot has no shareable turns.</div>";
+  openContentLinksInNewTabs(content);
 }
 
 function buildTranscriptItems(turns) {
@@ -636,6 +638,39 @@ function stripAppDirectiveHtml(value) {
   return String(value || "")
     .replace(/<p>\\s*::(?:git-(?:stage|commit|push|create-branch|create-pr)|archive|code-comment)\\{[\\s\\S]*?\\}\\s*<\\/p>/g, "")
     .trim();
+}
+
+function handleContentLinkClick(event) {
+  const link = event.target.closest?.("a[href]");
+  if (!link) {
+    return;
+  }
+  event.preventDefault();
+  openInNewTab(link.href);
+}
+
+function openContentLinksInNewTabs(root) {
+  for (const link of root.querySelectorAll("a[href]")) {
+    link.target = "_blank";
+    link.rel = mergeLinkRel(link.rel);
+  }
+}
+
+function openInNewTab(url) {
+  const opened = window.open(url, "_blank");
+  if (opened) {
+    opened.opener = null;
+    opened.focus?.();
+    return;
+  }
+  window.location.href = url;
+}
+
+function mergeLinkRel(value) {
+  const rel = new Set(String(value || "").split(/\\s+/).filter(Boolean));
+  rel.add("noopener");
+  rel.add("noreferrer");
+  return Array.from(rel).join(" ");
 }
 
 async function load() {

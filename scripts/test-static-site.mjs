@@ -69,6 +69,71 @@ async function testHomepagePublicSessions() {
   assert(title?.textContent === "Public Session from Aliyun", "homepage should render public session title");
   assert(card.href.includes("/share/index.html?"), `homepage card should link to the static share page: ${card.href}`);
   assert(card.href.includes(`api=${encodeURIComponent(PUBLIC_API_URL)}`), `homepage card should preserve the public API URL: ${card.href}`);
+  assert(card.target === "_blank", "homepage card should open in a new tab");
+  assert(card.rel === "noopener noreferrer", "homepage card should protect the opener");
+}
+
+async function testShareFormOpensShareInNewTab() {
+  const { document, elements } = createDocument([
+    "viewer-status",
+    "api-status",
+    "open-local-viewer",
+    "viewer-url-label",
+    "api-url",
+    "share-id",
+    "share-form",
+    "public-sessions",
+    "public-sessions-refresh",
+  ]);
+  const openedUrls = [];
+
+  await runBrowserScript("site/assets/site.js", {
+    document,
+    locationHref: "https://ffffhx.github.io/codex-snapshots/",
+    config: { apiUrl: PUBLIC_API_URL },
+    fetch: async (url) => {
+      if (String(url) === "http://127.0.0.1:4321/") {
+        return jsonResponse({ ok: true });
+      }
+      if (String(url) === `${PUBLIC_API_URL}/api/snapshots/health`) {
+        return jsonResponse({ ok: true, shares: 0 });
+      }
+      if (String(url) === `${PUBLIC_API_URL}/api/snapshots?limit=12`) {
+        return jsonResponse({ schemaVersion: 1, shares: [], count: 0, total: 0, limit: 12, offset: 0 });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    },
+    open: (url, target) => {
+      const entry = { url: String(url), target, focused: false };
+      openedUrls.push(entry);
+      return {
+        opener: {},
+        focus() {
+          entry.focused = true;
+        },
+      };
+    },
+  });
+
+  elements.get("share-id").value = "snap_formtarget123456";
+  elements.get("api-url").value = PUBLIC_API_URL;
+
+  let prevented = false;
+  elements.get("share-form").eventListeners.get("submit")({
+    preventDefault() {
+      prevented = true;
+    },
+  });
+
+  assert(prevented, "share form should prevent same-tab form navigation");
+  assert(openedUrls.length === 1, "share form should open one new tab");
+  assert(openedUrls[0].target === "_blank", "share form should request a new tab");
+  assert(openedUrls[0].focused === true, "share form should focus the opened tab");
+
+  const opened = new URL(openedUrls[0].url);
+  assert(opened.pathname.endsWith("/share/index.html"), `share form should open the static share page: ${openedUrls[0].url}`);
+  assert(opened.searchParams.get("id") === "snap_formtarget123456", "share form should pass the share id");
+  assert(opened.searchParams.get("api") === PUBLIC_API_URL, "share form should pass the API URL");
 }
 
 async function testPublicHomepageWithoutConfiguredApiDoesNotFetchLoopback() {
@@ -225,7 +290,7 @@ async function testPublicSharePageWithoutConfiguredApiDoesNotFetchLoopback() {
   assert(requests.length === 0, "share page should not fetch loopback API when public config is missing");
 }
 
-async function runBrowserScript(relativePath, { document, locationHref, config, fetch, storage = {} }) {
+async function runBrowserScript(relativePath, { document, locationHref, config, fetch, storage = {}, open = () => null }) {
   const code = await readFile(path.join(ROOT_DIR, relativePath), "utf8");
   const location = new URL(locationHref);
   const localStorage = createLocalStorage(storage);
@@ -243,6 +308,7 @@ async function runBrowserScript(relativePath, { document, locationHref, config, 
     window: {
       CODEX_SNAPSHOTS_CONFIG: config,
       location,
+      open,
       setTimeout,
     },
   });
@@ -286,6 +352,8 @@ class TestElement {
     this.dateTime = "";
     this.href = "";
     this.innerHTML = "";
+    this.rel = "";
+    this.target = "";
     this.textContent = "";
     this.value = "";
   }
@@ -362,6 +430,7 @@ function assert(condition, message) {
 }
 
 await testHomepagePublicSessions();
+await testShareFormOpensShareInNewTab();
 await testPublicHomepageWithoutConfiguredApiDoesNotFetchLoopback();
 await testLocalHomepageDefaultsToLocalApi();
 await testSharePageLoadsFromConfiguredApi();

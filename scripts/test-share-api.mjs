@@ -291,6 +291,8 @@ async function assertLocalViewerPublish(apiUrl) {
     assert(viewerHtml.includes(apiUrl), "local viewer should read share API URL from the agent config file");
     assert(viewerHtml.includes(SITE_URL.replace(/\/+$/, "")), "local viewer should read site URL from the agent config file");
     assert(!viewerHtml.includes(TOKEN), "local viewer HTML must not expose the publish token");
+    assert(viewerHtml.includes("collapsedProjects"), "local viewer should track collapsed projects");
+    assert(viewerHtml.includes("data-project-collapse"), "local viewer project headers should be clickable collapse controls");
 
     const options = new URLSearchParams({
       id: sessionPath,
@@ -311,6 +313,15 @@ async function assertLocalViewerPublish(apiUrl) {
     const detail = await fetchJson(`${apiUrl}/api/snapshots/${encodeURIComponent(payload.id)}`);
     assert(detail.share?.title === "Publish this session to the public website.", "local viewer should publish the selected session title");
     assert(detail.snapshot?.redacted === true, "local viewer publish should force redacted snapshots");
+    const assistantTurn = detail.snapshot?.turns?.find((turn) => turn.role === "assistant");
+    assert(
+      assistantTurn?.html?.includes('target="_blank"'),
+      "local viewer should publish markdown links that open in a new tab"
+    );
+    assert(
+      assistantTurn?.html?.includes('rel="noopener noreferrer"'),
+      "local viewer should publish markdown links with opener protection"
+    );
   } finally {
     await stopChild(viewerProcess);
   }
@@ -373,7 +384,7 @@ function createCodexSessionJsonl() {
         content: [
           {
             type: "output_text",
-            text: "The session is redacted and ready for public listing.",
+            text: "The session is redacted and ready for [public listing](https://example.com/share).",
           },
         ],
       },

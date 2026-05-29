@@ -46,6 +46,36 @@ const markdownRenderer = markdownit({
   typographer: false,
   highlight: renderHighlightedCode,
 });
+configureMarkdownLinks(markdownRenderer);
+
+function configureMarkdownLinks(renderer) {
+  const defaultRender = renderer.renderer.rules.link_open || ((tokens, index, options, env, self) => {
+    return self.renderToken(tokens, index, options);
+  });
+
+  renderer.renderer.rules.link_open = (tokens, index, options, env, self) => {
+    const token = tokens[index];
+    setMarkdownTokenAttr(token, "target", "_blank");
+    setMarkdownTokenAttr(token, "rel", mergeRelValue(token.attrGet("rel")));
+    return defaultRender(tokens, index, options, env, self);
+  };
+}
+
+function setMarkdownTokenAttr(token, name, value) {
+  const index = token.attrIndex(name);
+  if (index < 0) {
+    token.attrPush([name, value]);
+    return;
+  }
+  token.attrs[index][1] = value;
+}
+
+function mergeRelValue(value) {
+  const rel = new Set(String(value || "").split(/\s+/).filter(Boolean));
+  rel.add("noopener");
+  rel.add("noreferrer");
+  return Array.from(rel).join(" ");
+}
 
 main().catch((error) => {
   console.error(error instanceof Error ? error.message : String(error));
@@ -5521,8 +5551,30 @@ button:disabled {
   grid-template-columns: 24px minmax(0, 1fr) auto;
   gap: 11px;
   align-items: center;
+  width: 100%;
+  min-height: 32px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
   color: rgba(23, 32, 42, 0.78);
+  padding: 0;
+  text-align: left;
   font: 900 19px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+  box-shadow: none;
+  cursor: pointer;
+}
+.project-header:hover {
+  background: rgba(23, 32, 42, 0.06);
+  color: var(--ink);
+  transform: none;
+  box-shadow: none;
+}
+.project-header:focus-visible {
+  outline: 3px solid rgba(15, 118, 110, 0.28);
+  outline-offset: 2px;
+}
+.project-group.collapsed .project-header {
+  color: rgba(23, 32, 42, 0.62);
 }
 .project-title {
   min-width: 0;
@@ -5669,6 +5721,7 @@ button:disabled {
   color: rgba(23, 32, 42, 0.58);
   font-size: 13px;
   letter-spacing: 0;
+  width: calc(100% - 34px);
 }
 .project-group.no-project .project-icon {
   display: none;
@@ -6077,7 +6130,7 @@ pre {
 
 function serverJs() {
   return `
-const state = { sessions: [], selected: "", activeSource: "codex", requestToken: 0, expandedProjects: new Set(), hasMoreSessions: false, loadingMoreSessions: false, sessionListError: "" };
+const state = { sessions: [], selected: "", activeSource: "codex", requestToken: 0, expandedProjects: new Set(), collapsedProjects: new Set(), hasMoreSessions: false, loadingMoreSessions: false, sessionListError: "" };
 const SOURCE_MODULES = [
   { key: "codex", label: "Codex" },
   { key: "claude", label: "Claude Code" },
@@ -6478,29 +6531,31 @@ function renderProjectGroup(group) {
   const collapsedLimit = 5;
   const noisyExpandedLimit = 25;
   const expanded = state.expandedProjects.has(group.key);
+  const collapsed = state.collapsedProjects.has(group.key);
   const activeIndex = group.sessions.findIndex((session) => sessionRef(session) === state.selected);
   const expandedLimit = group.isNoProject ? Math.min(noisyExpandedLimit, group.sessions.length) : group.sessions.length;
   const visibleLimit = expanded ? expandedLimit : Math.min(collapsedLimit, group.sessions.length);
   let visible = group.sessions.slice(0, visibleLimit);
-  if (activeIndex >= visibleLimit) {
+  if (!collapsed && activeIndex >= visibleLimit) {
     visible = visible.slice(0, Math.max(0, visibleLimit - 1)).concat(group.sessions[activeIndex]);
   }
-  const showToggle = group.sessions.length > collapsedLimit;
+  const showToggle = !collapsed && group.sessions.length > collapsedLimit;
   const toggleLabel = expanded ? "收起" : group.isNoProject ? "显示最近 " + Math.min(noisyExpandedLimit, group.sessions.length) : "展开显示";
   const toggle = showToggle
     ? "<button class='project-more' type='button' data-project-toggle='" + esc(group.key) + "'>" + toggleLabel + "</button>"
     : "";
-  const note = group.isNoProject && expanded && group.sessions.length > noisyExpandedLimit
+  const note = !collapsed && group.isNoProject && expanded && group.sessions.length > noisyExpandedLimit
     ? "<div class='project-note'>仅显示最近 " + noisyExpandedLimit + " / " + esc(group.sessions.length) + "，可搜索标题定位更多</div>"
     : "";
-  const sectionClass = "project-group" + (group.isNoProject ? " no-project" : "");
+  const sessionList = collapsed ? "" : "<div class='session-list'>" + visible.map(renderSessionRow).join("") + "</div>";
+  const sectionClass = "project-group" + (group.isNoProject ? " no-project" : "") + (collapsed ? " collapsed" : "");
   return "<section class='" + sectionClass + "'>" +
-    "<div class='project-header' title='" + esc(group.displayPath) + "'>" +
+    "<button class='project-header' type='button' data-project-collapse='" + esc(group.key) + "' aria-expanded='" + (collapsed ? "false" : "true") + "' title='" + esc(group.displayPath) + "'>" +
       "<span class='project-icon' aria-hidden='true'></span>" +
       "<span class='project-title'>" + esc(group.label) + "</span>" +
       "<span class='project-count'>" + esc(group.sessions.length) + "</span>" +
-    "</div>" +
-    "<div class='session-list'>" + visible.map(renderSessionRow).join("") + "</div>" +
+    "</button>" +
+    sessionList +
     note +
     toggle +
   "</section>";
@@ -6574,8 +6629,9 @@ function renderSnapshot(snapshot) {
   }).join("") : "<div class='risk'><b>OK</b><span>未发现常见高风险模式</span><em>分享前仍建议快速复核。</em></div>";
   $("risks").innerHTML = snapshot.safetyChecks === false ? "" : notices + risks;
   const options = activeOptions();
-  $("exports").innerHTML = "<a href='/export?" + options.toString() + "&format=html'>导出 HTML</a><a href='/export?" + options.toString() + "&format=md'>导出 Markdown</a><button type='button' data-publish-cloud='1'>发布分享</button><span id='publishStatus' class='publish-status'></span>";
+  $("exports").innerHTML = "<a href='/export?" + options.toString() + "&format=html' target='_blank' rel='noopener noreferrer'>导出 HTML</a><a href='/export?" + options.toString() + "&format=md' target='_blank' rel='noopener noreferrer'>导出 Markdown</a><button type='button' data-publish-cloud='1'>发布分享</button><span id='publishStatus' class='publish-status'></span>";
   $("turns").innerHTML = buildTranscriptItems(snapshot.turns || []).map(renderTranscriptItem).join("") || "<div class='meta'>没有找到可分享的用户或助手消息。</div>";
+  openContentLinksInNewTabs($("turns"));
   postSnapshotState(snapshot);
 }
 
@@ -6751,6 +6807,30 @@ function postSnapshotState(snapshot) {
   }, "*");
 }
 
+function openContentLinksInNewTabs(root) {
+  for (const link of root.querySelectorAll("a[href]")) {
+    link.target = "_blank";
+    link.rel = mergeLinkRel(link.rel);
+  }
+}
+
+function openInNewTab(url) {
+  const opened = window.open(url, "_blank");
+  if (opened) {
+    opened.opener = null;
+    opened.focus?.();
+    return;
+  }
+  window.location.href = url;
+}
+
+function mergeLinkRel(value) {
+  const rel = new Set(String(value || "").split(/\\s+/).filter(Boolean));
+  rel.add("noopener");
+  rel.add("noreferrer");
+  return Array.from(rel).join(" ");
+}
+
 async function publishSelectedSession() {
   if (!state.selected) {
     return;
@@ -6771,7 +6851,7 @@ async function publishSelectedSession() {
       throw new Error(result.error || "Publish failed");
     }
     if (status) {
-      status.innerHTML = "<a href='" + esc(result.url) + "' target='_blank' rel='noreferrer'>" + esc(result.url) + "</a>";
+      status.innerHTML = "<a href='" + esc(result.url) + "' target='_blank' rel='noopener noreferrer'>" + esc(result.url) + "</a>";
     }
     await navigator.clipboard?.writeText(result.url).catch(() => undefined);
   } catch (error) {
@@ -6854,6 +6934,17 @@ $("sessions").addEventListener("click", async (event) => {
     renderSessions();
     return;
   }
+  const projectHeader = event.target.closest("[data-project-collapse]");
+  if (projectHeader) {
+    const key = projectHeader.dataset.projectCollapse;
+    if (state.collapsedProjects.has(key)) {
+      state.collapsedProjects.delete(key);
+    } else {
+      state.collapsedProjects.add(key);
+    }
+    renderSessions();
+    return;
+  }
   const button = event.target.closest("[data-id]");
   if (button) selectSession(button.dataset.id);
 });
@@ -6863,6 +6954,14 @@ $("exports").addEventListener("click", (event) => {
   if (event.target.closest("[data-publish-cloud]")) {
     publishSelectedSession();
   }
+});
+$("turns").addEventListener("click", (event) => {
+  const link = event.target.closest?.("a[href]");
+  if (!link) {
+    return;
+  }
+  event.preventDefault();
+  openInNewTab(link.href);
 });
 for (const id of ["includeTools", "includeToolOutput", "redact"]) {
   $(id).addEventListener("change", () => state.selected && selectSession(state.selected));

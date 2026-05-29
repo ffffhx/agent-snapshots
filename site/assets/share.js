@@ -8,6 +8,8 @@ const title = document.getElementById("share-title");
 const meta = document.getElementById("share-meta");
 const content = document.getElementById("share-content");
 
+content.addEventListener("click", handleContentLinkClick);
+
 loadShare().catch((error) => {
   title.textContent = "快照暂不可用";
   meta.textContent = apiUrl;
@@ -59,6 +61,7 @@ function renderSnapshot(payload) {
   content.innerHTML = turns.length
     ? buildTranscriptItems(turns).map(renderTranscriptItem).join("")
     : '<div class="empty">这个快照没有可分享的对话记录。</div>';
+  openContentLinksInNewTabs(content);
 }
 
 function buildTranscriptItems(turns) {
@@ -227,6 +230,39 @@ function sanitizeClientHtml(value) {
     .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "")
     .replace(/<(?:iframe|object|embed)\b[^>]*>[\s\S]*?<\/(?:iframe|object|embed)>/gi, "")
     .replace(/\s+on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "");
+}
+
+function handleContentLinkClick(event) {
+  const link = event.target.closest?.("a[href]");
+  if (!link) {
+    return;
+  }
+  event.preventDefault();
+  openInNewTab(link.href);
+}
+
+function openContentLinksInNewTabs(root) {
+  for (const link of root.querySelectorAll?.("a[href]") || []) {
+    link.target = "_blank";
+    link.rel = mergeLinkRel(link.rel);
+  }
+}
+
+function openInNewTab(url) {
+  const opened = window.open(url, "_blank");
+  if (opened) {
+    opened.opener = null;
+    opened.focus?.();
+    return;
+  }
+  window.location.href = url;
+}
+
+function mergeLinkRel(value) {
+  const rel = new Set(String(value || "").split(/\s+/).filter(Boolean));
+  rel.add("noopener");
+  rel.add("noreferrer");
+  return Array.from(rel).join(" ");
 }
 
 function escapeHtml(value) {
