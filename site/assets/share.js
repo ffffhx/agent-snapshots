@@ -216,11 +216,10 @@ function renderImages(images) {
   }
 
   return `<div class="attachment-grid">${images.map((image, index) => {
-    const label = `${image.mimeType || "image"}${image.size ? ` / ${image.size}` : ""}`;
     if (!image.src) {
-      return `<figure class="image-attachment image-unavailable"><div>${escapeHtml(image.unavailableReason || "图片暂不可用")}</div><figcaption>${escapeHtml(label)}</figcaption></figure>`;
+      return `<figure class="image-attachment image-unavailable"><div>${escapeHtml(image.unavailableReason || "图片暂不可用")}</div></figure>`;
     }
-    return `<figure class="image-attachment"><img src="${escapeHtml(image.src)}" alt="${escapeHtml(image.alt || `图片附件 ${index + 1}`)}" decoding="async"><figcaption>${escapeHtml(label)}</figcaption></figure>`;
+    return `<figure class="image-attachment"><img src="${escapeHtml(image.src)}" alt="${escapeHtml(image.alt || `图片附件 ${index + 1}`)}" decoding="async"></figure>`;
   }).join("")}</div>`;
 }
 

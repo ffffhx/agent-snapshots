@@ -480,11 +480,10 @@ function renderPlainText(value) {
 function renderImages(images) {
   if (!Array.isArray(images) || !images.length) return "";
   return "<div class='attachment-grid'>" + images.map((image, index) => {
-    const label = (image.mimeType || "image") + (image.size ? " / " + image.size : "");
     if (!image.src) {
-      return "<figure class='image-attachment image-unavailable'><div>" + esc(image.unavailableReason || "Image unavailable") + "</div><figcaption>" + esc(label) + "</figcaption></figure>";
+      return "<figure class='image-attachment image-unavailable'><div>" + esc(image.unavailableReason || "Image unavailable") + "</div></figure>";
     }
-    return "<figure class='image-attachment'><img src='" + esc(image.src) + "' alt='" + esc(image.alt || ("Image attachment " + (index + 1))) + "' decoding='async'><figcaption>" + esc(label) + "</figcaption></figure>";
+    return "<figure class='image-attachment'><img src='" + esc(image.src) + "' alt='" + esc(image.alt || ("Image attachment " + (index + 1))) + "' decoding='async'></figure>";
   }).join("") + "</div>";
 }
 
@@ -839,11 +838,6 @@ dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
   border-radius: 8px;
   background: #fff;
   object-fit: contain;
-}
-.image-attachment figcaption {
-  margin-top: 10px;
-  color: var(--muted);
-  font: 800 14px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 .image-unavailable {
   border: 1px dashed var(--line);

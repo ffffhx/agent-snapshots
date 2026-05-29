@@ -3087,7 +3087,7 @@ function renderTextPreview(snapshot) {
       lines.push(visibleText);
     }
     for (const image of turn.images || []) {
-      lines.push(`[image: ${image.mimeType || "image"}${image.size ? `, ${image.size}` : ""}${image.src ? "" : `, ${image.unavailableReason || "unavailable"}`}]`);
+      lines.push(image.src ? "[image]" : `[image unavailable: ${image.unavailableReason || "unavailable"}]`);
     }
     lines.push("");
   }
@@ -3358,18 +3358,15 @@ function renderImageAttachments(images) {
 }
 
 function renderImageAttachment(image, index) {
-  const label = image.size ? `${image.mimeType || "image"} / ${image.size}` : image.mimeType || "image";
   if (!image.src) {
     return `
       <figure class="image-attachment image-unavailable">
         <div>${escapeHtml(image.unavailableReason || "Image unavailable")}</div>
-        <figcaption>${escapeHtml(label)}</figcaption>
       </figure>`;
   }
   return `
     <figure class="image-attachment">
       <img src="${escapeHtml(image.src)}" alt="${escapeHtml(image.alt || `Image attachment ${index + 1}`)}" decoding="async">
-      <figcaption>${escapeHtml(label)}</figcaption>
     </figure>`;
 }
 
@@ -3691,11 +3688,6 @@ code, pre {
   border-radius: 8px;
   background: #fff;
   object-fit: contain;
-}
-.image-attachment figcaption {
-  margin-top: 10px;
-  color: var(--muted);
-  font: 800 14px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 .image-unavailable {
   border: 1px dashed var(--line);
@@ -6074,11 +6066,6 @@ button:disabled {
   object-fit: contain;
   box-shadow: 0 24px 54px -50px rgba(23, 32, 42, 0.6);
 }
-.image-attachment figcaption {
-  margin-top: 10px;
-  color: var(--muted);
-  font: 800 14px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace;
-}
 .image-unavailable {
   border: 1px dashed var(--line);
   border-radius: 8px;
@@ -6900,11 +6887,10 @@ function renderImages(images) {
     return "";
   }
   return "<div class='attachment-grid'>" + images.map((image, index) => {
-    const label = (image.mimeType || "image") + (image.size ? " / " + image.size : "");
     if (!image.src) {
-      return "<figure class='image-attachment image-unavailable'><div>" + esc(image.unavailableReason || "Image unavailable") + "</div><figcaption>" + esc(label) + "</figcaption></figure>";
+      return "<figure class='image-attachment image-unavailable'><div>" + esc(image.unavailableReason || "Image unavailable") + "</div></figure>";
     }
-    return "<figure class='image-attachment'><img src='" + esc(image.src) + "' alt='" + esc(image.alt || ("Image attachment " + (index + 1))) + "' decoding='async'><figcaption>" + esc(label) + "</figcaption></figure>";
+    return "<figure class='image-attachment'><img src='" + esc(image.src) + "' alt='" + esc(image.alt || ("Image attachment " + (index + 1))) + "' decoding='async'></figure>";
   }).join("") + "</div>";
 }
 

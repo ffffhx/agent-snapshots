@@ -247,6 +247,14 @@ async function testSharePageLoadsFromConfiguredApi() {
               {
                 role: "assistant",
                 text: "Yes, the static share page loaded it from the public API.",
+                images: [
+                  {
+                    src: "data:image/png;base64,iVBORw0KGgo=",
+                    mimeType: "image/png",
+                    size: "148 KB",
+                    alt: "Screenshot",
+                  },
+                ],
               },
             ],
           },
@@ -265,6 +273,12 @@ async function testSharePageLoadsFromConfiguredApi() {
   assert(
     elements.get("share-content").innerHTML.includes("static share page loaded it from the public API"),
     "share page should render transcript content"
+  );
+  assert(
+    !elements.get("share-content").innerHTML.includes("image/png /") &&
+      !elements.get("share-content").innerHTML.includes("148 KB") &&
+      !elements.get("share-content").innerHTML.includes("figcaption"),
+    "share page should not render image mime type or size captions"
   );
 }
 
