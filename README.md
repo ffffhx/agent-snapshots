@@ -37,7 +37,7 @@ pnpm snapshot:daemon:status
 
 ```bash
 pnpm install
-pnpm build:site
+pnpm build
 pnpm dev
 ```
 

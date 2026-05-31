@@ -13,6 +13,7 @@ const TOKEN = "test-token";
 const SITE_URL = "https://ffffhx.github.io/codex-snapshots/";
 const PUBLIC_API_URL = "https://snapshots.example.com";
 const FIXED_SHARE_ID = "snap_testshare1234567890";
+const GOAL_OBJECTIVE = "Keep the publishing flow safe and visible.";
 
 const tempDir = await mkdtemp(path.join(os.tmpdir(), "codex-snapshots-share-test-"));
 let serverProcess;
@@ -148,10 +149,18 @@ async function assertPublicList(apiUrl, expectedTotal) {
 async function assertShareDetail(apiUrl, shareId) {
   const payload = await fetchJson(`${apiUrl}/api/snapshots/${encodeURIComponent(shareId)}`);
   assert(payload.share?.id === shareId, `detail should return share id ${shareId}`);
+  assert(payload.share?.goalObjective === GOAL_OBJECTIVE, "detail share metadata should include the goal objective");
+  assert(payload.snapshot?.goalObjective === GOAL_OBJECTIVE, "detail snapshot metadata should include the goal objective");
   assert(Array.isArray(payload.snapshot?.turns), "detail should include snapshot turns");
   assert(payload.snapshot.turns.length === 2, `detail should include 2 turns, got ${payload.snapshot.turns.length}`);
   assert(!Object.hasOwn(payload.snapshot, "cwd"), "published snapshot should not expose cwd");
   assert(!Object.hasOwn(payload.snapshot, "filePath"), "published snapshot should not expose filePath");
+  const assistantTurn = payload.snapshot.turns.find((turn) => turn.role === "assistant");
+  assert(!assistantTurn.html.includes("javascript:"), "share API should strip unsafe link protocols from HTML");
+  assert(!assistantTurn.html.includes("onclick"), "share API should strip inline event handlers from HTML");
+  assert(!assistantTurn.html.includes("<script"), "share API should strip script tags from HTML");
+  assert(assistantTurn.html.includes('target="_blank"'), "share API should force links to open in a new tab");
+  assert(assistantTurn.html.includes('rel="noopener noreferrer"'), "share API should force safe link rel attributes");
 }
 
 async function assertVerifyScriptReadOnly(apiUrl) {
@@ -225,13 +234,17 @@ async function assertLocalViewerPublish(apiUrl) {
   const codexHome = path.join(tempDir, "codex-home");
   const sessionDir = path.join(codexHome, "sessions");
   const sessionPath = path.join(sessionDir, "local-publish-session.jsonl");
+  const traeRecordingsDir = path.join(tempDir, "trae-recordings");
+  const traeRecordingPath = path.join(traeRecordingsDir, "dom-thread-local-viewer-test.jsonl");
   const tokenFile = path.join(tempDir, "local-publisher-agent.json");
   const viewerPort = await getFreePort();
   const viewerUrl = `http://127.0.0.1:${viewerPort}`;
   let viewerProcess;
 
   await mkdir(sessionDir, { recursive: true });
+  await mkdir(traeRecordingsDir, { recursive: true });
   await writeFile(sessionPath, `${createCodexSessionJsonl()}\n`, "utf8");
+  await writeFile(traeRecordingPath, `${createTraeRecordingJsonl()}\n`, "utf8");
   await writeFile(
     tokenFile,
     `${JSON.stringify({
@@ -261,7 +274,7 @@ async function assertLocalViewerPublish(apiUrl) {
         "--trae-app-home",
         path.join(tempDir, "trae-app-home"),
         "--trae-recordings-dir",
-        path.join(tempDir, "trae-recordings"),
+        traeRecordingsDir,
       ],
       {
         cwd: ROOT_DIR,
@@ -287,12 +300,19 @@ async function assertLocalViewerPublish(apiUrl) {
 
     const output = collectChildOutput(viewerProcess);
     await waitForJson(`${viewerUrl}/api/sessions?source=codex&limit=5`, output, viewerProcess);
+    const allSessions = await fetchJson(`${viewerUrl}/api/sessions?source=all&limit=5&completeOnly=0`);
+    assert(
+      allSessions.some((session) => session.source === "trae" && session.sourceKind === "recorded"),
+      "local viewer should list Trae recorded sessions without runtime reference errors"
+    );
     const viewerHtml = await fetchText(viewerUrl);
     assert(viewerHtml.includes(apiUrl), "local viewer should read share API URL from the agent config file");
     assert(viewerHtml.includes(SITE_URL.replace(/\/+$/, "")), "local viewer should read site URL from the agent config file");
     assert(!viewerHtml.includes(TOKEN), "local viewer HTML must not expose the publish token");
     assert(viewerHtml.includes("collapsedProjects"), "local viewer should track collapsed projects");
     assert(viewerHtml.includes("data-project-collapse"), "local viewer project headers should be clickable collapse controls");
+    assert(viewerHtml.includes("CODEX_SNAPSHOT_CSRF_TOKEN"), "local viewer should include a CSRF token for publish actions");
+    const csrfToken = extractCsrfToken(viewerHtml);
 
     const options = new URLSearchParams({
       id: sessionPath,
@@ -301,7 +321,46 @@ async function assertLocalViewerPublish(apiUrl) {
       redact: "1",
       safety: "0",
     });
-    const payload = await fetchJson(`${viewerUrl}/api/publish?${options.toString()}`, { method: "POST" });
+    const publishUrl = `${viewerUrl}/api/publish?${options.toString()}`;
+    const snapshotPayload = await fetchJson(`${viewerUrl}/api/snapshot?${options.toString()}`);
+    assert(snapshotPayload.goalObjective === GOAL_OBJECTIVE, "local viewer snapshot metadata should expose the goal objective");
+    assert(
+      !snapshotPayload.turns?.some((turn) => String(turn.text || "").includes("<goal_context>")),
+      "local viewer snapshot turns should not include Codex internal goal context",
+    );
+    const getPublishResponse = await fetch(publishUrl);
+    assert(getPublishResponse.status === 405, `local viewer publish should reject GET, got ${getPublishResponse.status}`);
+
+    const noOriginPublishResponse = await fetch(publishUrl, {
+      method: "POST",
+      headers: {
+        "x-codex-snapshot-csrf": csrfToken,
+      },
+    });
+    assert(
+      noOriginPublishResponse.status === 403,
+      `local viewer publish should reject POST without Origin, got ${noOriginPublishResponse.status}`,
+    );
+
+    const badCsrfPublishResponse = await fetch(publishUrl, {
+      method: "POST",
+      headers: {
+        origin: new URL(viewerUrl).origin,
+        "x-codex-snapshot-csrf": "bad-token",
+      },
+    });
+    assert(
+      badCsrfPublishResponse.status === 403,
+      `local viewer publish should reject invalid CSRF tokens, got ${badCsrfPublishResponse.status}`,
+    );
+
+    const payload = await fetchJson(publishUrl, {
+      method: "POST",
+      headers: {
+        origin: new URL(viewerUrl).origin,
+        "x-codex-snapshot-csrf": csrfToken,
+      },
+    });
 
     assert(payload.id?.startsWith("snap_"), `local viewer publish should return a share id: ${JSON.stringify(payload)}`);
     assert(payload.url, `local viewer publish should return a share URL: ${JSON.stringify(payload)}`);
@@ -312,7 +371,13 @@ async function assertLocalViewerPublish(apiUrl) {
 
     const detail = await fetchJson(`${apiUrl}/api/snapshots/${encodeURIComponent(payload.id)}`);
     assert(detail.share?.title === "Publish this session to the public website.", "local viewer should publish the selected session title");
+    assert(detail.share?.goalObjective === GOAL_OBJECTIVE, "local viewer should publish goal metadata on the share summary");
+    assert(detail.snapshot?.goalObjective === GOAL_OBJECTIVE, "local viewer should publish goal metadata on the snapshot");
     assert(detail.snapshot?.redacted === true, "local viewer publish should force redacted snapshots");
+    assert(
+      !detail.snapshot?.turns?.some((turn) => String(turn.text || "").includes("<goal_context>")),
+      "local viewer should not publish Codex internal goal context turns",
+    );
     const assistantTurn = detail.snapshot?.turns?.find((turn) => turn.role === "assistant");
     assert(
       assistantTurn?.html?.includes('target="_blank"'),
@@ -332,6 +397,7 @@ function createSnapshot(title) {
     title,
     engine: "codex",
     engineLabel: "Codex",
+    goalObjective: GOAL_OBJECTIVE,
     cwd: "/Users/example/private-project",
     filePath: "/Users/example/private-project/.codex/session.json",
     redacted: true,
@@ -343,6 +409,7 @@ function createSnapshot(title) {
       {
         role: "assistant",
         text: "Yes. A redacted share can be published and listed by the public API.",
+        html: '<p><a href="javascript:alert(1)" onclick="alert(2)">unsafe</a> <a href="https://example.com">safe</a><script>alert(3)</script></p>',
       },
     ],
   };
@@ -380,6 +447,31 @@ function createCodexSessionJsonl() {
       timestamp: "2026-05-28T00:00:02.000Z",
       payload: {
         type: "message",
+        role: "user",
+        content: [
+          {
+            type: "input_text",
+            text: [
+              "<goal_context>",
+              "Continue working toward the active thread goal.",
+              "",
+              "<objective>",
+              GOAL_OBJECTIVE,
+              "</objective>",
+              "",
+              "Blocked audit:",
+              "- Do not call update_goal unless the goal is complete.",
+              "</goal_context>",
+            ].join("\n"),
+          },
+        ],
+      },
+    },
+    {
+      type: "response_item",
+      timestamp: "2026-05-28T00:00:03.000Z",
+      payload: {
+        type: "message",
         role: "assistant",
         content: [
           {
@@ -388,6 +480,31 @@ function createCodexSessionJsonl() {
           },
         ],
       },
+    },
+  ].map((row) => JSON.stringify(row)).join("\n");
+}
+
+function createTraeRecordingJsonl() {
+  return [
+    {
+      schema: "trae-local-recorder-event/v1",
+      kind: "dom-message",
+      source: "dom",
+      domThreadId: "dom-thread-local-viewer-test",
+      pageSession: "page-local-viewer-test",
+      capturedAt: "2026-05-28T00:00:01.000Z",
+      sequence: 1,
+      body: JSON.stringify({ role: "user", text: "Trae captured question" }),
+    },
+    {
+      schema: "trae-local-recorder-event/v1",
+      kind: "dom-message",
+      source: "dom",
+      domThreadId: "dom-thread-local-viewer-test",
+      pageSession: "page-local-viewer-test",
+      capturedAt: "2026-05-28T00:00:02.000Z",
+      sequence: 2,
+      body: JSON.stringify({ role: "assistant", text: "Trae captured answer" }),
     },
   ].map((row) => JSON.stringify(row)).join("\n");
 }
@@ -580,6 +697,14 @@ function collectChildOutput(child) {
       return [chunks.stdout, chunks.stderr].filter(Boolean).join("\n");
     },
   };
+}
+
+function extractCsrfToken(html) {
+  const match = html.match(/CODEX_SNAPSHOT_CSRF_TOKEN=("(?:\\.|[^"])*")/);
+  assert(match, "viewer HTML should expose a JSON-encoded CSRF token");
+  const token = JSON.parse(match[1]);
+  assert(typeof token === "string" && token.length >= 32, "CSRF token should be a strong string");
+  return token;
 }
 
 async function getFreePort() {

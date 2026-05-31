@@ -736,6 +736,32 @@ input:focus {
   overflow-wrap: anywhere;
 }
 
+.share-goal {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  gap: 12px;
+  border-top: 1px solid var(--line);
+  margin-top: 18px;
+  padding-top: 14px;
+}
+
+.share-goal span {
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, PingFang SC, Microsoft YaHei, monospace;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.share-goal p {
+  margin: 0;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.58;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
 .turns {
   display: grid;
   gap: 28px;
