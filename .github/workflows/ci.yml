@@ -34,3 +34,6 @@ jobs:
 
       - name: Run tests
         run: pnpm test
+
+      - name: Verify generated artifacts
+        run: pnpm test:generated

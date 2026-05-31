@@ -1,27 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { SnapshotPayload } from "./types";
 import {
-  buildTranscriptItems,
   handleContentLinkClick,
   openContentLinksInNewTabs,
-  renderTranscriptItem,
-  type TranscriptItem,
+  renderTranscriptHtml,
 } from "./transcript";
 import { escapeHtml, normalizeApiUrl, resolveInitialApiUrl, safeLocalStorageSet } from "./utils";
-
-type ShareContentState =
-  | {
-      kind: "loading";
-      text: string;
-    }
-  | {
-      kind: "empty";
-      text: string;
-    }
-  | {
-      kind: "items";
-      items: TranscriptItem[];
-    };
 
 export function SharePage() {
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
@@ -29,10 +13,8 @@ export function SharePage() {
   const apiUrl = useMemo(() => resolveInitialApiUrl(params), [params]);
   const [title, setTitle] = useState("正在加载快照");
   const [meta, setMeta] = useState("正在等待分享元数据。");
-  const [content, setContent] = useState<ShareContentState>({
-    kind: "loading",
-    text: "正在加载...",
-  });
+  const [goalObjective, setGoalObjective] = useState("");
+  const [contentHtml, setContentHtml] = useState("正在加载...");
   const contentRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
@@ -41,20 +23,19 @@ export function SharePage() {
       shareId,
       setTitle,
       setMeta,
-      setContent,
+      setGoalObjective,
+      setContentHtml,
     }).catch((error: unknown) => {
       setTitle("快照暂不可用");
       setMeta(apiUrl);
-      setContent({
-        kind: "empty",
-        text: escapeHtml(error instanceof Error ? error.message : String(error)),
-      });
+      setGoalObjective("");
+      setContentHtml(`<div class="empty">${escapeHtml(error instanceof Error ? error.message : String(error))}</div>`);
     });
   }, [apiUrl, shareId]);
 
   useEffect(() => {
     openContentLinksInNewTabs(contentRef);
-  }, [content]);
+  }, [contentHtml]);
 
   return (
     <main className="share-shell">
@@ -64,24 +45,23 @@ export function SharePage() {
         <p id="share-meta" className="share-meta">
           {meta}
         </p>
+        {goalObjective ? (
+          <section className="share-goal" aria-label="快照目标">
+            <span>目标</span>
+            <p>{goalObjective}</p>
+          </section>
+        ) : null}
       </header>
-      <section id="share-content" className="turns" aria-live="polite" ref={contentRef} onClick={handleContentLinkClick}>
-        <ShareContent content={content} />
-      </section>
+      <section
+        id="share-content"
+        className="turns"
+        aria-live="polite"
+        ref={contentRef}
+        onClick={handleContentLinkClick}
+        dangerouslySetInnerHTML={{ __html: contentHtml }}
+      />
     </main>
   );
-}
-
-function ShareContent({ content }: { content: ShareContentState }) {
-  if (content.kind === "loading") {
-    return <>{content.text}</>;
-  }
-
-  if (content.kind === "empty") {
-    return <div className="empty" dangerouslySetInnerHTML={{ __html: content.text }} />;
-  }
-
-  return content.items.length ? content.items.map(renderTranscriptItem) : <div className="empty">这个快照没有可分享的对话记录。</div>;
 }
 
 async function loadShare({
@@ -89,30 +69,28 @@ async function loadShare({
   shareId,
   setTitle,
   setMeta,
-  setContent,
+  setGoalObjective,
+  setContentHtml,
 }: {
   apiUrl: string;
   shareId: string;
   setTitle: (value: string) => void;
   setMeta: (value: string) => void;
-  setContent: (value: ShareContentState) => void;
+  setGoalObjective: (value: string) => void;
+  setContentHtml: (value: string) => void;
 }) {
   if (!shareId) {
     setTitle("缺少分享 ID");
     setMeta("请打开带有 ?id=snap_... 的链接。");
-    setContent({
-      kind: "empty",
-      text: "没有提供分享 ID。",
-    });
+    setGoalObjective("");
+    setContentHtml('<div class="empty">没有提供分享 ID。</div>');
     return;
   }
   if (!apiUrl) {
     setTitle("缺少分享 API");
     setMeta("公开站点需要配置分享 API。");
-    setContent({
-      kind: "empty",
-      text: "请使用带有 ?api=https://... 的分享链接，或先配置 CODEX_SNAPSHOTS_PUBLIC_API_URL。",
-    });
+    setGoalObjective("");
+    setContentHtml('<div class="empty">请使用带有 ?api=https://... 的分享链接，或先配置 CODEX_SNAPSHOTS_PUBLIC_API_URL。</div>');
     return;
   }
 
@@ -127,7 +105,7 @@ async function loadShare({
     throw new Error(payload.error || `无法从 ${apiUrl} 加载快照`);
   }
 
-  renderSnapshot(payload, apiUrl, setTitle, setMeta, setContent);
+  renderSnapshot(payload, apiUrl, setTitle, setMeta, setGoalObjective, setContentHtml);
 }
 
 function renderSnapshot(
@@ -135,13 +113,15 @@ function renderSnapshot(
   apiUrl: string,
   setTitle: (value: string) => void,
   setMeta: (value: string) => void,
-  setContent: (value: ShareContentState) => void,
+  setGoalObjective: (value: string) => void,
+  setContentHtml: (value: string) => void,
 ) {
   const snapshot = payload.snapshot;
   const share = payload.share;
   const turns = Array.isArray(snapshot?.turns) ? snapshot.turns : [];
 
   setTitle(share?.title || snapshot?.title || "快照");
+  setGoalObjective(snapshot?.goalObjective || share?.goalObjective || "");
   setMeta(
     [
       share?.engineLabel || snapshot?.engineLabel || "Codex",
@@ -152,8 +132,5 @@ function renderSnapshot(
     ].join(" | "),
   );
 
-  setContent({
-    kind: "items",
-    items: buildTranscriptItems(turns),
-  });
+  setContentHtml(renderTranscriptHtml(turns, "<div class='empty'>这个快照没有可分享的对话记录。</div>"));
 }

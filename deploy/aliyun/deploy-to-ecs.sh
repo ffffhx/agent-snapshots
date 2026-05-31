@@ -484,6 +484,13 @@ if [[ "${RUN_PREFLIGHT}" -eq 1 ]]; then
   node "${REPO_ROOT}/deploy/aliyun/preflight.mjs" "${preflight_args[@]}"
 fi
 
+if ! command -v pnpm >/dev/null 2>&1; then
+  echo "pnpm is required to build dist assets before deploy." >&2
+  exit 1
+fi
+
+(cd "${REPO_ROOT}" && pnpm build)
+
 "${RSYNC_SSH[@]}" "${SSH_TARGET}" "mkdir -p ${REMOTE_DIR_Q}"
 rsync -az --delete \
   -e "$(printf '%q ' "${RSYNC_SSH[@]}")" \

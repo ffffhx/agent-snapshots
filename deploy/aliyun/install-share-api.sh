@@ -48,6 +48,15 @@ if [[ "${TOKEN}" == *$'\n'* || "${TOKEN}" == *$'\r'* ]]; then
   exit 1
 fi
 
+if ! command -v pnpm >/dev/null 2>&1; then
+  echo "pnpm is required to build and install codex-snapshots runtime dependencies." >&2
+  exit 1
+fi
+
+if [[ ! -f "${REPO_ROOT}/dist/server/share-api.mjs" ]]; then
+  (cd "${REPO_ROOT}" && pnpm install --frozen-lockfile && pnpm build)
+fi
+
 systemd_env_value() {
   local value="$1"
   value="${value//\\/\\\\}"
@@ -83,6 +92,8 @@ rsync -a --delete \
 
 rm -f "${APP_DIR}/.env" "${APP_DIR}/deploy/aliyun/deploy.env"
 rm -rf "${APP_DIR}/backups"
+
+(cd "${APP_DIR}" && pnpm install --prod --frozen-lockfile)
 
 {
   printf 'SNAPSHOT_SHARE_TOKEN=%s\n' "$(systemd_env_value "${TOKEN}")"

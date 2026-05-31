@@ -190,6 +190,7 @@ async function testSharePageLoadsFromConfiguredApi() {
           snapshot: {
             title: "Public Session from Aliyun",
             engineLabel: "Codex",
+            goalObjective: "Explain how the public share page loads data.",
             redacted: true,
             turns: [
               {
@@ -224,6 +225,10 @@ async function testSharePageLoadsFromConfiguredApi() {
   );
   assert(document.getElementById("share-title")?.textContent === "Public Session from Aliyun", "share page should render the public title");
   assert(document.getElementById("share-meta")?.textContent.includes(PUBLIC_API_URL), "share page metadata should show the API URL");
+  assert(
+    document.querySelector(".share-goal")?.textContent.includes("Explain how the public share page loads data."),
+    "share page should render the snapshot goal metadata",
+  );
   assert(
     document.getElementById("share-content")?.innerHTML.includes("static share page loaded it from the public API"),
     "share page should render transcript content",

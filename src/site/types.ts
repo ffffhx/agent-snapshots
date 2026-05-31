@@ -1,3 +1,5 @@
+import type { SnapshotTurn } from "../core/snapshot";
+
 export type StatusState = "checking" | "ready" | "error";
 
 export type SiteConfig = {
@@ -9,27 +11,14 @@ export type PublicShare = {
   title?: string;
   engine?: string;
   engineLabel?: string;
+  goalObjective?: string;
   createdAt?: string;
   updatedAt?: string;
   redacted?: boolean;
   turnCount?: number;
 };
 
-export type SnapshotImage = {
-  src?: string;
-  alt?: string;
-  unavailableReason?: string;
-};
-
-export type SnapshotTurn = {
-  kind?: string;
-  role?: string;
-  name?: string;
-  text?: string;
-  html?: string;
-  images?: SnapshotImage[];
-  timestamp?: string;
-};
+export type { SnapshotImage, SnapshotTurn } from "../core/snapshot";
 
 export type SnapshotPayload = {
   share?: PublicShare;
@@ -37,6 +26,7 @@ export type SnapshotPayload = {
     id?: string;
     title?: string;
     engineLabel?: string;
+    goalObjective?: string;
     redacted?: boolean;
     turns?: SnapshotTurn[];
   };
