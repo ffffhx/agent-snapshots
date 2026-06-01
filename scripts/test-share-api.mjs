@@ -207,6 +207,7 @@ async function assertDelete(apiUrl, shareId) {
 async function assertGithubOwnershipAuth() {
   const port = await getFreePort();
   const apiUrl = `http://127.0.0.1:${port}`;
+  const publicApiUrl = "https://snapshots.example.com/codex-snapshots";
   const dataFile = path.join(tempDir, "github-auth-shares.json");
   const sessionSecret = "github-session-secret-for-tests";
   let authServer;
@@ -224,7 +225,7 @@ async function assertGithubOwnershipAuth() {
         SNAPSHOT_GITHUB_OWNER_LOGIN: "site-owner",
         SNAPSHOT_SESSION_SECRET: sessionSecret,
         SNAPSHOT_SHARE_DATA_FILE: dataFile,
-        SNAPSHOT_SHARE_PUBLIC_API_URL: apiUrl,
+        SNAPSHOT_SHARE_PUBLIC_API_URL: publicApiUrl,
         SNAPSHOT_SHARE_SITE_URL: SITE_URL,
         SNAPSHOT_SHARE_TOKEN: TOKEN,
       },
@@ -233,6 +234,23 @@ async function assertGithubOwnershipAuth() {
     serverProcess = authServer;
     const output = collectChildOutput(authServer);
     await waitForHealth(apiUrl, output);
+
+    const loginState = await fetchJson(`${apiUrl}/api/auth/me?returnTo=${encodeURIComponent(SITE_URL)}`);
+    assert(loginState.configured === true, "GitHub auth state should report configured=true");
+    assert(
+      String(loginState.loginUrl || "").startsWith(`${publicApiUrl}/api/auth/github/start?`),
+      `loginUrl should preserve the public API path prefix: ${loginState.loginUrl}`,
+    );
+
+    const startResponse = await fetch(`${apiUrl}/api/auth/github/start?returnTo=${encodeURIComponent(SITE_URL)}`, {
+      redirect: "manual",
+    });
+    assert(startResponse.status === 302, `GitHub login start should redirect, got ${startResponse.status}`);
+    const githubLocation = new URL(startResponse.headers.get("location"));
+    assert(
+      githubLocation.searchParams.get("redirect_uri") === `${publicApiUrl}/api/auth/github/callback`,
+      `GitHub redirect_uri should preserve the public API path prefix: ${githubLocation.searchParams.get("redirect_uri")}`,
+    );
 
     const aliceCookie = githubSessionCookie(
       {

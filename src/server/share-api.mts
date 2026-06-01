@@ -667,7 +667,7 @@ function readGithubAuthConfig() {
 }
 
 function githubLoginStartUrl(request, rawReturnTo) {
-  const url = new URL("/api/auth/github/start", requestOrigin(request));
+  const url = new URL(apiEndpointUrl(request, "/api/auth/github/start"));
   const returnTo = sanitizeReturnTo(rawReturnTo, request);
   if (returnTo) {
     url.searchParams.set("returnTo", returnTo);
@@ -947,7 +947,13 @@ function authCookieSameSite(request) {
 }
 
 function githubCallbackUrl(request) {
-  return `${requestOrigin(request)}/api/auth/github/callback`;
+  return apiEndpointUrl(request, "/api/auth/github/callback");
+}
+
+function apiEndpointUrl(request, pathname) {
+  const base = requestOrigin(request).replace(/\/+$/, "");
+  const path = pathname.startsWith("/") ? pathname : `/${pathname}`;
+  return `${base}${path}`;
 }
 
 function requestOrigin(request) {
