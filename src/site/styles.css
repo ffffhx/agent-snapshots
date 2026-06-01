@@ -49,8 +49,7 @@ a {
   text-decoration: none;
 }
 
-button,
-input {
+button {
   font: inherit;
 }
 
@@ -59,7 +58,6 @@ pre,
 .eyebrow,
 .status-pill,
 .button,
-label span,
 .share-meta,
 .public-session-engine,
 .public-session-meta,
@@ -450,7 +448,8 @@ h2 {
 .status-grid {
   display: grid;
   gap: 18px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1fr;
+  margin-top: 18px;
 }
 
 .public-sessions {
@@ -734,38 +733,6 @@ pre {
   min-height: 38px;
   padding: 0 13px;
   cursor: pointer;
-}
-
-.share-form {
-  display: grid;
-  gap: 12px;
-  margin-top: 22px;
-}
-
-label {
-  display: grid;
-  gap: 7px;
-}
-
-label span {
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 900;
-}
-
-input {
-  min-height: 46px;
-  width: 100%;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: white;
-  padding: 0 13px;
-  color: var(--ink);
-}
-
-input:focus {
-  border-color: var(--blue);
-  outline: 3px solid rgba(47, 111, 187, 0.14);
 }
 
 .commands {

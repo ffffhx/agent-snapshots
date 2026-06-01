@@ -57,7 +57,11 @@ async function testHomepagePublicSessions() {
   const title = card?.querySelector("h3");
 
   assert(requests.includes(`${PUBLIC_API_URL}/api/snapshots?limit=12`), "homepage should fetch the configured public list API");
-  assert(document.getElementById("api-url")?.value === PUBLIC_API_URL, "homepage API input should use configured public API");
+  assert(!document.getElementById("share-form"), "homepage should not render the manual share opener form");
+  assert(
+    sectionOrder(document).indexOf("status-grid") > sectionOrder(document).indexOf("commands"),
+    "homepage should show the local viewer opener after install commands",
+  );
   assert(card, "homepage should render a public session card");
   assert(title?.textContent === "Public Session from Aliyun", "homepage should render public session title");
   assert(link?.href.includes("/share/index.html?"), `homepage card should link to the static share page: ${link?.href}`);
@@ -65,61 +69,6 @@ async function testHomepagePublicSessions() {
   assert(link?.target === "_blank", "homepage card should open in a new tab");
   assert(link?.rel === "noopener noreferrer", "homepage card should protect the opener");
   assert(!card?.querySelector(".public-session-delete"), "anonymous users should not see a delete action");
-}
-
-async function testShareFormOpensShareInNewTab() {
-  const openedUrls = [];
-  const { document, window } = await runStaticPage("site/index.html", {
-    locationHref: "https://ffffhx.github.io/codex-snapshots/",
-    config: { apiUrl: PUBLIC_API_URL },
-    fetch: async (url) => {
-      if (String(url) === "http://127.0.0.1:4321/") {
-        return jsonResponse({ ok: true });
-      }
-      if (String(url).startsWith(`${PUBLIC_API_URL}/api/auth/me`)) {
-        return jsonResponse({ configured: true, user: null, loginUrl: `${PUBLIC_API_URL}/api/auth/github/start` });
-      }
-      if (String(url) === `${PUBLIC_API_URL}/api/snapshots/health`) {
-        return jsonResponse({ ok: true, shares: 0 });
-      }
-      if (String(url) === `${PUBLIC_API_URL}/api/snapshots?limit=12`) {
-        return jsonResponse({ schemaVersion: 1, shares: [], count: 0, total: 0, limit: 12, offset: 0 });
-      }
-      throw new Error(`unexpected fetch: ${url}`);
-    },
-    open: (url, target) => {
-      const entry = { url: String(url), target, focused: false };
-      openedUrls.push(entry);
-      return {
-        opener: {},
-        focus() {
-          entry.focused = true;
-        },
-      };
-    },
-  });
-
-  setInputValue(window, document.getElementById("share-id"), "snap_formtarget123456");
-  setInputValue(window, document.getElementById("api-url"), PUBLIC_API_URL);
-  await flushPromises(window);
-
-  const submitted = document.getElementById("share-form").dispatchEvent(
-    new window.Event("submit", {
-      bubbles: true,
-      cancelable: true,
-    }),
-  );
-  await flushPromises(window);
-
-  assert(submitted === false, "share form should prevent same-tab form navigation");
-  assert(openedUrls.length === 1, "share form should open one new tab");
-  assert(openedUrls[0].target === "_blank", "share form should request a new tab");
-  assert(openedUrls[0].focused === true, "share form should focus the opened tab");
-
-  const opened = new URL(openedUrls[0].url);
-  assert(opened.pathname.endsWith("/share/index.html"), `share form should open the static share page: ${openedUrls[0].url}`);
-  assert(opened.searchParams.get("id") === "snap_formtarget123456", "share form should pass the share id");
-  assert(opened.searchParams.get("api") === PUBLIC_API_URL, "share form should pass the API URL");
 }
 
 async function testHomepageDeletesOwnPublicSessionWithGithubLogin() {
@@ -229,10 +178,9 @@ async function testPublicHomepageWithoutConfiguredApiDoesNotFetchLoopback() {
     },
   });
 
-  await waitFor(() => document.getElementById("api-status")?.textContent === "未配置");
+  await waitFor(() => document.getElementById("public-sessions")?.textContent === "公开分享 API 尚未配置。");
 
-  assert(document.getElementById("api-url")?.value === "", "public homepage without config should not default to localhost API");
-  assert(document.getElementById("api-status")?.textContent === "未配置", "public homepage should show unconfigured API status");
+  assert(!document.getElementById("share-form"), "public homepage should not render the manual share opener form");
   assert(
     document.getElementById("public-sessions")?.textContent === "公开分享 API 尚未配置。",
     "public homepage should explain that the public API is not configured",
@@ -266,9 +214,9 @@ async function testLocalHomepageDefaultsToLocalApi() {
     },
   });
 
-  await waitFor(() => document.getElementById("api-url")?.value === "http://127.0.0.1:8787");
+  await waitFor(() => document.getElementById("public-sessions")?.textContent === "暂无公开 Session。");
 
-  assert(document.getElementById("api-url")?.value === "http://127.0.0.1:8787", "local homepage should still default to local API");
+  assert(!document.getElementById("share-form"), "local homepage should not render the manual share opener form");
   assert(requests.includes("http://127.0.0.1:8787/api/snapshots?limit=12"), "local homepage should load local public sessions");
 }
 
@@ -405,15 +353,8 @@ async function runStaticPage(relativeHtmlPath, { locationHref, config, fetch, st
   };
 }
 
-function setInputValue(window, input, value) {
-  assert(input, "input should exist before setting value");
-  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
-  setter?.call(input, value);
-  input.dispatchEvent(
-    new window.Event("input", {
-      bubbles: true,
-    }),
-  );
+function sectionOrder(document) {
+  return Array.from(document.querySelectorAll("main.shell > section")).map((section) => String(section.className || ""));
 }
 
 function jsonResponse(payload, ok = true, status = ok ? 200 : 500) {
@@ -453,7 +394,6 @@ function assert(condition, message) {
 }
 
 await testHomepagePublicSessions();
-await testShareFormOpensShareInNewTab();
 await testHomepageDeletesOwnPublicSessionWithGithubLogin();
 await testPublicHomepageWithoutConfiguredApiDoesNotFetchLoopback();
 await testLocalHomepageDefaultsToLocalApi();

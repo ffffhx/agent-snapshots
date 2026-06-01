@@ -1,12 +1,10 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { AuthUser, PublicShare, StatusState } from "./types";
 import {
   DEFAULT_VIEWER_URL,
   normalizeApiUrl,
   normalizeViewerUrl,
-  openInNewTab,
   resolveInitialApiUrl,
-  safeLocalStorageSet,
   timeoutSignal,
 } from "./utils";
 
@@ -60,11 +58,8 @@ codex-snapshot daemon status`;
 export function HomePage() {
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
   const viewerUrl = useMemo(() => normalizeViewerUrl(params.get("viewer") || DEFAULT_VIEWER_URL), [params]);
-  const [apiValue, setApiValue] = useState(() => resolveInitialApiUrl(params));
-  const [shareId, setShareId] = useState(() => params.get("id") || "");
+  const [apiValue] = useState(() => resolveInitialApiUrl(params));
   const [viewerStatus, setViewerStatus] = useState<StatusState>("checking");
-  const [apiStatus, setApiStatus] = useState<StatusState>("checking");
-  const [apiStatusText, setApiStatusText] = useState("检查中");
   const [publicSessions, setPublicSessions] = useState<PublicSessionsState>({
     kind: "message",
     text: "正在加载公开 Session...",
@@ -76,51 +71,14 @@ export function HomePage() {
   const [deletingShareId, setDeletingShareId] = useState("");
   const [deleteStatus, setDeleteStatus] = useState("");
 
-  const shareInputRef = useRef<HTMLInputElement | null>(null);
-  const apiInputRef = useRef<HTMLInputElement | null>(null);
-
   useEffect(() => {
     checkViewer(viewerUrl, setViewerStatus);
   }, [viewerUrl]);
 
   useEffect(() => {
-    checkApi(apiValue, setApiStatus, setApiStatusText);
     loadAuthState(apiValue, setAuthState);
     loadPublicSessions(apiValue, setPublicSessions);
   }, []);
-
-  function commitApiUrl(value: string) {
-    const nextApiUrl = normalizeApiUrl(value);
-    setApiValue(nextApiUrl);
-    setDeleteStatus("");
-    safeLocalStorageSet("codex-snapshots.api", nextApiUrl);
-    checkApi(nextApiUrl, setApiStatus, setApiStatusText);
-    loadAuthState(nextApiUrl, setAuthState);
-    loadPublicSessions(nextApiUrl, setPublicSessions);
-  }
-
-  function handleShareSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const id = shareId.trim();
-    const api = normalizeApiUrl(apiValue);
-
-    if (!id) {
-      shareInputRef.current?.focus();
-      return;
-    }
-    if (!api) {
-      setApiStatus("error");
-      setApiStatusText("未配置");
-      apiInputRef.current?.focus();
-      return;
-    }
-
-    safeLocalStorageSet("codex-snapshots.api", api);
-    const target = new URL("./share/index.html", window.location.href);
-    target.searchParams.set("id", id);
-    target.searchParams.set("api", api);
-    openInNewTab(target.toString());
-  }
 
   async function handleDeleteShare(share: PublicShare) {
     const api = normalizeApiUrl(apiValue);
@@ -188,7 +146,6 @@ export function HomePage() {
     const api = normalizeApiUrl(apiValue);
     if (!api) {
       setDeleteStatus("分享 API 尚未配置。");
-      apiInputRef.current?.focus();
       return;
     }
     const loginUrl =
@@ -249,64 +206,6 @@ export function HomePage() {
           </div>
         </div>
         <ProductShot />
-      </section>
-
-      <section className="status-grid" aria-label="连接状态">
-        <article className="status-panel">
-          <div className="panel-heading">
-            <p className="eyebrow">本地服务</p>
-            <StatusPill id="viewer-status" state={viewerStatus} text={STATUS_LABELS[viewerStatus]} />
-          </div>
-          <h2>打开你电脑上的只读查看器</h2>
-          <p>
-            官网只负责引导和分享入口。会话数据仍保留在你的电脑上，并从 <code id="viewer-url-label">{viewerUrl}</code> 读取。
-          </p>
-          <div className="command-line">
-            <pre>
-              <code>npx codex-snapshots@latest serve --port 4321</code>
-            </pre>
-            <CopyButton command="npx codex-snapshots@latest serve --port 4321">复制</CopyButton>
-          </div>
-        </article>
-
-        <article className="status-panel">
-          <div className="panel-heading">
-            <p className="eyebrow">云端分享</p>
-            <StatusPill id="api-status" state={apiStatus} text={apiStatusText} />
-          </div>
-          <h2>打开一个分享快照</h2>
-          <form className="share-form" id="share-form" onSubmit={handleShareSubmit}>
-            <label>
-              <span>分享 ID</span>
-              <input
-                id="share-id"
-                name="id"
-                autoComplete="off"
-                placeholder="snap_..."
-                ref={shareInputRef}
-                spellCheck={false}
-                value={shareId}
-                onChange={(event) => setShareId(event.target.value)}
-              />
-            </label>
-            <label>
-              <span>分享 API</span>
-              <input
-                id="api-url"
-                name="api"
-                autoComplete="off"
-                ref={apiInputRef}
-                spellCheck={false}
-                value={apiValue}
-                onBlur={() => commitApiUrl(apiValue)}
-                onChange={(event) => setApiValue(event.target.value)}
-              />
-            </label>
-            <button className="button primary" type="submit">
-              打开分享
-            </button>
-          </form>
-        </article>
       </section>
 
       <section className="public-sessions" aria-labelledby="public-sessions-title">
@@ -379,6 +278,25 @@ export function HomePage() {
               <code>{DAEMON_INSTALL_COMMAND}</code>
             </pre>
             <CopyButton command={DAEMON_INSTALL_COMMAND}>复制安装命令</CopyButton>
+          </div>
+        </article>
+      </section>
+
+      <section className="status-grid" aria-label="连接状态">
+        <article className="status-panel">
+          <div className="panel-heading">
+            <p className="eyebrow">本地服务</p>
+            <StatusPill id="viewer-status" state={viewerStatus} text={STATUS_LABELS[viewerStatus]} />
+          </div>
+          <h2>安装后打开本地只读查看器</h2>
+          <p>
+            官网只负责引导；会话数据仍保留在你的电脑上，并从 <code id="viewer-url-label">{viewerUrl}</code> 读取。
+          </p>
+          <div className="command-line">
+            <pre>
+              <code>npx codex-snapshots@latest serve --port 4321</code>
+            </pre>
+            <CopyButton command="npx codex-snapshots@latest serve --port 4321">复制</CopyButton>
           </div>
         </article>
       </section>
@@ -619,34 +537,6 @@ async function checkViewer(url: string, setViewerStatus: (state: StatusState) =>
     setViewerStatus("ready");
   } catch {
     setViewerStatus("error");
-  }
-}
-
-async function checkApi(url: string, setApiStatus: (state: StatusState) => void, setApiStatusText: (text: string) => void) {
-  if (!url) {
-    setApiStatus("error");
-    setApiStatusText("未配置");
-    return;
-  }
-
-  setApiStatus("checking");
-  setApiStatusText("检查中");
-
-  try {
-    const response = await fetch(`${url}/api/snapshots/health`, {
-      cache: "no-store",
-      signal: timeoutSignal(2500),
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-
-    setApiStatus("ready");
-    setApiStatusText("已连接");
-  } catch {
-    setApiStatus("error");
-    setApiStatusText("可选");
   }
 }
 
