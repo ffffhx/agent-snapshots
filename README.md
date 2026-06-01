@@ -8,7 +8,7 @@
 
 ## 快速开始
 
-临时审阅时，不需要克隆仓库，可以直接通过已发布的 npm 包启动本地查看器：
+临时审阅适合偶尔查看一次会话快照，不需要克隆仓库，可以直接通过已发布的 npm 包启动本地查看器。命令运行期间 4321 端口可用，关闭终端或停止进程后服务就会结束：
 
 ```bash
 npx codex-snapshots@latest serve --port 4321
@@ -23,7 +23,7 @@ npm install -g codex-snapshots
 codex-snapshot serve --port 4321
 ```
 
-如果需要在 macOS 登录后自动保持查看器可用，全局安装 npm 包后可以注册为用户级 LaunchAgent：
+如果需要在 macOS 登录后自动保持查看器可用，全局安装 npm 包后可以注册为用户级 LaunchAgent。安装完成后服务会在后台监听 4321，直到你卸载 daemon 或停止服务：
 
 ```bash
 npm install -g codex-snapshots
@@ -50,7 +50,7 @@ pnpm build:site
 pnpm site:dev
 ```
 
-打开 <http://127.0.0.1:4323/>。
+打开 <http://127.0.0.1:4322/>。
 
 ## 命令行
 

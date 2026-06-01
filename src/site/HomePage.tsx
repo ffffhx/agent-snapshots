@@ -349,39 +349,38 @@ export function HomePage() {
       </section>
 
       <section className="commands" aria-label="运行方式">
-        <div>
-          <p className="eyebrow">运行方式</p>
-          <h2>选择临时审阅或常驻运行</h2>
-          <p>临时审阅可以直接 npx 运行；常驻运行也已经做进 npm 包，适合 macOS 登录后自动保持本地查看器可用。</p>
-        </div>
-        <div className="command-options">
-          <article className="command-option">
-            <div className="command-option-heading">
-              <p className="eyebrow">临时审阅 / npm 包</p>
-              <h3>不用克隆，直接运行</h3>
-            </div>
-            <p>手动启动本地只读查看器；关闭终端或停止进程后服务结束。</p>
-            <div className="command-line large">
-              <pre>
-                <code>{TEMP_REVIEW_COMMAND}</code>
-              </pre>
-              <CopyButton command="npx codex-snapshots@latest serve --port 4321">复制 npx 命令</CopyButton>
-            </div>
-          </article>
-          <article className="command-option">
-            <div className="command-option-heading">
-              <p className="eyebrow">macOS LaunchAgent / npm 包</p>
-              <h3>安装成后台常驻</h3>
-            </div>
-            <p>全局安装 npm 包后注册为用户级后台服务；不需要克隆仓库或安装 pnpm。</p>
-            <div className="command-line large">
-              <pre>
-                <code>{DAEMON_INSTALL_COMMAND}</code>
-              </pre>
-              <CopyButton command={DAEMON_INSTALL_COMMAND}>复制安装命令</CopyButton>
-            </div>
-          </article>
-        </div>
+        <article className="command-block">
+          <div className="command-block-copy">
+            <p className="eyebrow">临时审阅 / npm 包</p>
+            <h2>不用克隆，直接运行</h2>
+            <p>
+              这是一次性的本地预览方式：直接通过已发布的 npm 包启动只读查看器，不会安装后台服务。只要这个命令还在运行，浏览器就可以访问
+              4321；命令停掉后端口会释放。
+            </p>
+          </div>
+          <div className="command-line large">
+            <pre>
+              <code>{TEMP_REVIEW_COMMAND}</code>
+            </pre>
+            <CopyButton command="npx codex-snapshots@latest serve --port 4321">复制 npx 命令</CopyButton>
+          </div>
+        </article>
+        <article className="command-block">
+          <div className="command-block-copy">
+            <p className="eyebrow">macOS LaunchAgent / npm 包</p>
+            <h2>安装成后台常驻</h2>
+            <p>
+              这是长期使用方式：全局安装 npm 包后注册为用户级后台服务，不需要克隆仓库或安装 pnpm。安装完成后服务会在后台监听
+              4321，直到你卸载 daemon 或停止服务。
+            </p>
+          </div>
+          <div className="command-line large">
+            <pre>
+              <code>{DAEMON_INSTALL_COMMAND}</code>
+            </pre>
+            <CopyButton command={DAEMON_INSTALL_COMMAND}>复制安装命令</CopyButton>
+          </div>
+        </article>
       </section>
     </main>
   );

@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "site");
 const parsed = parseArgs(process.argv.slice(2));
 const host = parsed.host || "127.0.0.1";
-const port = Number(parsed.port || 4323);
+const port = Number(parsed.port || 4322);
 
 if (parsed.help) {
   printHelp();
@@ -98,6 +98,6 @@ function printHelp() {
   console.log(`codex-snapshots site server
 
 Usage:
-  node scripts/serve-site.mjs [--host 127.0.0.1] [--port 4323]
+  node scripts/serve-site.mjs [--host 127.0.0.1] [--port 4322]
 `);
 }

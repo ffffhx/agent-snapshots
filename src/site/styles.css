@@ -659,7 +659,7 @@ h2 {
 }
 
 .status-panel,
-.commands,
+.command-block,
 .share-header,
 .empty {
   border: 1px solid rgba(23, 32, 42, 0.11);
@@ -669,7 +669,7 @@ h2 {
 }
 
 .status-panel,
-.commands {
+.command-block {
   padding: 24px;
 }
 
@@ -770,48 +770,31 @@ input:focus {
 
 .commands {
   display: grid;
-  align-items: start;
-  gap: 24px;
+  gap: 18px;
   margin-top: 18px;
-  grid-template-columns: minmax(220px, 0.35fr) minmax(0, 0.65fr);
 }
 
-.command-options {
+.command-block {
   display: grid;
+  min-width: 0;
+  align-items: center;
   gap: 28px;
+  grid-template-columns: minmax(280px, 0.36fr) minmax(0, 0.64fr);
 }
 
-.command-option {
+.command-block-copy {
   min-width: 0;
 }
 
-.command-option + .command-option {
-  border-top: 1px solid rgba(23, 32, 42, 0.11);
-  padding-top: 26px;
+.command-block h2 {
+  margin-bottom: 16px;
 }
 
-.command-option-heading {
-  display: grid;
-  gap: 4px;
-  margin-bottom: 10px;
-}
-
-.command-option-heading .eyebrow {
+.command-block p {
   margin-bottom: 0;
-}
-
-.command-option h3 {
-  margin: 0;
-  font-size: 22px;
-  line-height: 1.25;
-  letter-spacing: 0;
-}
-
-.command-option p {
-  margin-bottom: 14px;
   color: var(--muted);
-  font-size: 16px;
-  line-height: 1.58;
+  font-size: 18px;
+  line-height: 1.62;
 }
 
 .share-shell {
@@ -1043,6 +1026,7 @@ input:focus {
 @media (max-width: 860px) {
   .status-grid,
   .commands,
+  .command-block,
   .public-session-grid {
     grid-template-columns: 1fr;
   }
@@ -1099,7 +1083,7 @@ input:focus {
 
   .shot-main,
   .status-panel,
-  .commands,
+  .command-block,
   .share-header {
     padding: 18px;
   }

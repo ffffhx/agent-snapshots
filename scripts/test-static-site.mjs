@@ -246,7 +246,7 @@ async function testPublicHomepageWithoutConfiguredApiDoesNotFetchLoopback() {
 async function testLocalHomepageDefaultsToLocalApi() {
   const requests = [];
   const { document } = await runStaticPage("site/index.html", {
-    locationHref: "http://127.0.0.1:4323/",
+    locationHref: "http://127.0.0.1:4322/",
     config: {},
     fetch: async (url) => {
       requests.push(String(url));
