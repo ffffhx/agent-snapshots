@@ -62,7 +62,7 @@ async function main() {
     }
     await checkPublish(apiUrl, siteUrl, token);
   } else {
-    console.log("• Skipped publish check; pass --publish --token <token> to test authenticated writes.");
+    console.log("• Skipped publish check; pass --publish --token <token> for legacy token auth, or verify GitHub OAuth publishing in the browser.");
   }
 
   console.log("✓ Public share deployment checks passed");
@@ -98,9 +98,7 @@ async function checkCors(baseUrl, publicSiteUrl) {
   if (!response.ok) {
     throw new Error(`CORS list check failed with HTTP ${response.status}`);
   }
-  if (response.headers.get("access-control-allow-origin") !== "*") {
-    throw new Error("CORS list response is missing access-control-allow-origin=*");
-  }
+  assertAllowedCorsOrigin(response.headers, siteOrigin, "CORS list response");
 
   const preflight = await fetchWithTimeout(`${baseUrl}/api/snapshots`, {
     method: "OPTIONS",
@@ -114,11 +112,19 @@ async function checkCors(baseUrl, publicSiteUrl) {
   if (preflight.status !== 204) {
     throw new Error(`CORS preflight returned HTTP ${preflight.status}, expected 204`);
   }
-  if (preflight.headers.get("access-control-allow-origin") !== "*") {
-    throw new Error("CORS preflight is missing access-control-allow-origin=*");
-  }
+  assertAllowedCorsOrigin(preflight.headers, siteOrigin, "CORS preflight");
 
   console.log("✓ CORS allows the public site to read the API");
+}
+
+function assertAllowedCorsOrigin(headers, siteOrigin, label) {
+  const allowedOrigin = headers.get("access-control-allow-origin");
+  if (allowedOrigin !== "*" && allowedOrigin !== siteOrigin) {
+    throw new Error(`${label} allowed origin is ${allowedOrigin || "(missing)"}, expected * or ${siteOrigin}.`);
+  }
+  if (allowedOrigin === siteOrigin && headers.get("access-control-allow-credentials") !== "true") {
+    throw new Error(`${label} allows the site origin but is missing access-control-allow-credentials=true.`);
+  }
 }
 
 async function checkSiteConfig(publicSiteUrl, publicApiUrl) {
@@ -283,9 +289,6 @@ function checkLocalPublisherConfig(config, publicApiUrl, publicSiteUrl) {
   if (!config.filePath || (!config.apiUrl && !config.siteUrl && !config.token)) {
     throw new Error("Local publisher config was not found. Run deploy/aliyun/configure-local-publisher.sh first.");
   }
-  if (!config.token) {
-    throw new Error(`Local publisher config at ${config.filePath} does not include snapshotShareToken.`);
-  }
 
   const configuredApiUrl = normalizeUrl(config.apiUrl);
   const configuredSiteUrl = normalizeUrl(config.siteUrl);
@@ -383,7 +386,7 @@ function printHelp() {
 
 Usage:
   node deploy/aliyun/verify-public-share.mjs --api-url https://snapshots.example.com --site-url https://ffffhx.github.io/codex-snapshots/
-  SNAPSHOT_SHARE_TOKEN=change-me node deploy/aliyun/verify-public-share.mjs --api-url https://snapshots.example.com --publish
+  SNAPSHOT_SHARE_TOKEN=<legacy-token> node deploy/aliyun/verify-public-share.mjs --api-url https://snapshots.example.com --publish
 
 Checks:
   - GET /api/snapshots/health
@@ -391,11 +394,11 @@ Checks:
   - CORS headers for the public site
   - site assets/config.js points at the public API
   - optional local publisher config points at the public API
-  - optional authenticated POST /api/snapshots, GET /api/snapshots/:id, and public share page URL
+  - optional legacy-token POST /api/snapshots, GET /api/snapshots/:id, and public share page URL
 
 Options:
   --skip-site-config    Do not check the static site's assets/config.js
   --check-local-config  Check ~/.codex-snapshots-agent.json or --token-file
-  --token-file FILE     Local publisher config/token file
+  --token-file FILE     Local publisher config file
 `);
 }

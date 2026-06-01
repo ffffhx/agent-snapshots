@@ -6,6 +6,18 @@ export type SiteConfig = {
   apiUrl?: string;
 };
 
+export type ShareOwner = {
+  id: string;
+  login: string;
+  avatarUrl?: string;
+  profileUrl?: string;
+};
+
+export type AuthUser = ShareOwner & {
+  name?: string;
+  isOwner?: boolean;
+};
+
 export type PublicShare = {
   id: string;
   title?: string;
@@ -16,6 +28,7 @@ export type PublicShare = {
   updatedAt?: string;
   redacted?: boolean;
   turnCount?: number;
+  owner?: ShareOwner | null;
 };
 
 export type { SnapshotImage, SnapshotTurn } from "../core/snapshot";

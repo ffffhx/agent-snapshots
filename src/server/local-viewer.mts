@@ -27,6 +27,7 @@ export async function serveLocalViewer({
   snapshotApiResponse,
   publishAllSnapshots,
   publishSnapshot,
+  createShareRequestPayload,
   stableSnapshotShareId,
   renderMarkdown,
   renderHtml,
@@ -152,6 +153,39 @@ export async function serveLocalViewer({
         const result = await publishSnapshot(snapshot, {
           apiUrl: "",
           token: "",
+          siteUrl: "",
+          expiresInDays: 0,
+          shareId: stableSnapshotShareId(snapshot),
+        });
+        sendJson(response, result);
+        return;
+      }
+      if (url.pathname === "/api/share-payload") {
+        if (!allowMutationRequest(request, response, csrfToken)) {
+          return;
+        }
+        const id = url.searchParams.get("id");
+        if (!id) {
+          sendJson(response, { error: "missing id" }, 400);
+          return;
+        }
+        if (url.searchParams.get("redact") === "0") {
+          sendJson(response, { error: "Cloud publish requires Redact enabled in the local viewer." }, 400);
+          return;
+        }
+        const snapshot = await loadSnapshot(id, {
+          codexHome,
+          claudeHome,
+          traeHome,
+          traeAppHome,
+          traeRecordingsDir,
+          includeTools: url.searchParams.get("includeTools") === "1" || url.searchParams.get("includeToolOutput") === "1",
+          includeToolOutput: url.searchParams.get("includeToolOutput") === "1",
+          redact: true,
+        });
+        applySafetyChecksOption(snapshot, url.searchParams.get("safety") === "1");
+        const result = createShareRequestPayload(snapshot, {
+          apiUrl: "",
           siteUrl: "",
           expiresInDays: 0,
           shareId: stableSnapshotShareId(snapshot),

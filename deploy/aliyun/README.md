@@ -5,7 +5,8 @@ This deployment runs `codex-snapshot-share` on `127.0.0.1:8787`, exposes it thro
 Replace these examples before running commands:
 
 - `snapshots.example.com`: your public API domain
-- `change-me`: a strong shared publish token
+- `your-client-id` / `your-client-secret`: your GitHub OAuth App credentials
+- `your-github-login`: your GitHub login; this account can delete any shared session
 - `https://ffffhx.github.io/codex-snapshots/`: the public static site
 
 ## 1. Prepare Alibaba Cloud
@@ -35,7 +36,6 @@ deploy/aliyun/deploy-to-ecs.sh \
   --ssh root@1.2.3.4 \
   --domain snapshots.example.com \
   --install-deps \
-  --generate-token \
   --configure-local
 ```
 
@@ -53,9 +53,9 @@ node deploy/aliyun/doctor.mjs --config deploy/aliyun/deploy.env
 deploy/aliyun/deploy-to-ecs.sh --config deploy/aliyun/deploy.env
 ```
 
-`deploy/aliyun/deploy.env` is ignored by git because it contains host details and the publish token.
+`deploy/aliyun/deploy.env` is ignored by git because it contains host details, OAuth secrets, and optional legacy token values.
 The dry run validates that you replaced template values like `root@1.2.3.4`, `snapshots.example.com`, `change-me`, and `you@example.com` before anything connects to ECS.
-The doctor command adds local readiness checks for DNS, local `ssh`/`rsync`/`node`, GitHub CLI when Pages auto-config is enabled, token source, and the deploy dry run. Pass `--offline` if DNS has not propagated yet.
+The doctor command adds local readiness checks for DNS, local `ssh`/`rsync`/`node`, GitHub CLI when Pages auto-config is enabled, auth config, and the deploy dry run. Pass `--offline` if DNS has not propagated yet.
 The deploy and install scripts also exclude local secret files such as `.env`, `deploy/aliyun/deploy.env`, private-key files, and local `backups/` from the ECS rsync payload.
 
 Run the preflight check before deploying:
@@ -72,15 +72,19 @@ When you deploy with `--issue-cert`, the deploy helper also checks that Certbot 
 After DNS points at the ECS public IP and SSH works, deploy the current checkout from your local machine:
 
 ```bash
+SNAPSHOT_GITHUB_CLIENT_ID=your-client-id \
+SNAPSHOT_GITHUB_CLIENT_SECRET=your-client-secret \
+SNAPSHOT_SESSION_SECRET="$(openssl rand -base64 48)" \
+SNAPSHOT_GITHUB_OWNER_LOGIN=your-github-login \
 deploy/aliyun/deploy-to-ecs.sh \
   --ssh root@1.2.3.4 \
   --domain snapshots.example.com \
-  --generate-token \
   --configure-local
 ```
 
 This runs the preflight checks, rsyncs the repository to the ECS host, installs the systemd service, and writes the Nginx bootstrap config. If you have already checked the host and want to skip preflight, pass `--no-preflight`.
-`--generate-token` creates a strong publish token for the deployment. Pair it with `--configure-local` so the same token is written to `~/.codex-snapshots-agent.json` for the local “发布分享” button.
+GitHub OAuth makes publish/delete use GitHub login instead of a shared token. The site owner in `SNAPSHOT_GITHUB_OWNER_LOGIN` can delete any shared session; other GitHub users can delete only their own sessions.
+Keep the same `SNAPSHOT_SESSION_SECRET` across redeploys so existing login cookies remain valid. If you omit it while OAuth vars are present, the deploy helper generates one for that deploy.
 
 After port `80` works, issue HTTPS and switch to the HTTPS proxy template:
 
@@ -92,7 +96,7 @@ deploy/aliyun/deploy-to-ecs.sh \
   --email you@example.com
 ```
 
-When `~/.codex-snapshots-agent.json` exists, the deploy script can reuse its token for follow-up deploys such as issuing HTTPS. The deploy script verifies the ECS API and an authenticated publish at the end. It skips the GitHub Pages config check because the Pages workflow may not have run yet. Configure Pages in step 6, then run the full public loop verification in step 7.
+The deploy script verifies the ECS API at the end. In GitHub OAuth mode it skips command-line token publishing because writes require a browser GitHub login; configure Pages in step 6, then run the public loop verification in step 7.
 
 You can also let the deploy command configure GitHub Pages and the local publisher in the same run:
 
@@ -100,7 +104,6 @@ You can also let the deploy command configure GitHub Pages and the local publish
 deploy/aliyun/deploy-to-ecs.sh \
   --ssh root@1.2.3.4 \
   --domain snapshots.example.com \
-  --generate-token \
   --install-deps \
   --issue-cert \
   --email you@example.com \
@@ -121,7 +124,10 @@ git clone https://github.com/ffffhx/codex-snapshots.git
 cd codex-snapshots
 
 sudo DOMAIN=snapshots.example.com \
-  SNAPSHOT_SHARE_TOKEN=change-me \
+  SNAPSHOT_GITHUB_CLIENT_ID=your-client-id \
+  SNAPSHOT_GITHUB_CLIENT_SECRET=your-client-secret \
+  SNAPSHOT_SESSION_SECRET="$(openssl rand -base64 48)" \
+  SNAPSHOT_GITHUB_OWNER_LOGIN=your-github-login \
   SNAPSHOT_SHARE_SITE_URL=https://ffffhx.github.io/codex-snapshots/ \
   SNAPSHOT_SHARE_PUBLIC_API_URL=https://snapshots.example.com \
   deploy/aliyun/install-share-api.sh
@@ -141,7 +147,10 @@ Then re-run the installer so it switches Nginx to the committed HTTPS proxy temp
 
 ```bash
 sudo DOMAIN=snapshots.example.com \
-  SNAPSHOT_SHARE_TOKEN=change-me \
+  SNAPSHOT_GITHUB_CLIENT_ID=your-client-id \
+  SNAPSHOT_GITHUB_CLIENT_SECRET=your-client-secret \
+  SNAPSHOT_SESSION_SECRET="$(openssl rand -base64 48)" \
+  SNAPSHOT_GITHUB_OWNER_LOGIN=your-github-login \
   SNAPSHOT_SHARE_SITE_URL=https://ffffhx.github.io/codex-snapshots/ \
   SNAPSHOT_SHARE_PUBLIC_API_URL=https://snapshots.example.com \
   deploy/aliyun/install-share-api.sh
@@ -191,40 +200,30 @@ node deploy/aliyun/verify-public-share.mjs \
   --site-url https://ffffhx.github.io/codex-snapshots/
 ```
 
-Then run the authenticated publish check:
-
-```bash
-node deploy/aliyun/verify-public-share.mjs \
-  --api-url https://snapshots.example.com \
-  --site-url https://ffffhx.github.io/codex-snapshots/ \
-  --token change-me \
-  --publish
-```
-
-This creates one small verification snapshot and proves:
+This proves:
 
 - the ECS API is reachable over HTTPS
 - public reads work
-- authenticated writes work
-- the returned share URL points at the GitHub Pages `/share/` viewer
+- CORS allows the public GitHub Pages site
 - the static site config points at the ECS API
+
+GitHub OAuth publishing is verified from the browser: open the local viewer, click “发布分享”, log in with GitHub when prompted, and confirm the shared session appears on the public site. For legacy token mode only, add `--publish --token <same-token>` to create one small verification snapshot from the command line.
 
 To verify only the ECS API before Pages has deployed, add `--skip-site-config`.
 After configuring the local publisher, add `--check-local-config` to prove that `~/.codex-snapshots-agent.json` also points at the same Aliyun API and public site.
 
 ## 8. Publish from your local viewer
 
-Configure your local publisher with the same token and public API:
+Configure your local viewer with the public API and site:
 
 ```bash
-SNAPSHOT_SHARE_TOKEN=change-me \
 SNAPSHOT_SHARE_API_URL=https://snapshots.example.com \
 SNAPSHOT_SHARE_SITE_URL=https://ffffhx.github.io/codex-snapshots/ \
 deploy/aliyun/configure-local-publisher.sh
 ```
 
-The helper also rejects placeholder tokens and local-only API URLs before it writes `~/.codex-snapshots-agent.json`.
-That file stores the publish token plus the public API/site URLs, so the local viewer can publish to Aliyun without exporting environment variables every time.
+The helper rejects placeholder and local-only API URLs before it writes `~/.codex-snapshots-agent.json`.
+That file stores the public API/site URLs, so the local viewer knows which remote share API to use. With GitHub OAuth, the browser session cookie handles publish/delete auth after login.
 
 Verify the local publisher config:
 
@@ -245,7 +244,6 @@ pnpm snapshot serve --port 4321
 For the macOS LaunchAgent, let the helper reinstall the daemon with the public API and site URLs:
 
 ```bash
-SNAPSHOT_SHARE_TOKEN=change-me \
 SNAPSHOT_SHARE_API_URL=https://snapshots.example.com \
 SNAPSHOT_SHARE_SITE_URL=https://ffffhx.github.io/codex-snapshots/ \
 deploy/aliyun/configure-local-publisher.sh --reinstall-daemon
@@ -255,7 +253,6 @@ The local publisher config can also be edited manually in `~/.codex-snapshots-ag
 
 ```json
 {
-  "snapshotShareToken": "change-me",
   "snapshotShareApiUrl": "https://snapshots.example.com",
   "snapshotShareSiteUrl": "https://ffffhx.github.io/codex-snapshots"
 }

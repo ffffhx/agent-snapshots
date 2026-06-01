@@ -12,7 +12,15 @@ export type ShareRecord = {
   expiresAt?: string;
   redacted: boolean;
   turnCount: number;
+  owner?: ShareOwner;
   snapshot: unknown;
+};
+
+export type ShareOwner = {
+  id: string;
+  login: string;
+  avatarUrl?: string;
+  profileUrl?: string;
 };
 
 export type ShareStore = {
@@ -145,7 +153,26 @@ function normalizeShareRecord(value: unknown): ShareRecord | undefined {
     expiresAt: normalizeDate(record.expiresAt) || undefined,
     redacted: record.redacted !== false,
     turnCount: Number.isFinite(Number(record.turnCount)) ? Number(record.turnCount) : 0,
+    owner: normalizeShareOwner(record.owner),
     snapshot: record.snapshot,
+  };
+}
+
+function normalizeShareOwner(value: unknown): ShareOwner | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+  const owner = value as Record<string, unknown>;
+  const id = sanitizeText(owner.id, 80);
+  const login = sanitizeText(owner.login, 80);
+  if (!id || !login) {
+    return undefined;
+  }
+  return {
+    id,
+    login,
+    avatarUrl: sanitizeText(owner.avatarUrl, 400) || undefined,
+    profileUrl: sanitizeText(owner.profileUrl, 400) || undefined,
   };
 }
 

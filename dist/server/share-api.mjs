@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // @ts-nocheck
-import { randomBytes } from "node:crypto";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
@@ -25,6 +25,9 @@ const shareToken = parsed.options.token ||
     process.env.TOKEN_BOARD_AGENT_TOKEN ||
     process.env.TOKEN_BOARD_UPLOAD_TOKEN ||
     "";
+const githubAuth = readGithubAuthConfig();
+const authCookieName = sanitizeCookieName(process.env.SNAPSHOT_AUTH_COOKIE_NAME) || "codex_snapshots_session";
+const tokenAuthEnabled = Boolean(shareToken) && (!githubAuth.enabled || process.env.SNAPSHOT_SHARE_ALLOW_TOKEN_AUTH === "true");
 const storage = createShareStore({ kind: "file", filePath: dataFile });
 main().catch((error) => {
     console.error(error instanceof Error ? error.message : String(error));
@@ -36,7 +39,7 @@ async function main() {
     }
     const server = http.createServer(async (request, response) => {
         try {
-            setCorsHeaders(response);
+            setCorsHeaders(request, response);
             if (request.method === "OPTIONS") {
                 response.writeHead(204);
                 response.end();
@@ -44,6 +47,30 @@ async function main() {
             }
             const url = new URL(request.url || "/", `http://${request.headers.host || `${host}:${port}`}`);
             const shareId = shareIdFromPath(url.pathname);
+            if (request.method === "GET" && url.pathname === "/api/auth/me") {
+                const user = readSessionUser(request);
+                sendJson(response, 200, {
+                    configured: githubAuth.enabled,
+                    provider: "github",
+                    user,
+                    loginUrl: githubAuth.enabled ? githubLoginStartUrl(request, url.searchParams.get("returnTo")) : null,
+                });
+                return;
+            }
+            if (request.method === "GET" && url.pathname === "/api/auth/github/start") {
+                redirectToGithubLogin(request, response, url.searchParams.get("returnTo"));
+                return;
+            }
+            if (request.method === "GET" && url.pathname === "/api/auth/github/callback") {
+                await handleGithubCallback(request, response, url);
+                return;
+            }
+            if (request.method === "POST" && url.pathname === "/api/auth/logout") {
+                requireAllowedMutationOrigin(request);
+                clearSessionCookie(request, response);
+                sendJson(response, 200, { ok: true });
+                return;
+            }
             if (request.method === "GET" && url.pathname === "/") {
                 send(response, 200, "text/html; charset=utf-8", renderHome());
                 return;
@@ -56,7 +83,8 @@ async function main() {
                 sendJson(response, 200, {
                     ok: true,
                     service: "codex-snapshots-share-api",
-                    auth: shareToken ? "token" : "disabled",
+                    auth: githubAuth.enabled ? "github" : tokenAuthEnabled ? "token" : "disabled",
+                    owner: githubAuth.ownerLabel || null,
                 });
                 return;
             }
@@ -87,7 +115,8 @@ async function main() {
                 return;
             }
             if (request.method === "POST" && url.pathname === "/api/snapshots") {
-                requireAuth(request);
+                requireAllowedMutationOrigin(request);
+                const auth = requirePublishAuth(request);
                 const body = await readJsonBody(request, MAX_BODY_BYTES);
                 const snapshot = normalizeSnapshotPayloadForShare(body.snapshot ?? body);
                 if (!snapshot.redacted && process.env.SNAPSHOT_SHARE_ALLOW_UNREDACTED !== "true") {
@@ -109,6 +138,7 @@ async function main() {
                     expiresAt: expiryFromDays(body.expiresInDays),
                     redacted: snapshot.redacted,
                     turnCount: snapshot.turnCount,
+                    owner: auth.user ? shareOwnerFromUser(auth.user) : undefined,
                     snapshot: snapshot.payload,
                 };
                 await storage.putShare(record);
@@ -119,6 +149,7 @@ async function main() {
                     turnCount: record.turnCount,
                     redacted: record.redacted,
                     expiresAt: record.expiresAt || null,
+                    owner: record.owner || null,
                     url: snapshotShareUrl(request, record.id, body.siteUrl, body.apiUrl),
                 });
                 return;
@@ -143,13 +174,24 @@ async function main() {
                         expiresAt: record.expiresAt || null,
                         redacted: record.redacted,
                         turnCount: record.turnCount,
+                        owner: record.owner || null,
                     },
                     snapshot: record.snapshot,
                 });
                 return;
             }
             if (request.method === "DELETE" && shareId) {
-                requireAuth(request);
+                requireAllowedMutationOrigin(request);
+                const auth = requireDeleteAuth(request);
+                const record = await storage.getShare(shareId);
+                if (!record) {
+                    sendJson(response, 404, { error: "Snapshot share not found" });
+                    return;
+                }
+                if (!canDeleteShare(auth, record)) {
+                    sendJson(response, 403, { error: "Only the share owner or site owner can delete this snapshot" });
+                    return;
+                }
                 const deleted = await storage.deleteShare(shareId);
                 sendJson(response, deleted ? 200 : 404, { ok: deleted, deleted, id: shareId });
                 return;
@@ -167,7 +209,7 @@ async function main() {
     });
     console.log(`Codex Snapshots share API is running at http://${host}:${port}`);
     console.log(`Storage: ${dataFile}`);
-    console.log(`Auth: ${shareToken ? "SNAPSHOT_SHARE_TOKEN required" : "disabled (local/dev only)"}`);
+    console.log(`Auth: ${githubAuth.enabled ? "GitHub OAuth required" : tokenAuthEnabled ? "SNAPSHOT_SHARE_TOKEN required" : "disabled (local/dev only)"}`);
 }
 function toShareSummary(record, request, rawSiteUrl, rawApiUrl) {
     return {
@@ -182,6 +224,7 @@ function toShareSummary(record, request, rawSiteUrl, rawApiUrl) {
         expiresAt: record.expiresAt || null,
         redacted: record.redacted,
         turnCount: record.turnCount,
+        owner: record.owner || null,
         url: snapshotShareUrl(request, record.id, rawSiteUrl, rawApiUrl),
     };
 }
@@ -489,16 +532,356 @@ dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
 }
 `;
 }
-function requireAuth(request) {
-    if (!shareToken && process.env.SNAPSHOT_SHARE_ALLOW_ANONYMOUS !== "false") {
-        return;
+function requirePublishAuth(request) {
+    const sessionUser = readSessionUser(request);
+    if (githubAuth.enabled && sessionUser) {
+        return { kind: "github", user: sessionUser };
     }
-    const token = readBearerToken(request);
-    if (token && token === shareToken) {
-        return;
+    if (tokenAuthEnabled && readBearerToken(request) === shareToken) {
+        return { kind: "token", user: null, isOwner: true };
     }
-    const error = new Error("Login required");
+    if (!githubAuth.enabled && !tokenAuthEnabled && process.env.SNAPSHOT_SHARE_ALLOW_ANONYMOUS !== "false") {
+        return { kind: "anonymous", user: null };
+    }
+    const error = new Error(githubAuth.enabled ? "GitHub login required" : "Login required");
     error.statusCode = 401;
+    throw error;
+}
+function requireDeleteAuth(request) {
+    return requirePublishAuth(request);
+}
+function canDeleteShare(auth, record) {
+    if (auth.kind === "token" || auth.isOwner) {
+        return true;
+    }
+    if (!auth.user) {
+        return false;
+    }
+    if (auth.user.isOwner) {
+        return true;
+    }
+    return sameGithubUser(auth.user, record.owner);
+}
+function sameGithubUser(left, right) {
+    if (!left || !right) {
+        return false;
+    }
+    const leftId = String(left.id || "");
+    const rightId = String(right.id || "");
+    if (leftId && rightId && leftId === rightId) {
+        return true;
+    }
+    const leftLogin = String(left.login || "").toLowerCase();
+    const rightLogin = String(right.login || "").toLowerCase();
+    return Boolean(leftLogin && rightLogin && leftLogin === rightLogin);
+}
+function shareOwnerFromUser(user) {
+    return {
+        id: String(user.id || ""),
+        login: String(user.login || ""),
+        avatarUrl: user.avatarUrl || "",
+        profileUrl: user.profileUrl || "",
+    };
+}
+function readGithubAuthConfig() {
+    const ownerId = sanitizeText(process.env.SNAPSHOT_GITHUB_OWNER_ID || process.env.SNAPSHOT_GITHUB_SITE_OWNER_ID, 80);
+    const ownerLogin = sanitizeText(process.env.SNAPSHOT_GITHUB_OWNER_LOGIN ||
+        process.env.SNAPSHOT_GITHUB_OWNER ||
+        process.env.SNAPSHOT_GITHUB_SITE_OWNER ||
+        "", 80).toLowerCase();
+    const clientId = sanitizeText(process.env.SNAPSHOT_GITHUB_CLIENT_ID || process.env.GITHUB_CLIENT_ID, 200);
+    const clientSecret = String(process.env.SNAPSHOT_GITHUB_CLIENT_SECRET || process.env.GITHUB_CLIENT_SECRET || "");
+    const sessionSecret = String(process.env.SNAPSHOT_SESSION_SECRET || process.env.SNAPSHOT_AUTH_SECRET || "");
+    return {
+        clientId,
+        clientSecret,
+        sessionSecret,
+        ownerId,
+        ownerLogin,
+        ownerLabel: ownerLogin || ownerId,
+        enabled: Boolean(clientId && clientSecret && sessionSecret),
+    };
+}
+function githubLoginStartUrl(request, rawReturnTo) {
+    const url = new URL("/api/auth/github/start", requestOrigin(request));
+    const returnTo = sanitizeReturnTo(rawReturnTo, request);
+    if (returnTo) {
+        url.searchParams.set("returnTo", returnTo);
+    }
+    return url.toString();
+}
+function redirectToGithubLogin(request, response, rawReturnTo) {
+    if (!githubAuth.enabled) {
+        sendJson(response, 501, { error: "GitHub OAuth is not configured on this share API" });
+        return;
+    }
+    const redirectUri = githubCallbackUrl(request);
+    const state = signAuthPayload({
+        createdAt: Date.now(),
+        nonce: randomBytes(18).toString("base64url"),
+        returnTo: sanitizeReturnTo(rawReturnTo, request),
+    }, githubAuth.sessionSecret);
+    const githubUrl = new URL("https://github.com/login/oauth/authorize");
+    githubUrl.searchParams.set("client_id", githubAuth.clientId);
+    githubUrl.searchParams.set("redirect_uri", redirectUri);
+    githubUrl.searchParams.set("scope", "read:user");
+    githubUrl.searchParams.set("state", state);
+    response.writeHead(302, {
+        location: githubUrl.toString(),
+        "cache-control": "no-store",
+    });
+    response.end();
+}
+async function handleGithubCallback(request, response, url) {
+    if (!githubAuth.enabled) {
+        sendJson(response, 501, { error: "GitHub OAuth is not configured on this share API" });
+        return;
+    }
+    const code = sanitizeText(url.searchParams.get("code"), 400);
+    const state = sanitizeText(url.searchParams.get("state"), 8000);
+    const statePayload = verifyAuthPayload(state, githubAuth.sessionSecret);
+    if (!code || !statePayload || Date.now() - Number(statePayload.createdAt || 0) > 10 * 60 * 1000) {
+        sendJson(response, 400, { error: "Invalid or expired GitHub login state" });
+        return;
+    }
+    const accessToken = await exchangeGithubCodeForToken(code, githubCallbackUrl(request));
+    const githubUser = await fetchGithubUser(accessToken);
+    const sessionUser = sessionUserFromGithubUser(githubUser);
+    const cookieValue = signAuthPayload({
+        expiresAt: Date.now() + sessionMaxAgeSeconds() * 1000,
+        user: sessionUser,
+    }, githubAuth.sessionSecret);
+    setSessionCookie(request, response, cookieValue);
+    response.writeHead(302, {
+        location: sanitizeReturnTo(statePayload.returnTo, request),
+        "cache-control": "no-store",
+    });
+    response.end();
+}
+async function exchangeGithubCodeForToken(code, redirectUri) {
+    const response = await fetch("https://github.com/login/oauth/access_token", {
+        method: "POST",
+        headers: {
+            accept: "application/json",
+            "content-type": "application/json",
+            "user-agent": "codex-snapshots-share-api",
+        },
+        body: JSON.stringify({
+            client_id: githubAuth.clientId,
+            client_secret: githubAuth.clientSecret,
+            code,
+            redirect_uri: redirectUri,
+        }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload.access_token) {
+        const message = payload.error_description || payload.error || `GitHub token exchange failed with HTTP ${response.status}`;
+        const error = new Error(message);
+        error.statusCode = 502;
+        throw error;
+    }
+    return payload.access_token;
+}
+async function fetchGithubUser(accessToken) {
+    const response = await fetch("https://api.github.com/user", {
+        headers: {
+            accept: "application/vnd.github+json",
+            authorization: `Bearer ${accessToken}`,
+            "user-agent": "codex-snapshots-share-api",
+            "x-github-api-version": "2022-11-28",
+        },
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload.id || !payload.login) {
+        const error = new Error(payload.message || `GitHub user lookup failed with HTTP ${response.status}`);
+        error.statusCode = 502;
+        throw error;
+    }
+    return payload;
+}
+function sessionUserFromGithubUser(user) {
+    const id = String(user.id || "");
+    const login = sanitizeText(user.login, 80);
+    const sessionUser = {
+        id,
+        login,
+        name: sanitizeText(user.name, 120),
+        avatarUrl: sanitizeUrl(user.avatar_url),
+        profileUrl: sanitizeUrl(user.html_url) || `https://github.com/${encodeURIComponent(login)}`,
+    };
+    sessionUser.isOwner = isSiteOwner(sessionUser);
+    return sessionUser;
+}
+function isSiteOwner(user) {
+    if (!user) {
+        return false;
+    }
+    if (githubAuth.ownerId && String(user.id || "") === githubAuth.ownerId) {
+        return true;
+    }
+    return Boolean(githubAuth.ownerLogin && String(user.login || "").toLowerCase() === githubAuth.ownerLogin);
+}
+function readSessionUser(request) {
+    if (!githubAuth.enabled) {
+        return null;
+    }
+    const cookie = readCookies(request)[authCookieName];
+    const payload = verifyAuthPayload(cookie, githubAuth.sessionSecret);
+    if (!payload || Number(payload.expiresAt || 0) <= Date.now()) {
+        return null;
+    }
+    const rawUser = payload.user || {};
+    const user = {
+        id: sanitizeText(rawUser.id, 80),
+        login: sanitizeText(rawUser.login, 80),
+        name: sanitizeText(rawUser.name, 120),
+        avatarUrl: sanitizeUrl(rawUser.avatarUrl),
+        profileUrl: sanitizeUrl(rawUser.profileUrl),
+    };
+    if (!user.id || !user.login) {
+        return null;
+    }
+    user.isOwner = isSiteOwner(user);
+    return user;
+}
+function signAuthPayload(payload, secret) {
+    const body = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
+    return `${body}.${signValue(body, secret)}`;
+}
+function verifyAuthPayload(value, secret) {
+    const text = String(value || "");
+    const dot = text.lastIndexOf(".");
+    if (dot <= 0) {
+        return null;
+    }
+    const body = text.slice(0, dot);
+    const signature = text.slice(dot + 1);
+    if (!constantTimeEqual(signature, signValue(body, secret))) {
+        return null;
+    }
+    try {
+        return JSON.parse(Buffer.from(body, "base64url").toString("utf8"));
+    }
+    catch {
+        return null;
+    }
+}
+function signValue(value, secret) {
+    return createHmac("sha256", secret).update(value).digest("base64url");
+}
+function constantTimeEqual(left, right) {
+    const leftBuffer = Buffer.from(String(left || ""));
+    const rightBuffer = Buffer.from(String(right || ""));
+    return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
+}
+function readCookies(request) {
+    const cookies = {};
+    const header = String(request.headers.cookie || "");
+    for (const part of header.split(";")) {
+        const [rawName, ...rawValue] = part.trim().split("=");
+        const name = rawName ? safeDecodeURIComponent(rawName) : "";
+        if (!name) {
+            continue;
+        }
+        cookies[name] = safeDecodeURIComponent(rawValue.join("=") || "");
+    }
+    return cookies;
+}
+function safeDecodeURIComponent(value) {
+    try {
+        return decodeURIComponent(value);
+    }
+    catch {
+        return "";
+    }
+}
+function setSessionCookie(request, response, value) {
+    response.setHeader("set-cookie", serializeCookie(authCookieName, value, {
+        httpOnly: true,
+        maxAge: sessionMaxAgeSeconds(),
+        path: "/",
+        sameSite: authCookieSameSite(request),
+        secure: authCookieSecure(request),
+    }));
+}
+function clearSessionCookie(request, response) {
+    response.setHeader("set-cookie", serializeCookie(authCookieName, "", {
+        httpOnly: true,
+        maxAge: 0,
+        path: "/",
+        sameSite: authCookieSameSite(request),
+        secure: authCookieSecure(request),
+    }));
+}
+function serializeCookie(name, value, options) {
+    const parts = [`${encodeURIComponent(name)}=${encodeURIComponent(value)}`, `Path=${options.path || "/"}`];
+    if (options.maxAge !== undefined) {
+        parts.push(`Max-Age=${Math.max(0, Math.floor(options.maxAge))}`);
+    }
+    if (options.httpOnly) {
+        parts.push("HttpOnly");
+    }
+    if (options.secure) {
+        parts.push("Secure");
+    }
+    if (options.sameSite) {
+        parts.push(`SameSite=${options.sameSite}`);
+    }
+    return parts.join("; ");
+}
+function sessionMaxAgeSeconds() {
+    const value = Number(process.env.SNAPSHOT_AUTH_SESSION_DAYS || 30);
+    const days = Number.isFinite(value) && value > 0 ? Math.min(value, 365) : 30;
+    return days * 24 * 60 * 60;
+}
+function authCookieSecure(request) {
+    if (process.env.SNAPSHOT_AUTH_COOKIE_SECURE === "false") {
+        return false;
+    }
+    if (process.env.SNAPSHOT_AUTH_COOKIE_SECURE === "true") {
+        return true;
+    }
+    return requestOrigin(request).startsWith("https://");
+}
+function authCookieSameSite(request) {
+    const value = sanitizeText(process.env.SNAPSHOT_AUTH_COOKIE_SAMESITE, 16).toLowerCase();
+    if (value === "lax" || value === "strict" || value === "none") {
+        return value[0].toUpperCase() + value.slice(1);
+    }
+    return authCookieSecure(request) ? "None" : "Lax";
+}
+function githubCallbackUrl(request) {
+    return `${requestOrigin(request)}/api/auth/github/callback`;
+}
+function requestOrigin(request) {
+    const publicApiUrl = sanitizeUrl(process.env.SNAPSHOT_SHARE_PUBLIC_API_URL);
+    if (publicApiUrl) {
+        return publicApiUrl;
+    }
+    const forwardedProto = String(request.headers["x-forwarded-proto"] || "").split(",")[0].trim();
+    const forwardedHost = String(request.headers["x-forwarded-host"] || "").split(",")[0].trim();
+    const protocol = forwardedProto || (request.socket?.encrypted ? "https" : "http");
+    const requestHost = forwardedHost || request.headers.host || `${host}:${port}`;
+    return `${protocol}://${requestHost}`;
+}
+function sanitizeReturnTo(value, request) {
+    const fallback = sanitizeUrl(process.env.SNAPSHOT_SHARE_SITE_URL) || requestOrigin(request);
+    try {
+        const url = new URL(String(value || fallback));
+        if (isAllowedWebOrigin(url.origin)) {
+            return url.toString();
+        }
+    }
+    catch { }
+    return fallback;
+}
+function requireAllowedMutationOrigin(request) {
+    const origin = sanitizeOrigin(request.headers.origin);
+    if (!origin || isAllowedWebOrigin(origin)) {
+        return;
+    }
+    const error = new Error("Origin is not allowed");
+    error.statusCode = 403;
     throw error;
 }
 function readBearerToken(request) {
@@ -605,11 +988,68 @@ function sanitizeUrl(value) {
         return "";
     }
 }
-function setCorsHeaders(response) {
-    response.setHeader("access-control-allow-origin", "*");
+function setCorsHeaders(request, response) {
+    const origin = sanitizeOrigin(request.headers.origin);
+    if (origin && isAllowedWebOrigin(origin)) {
+        response.setHeader("access-control-allow-origin", origin);
+        response.setHeader("access-control-allow-credentials", "true");
+        response.setHeader("vary", "origin");
+    }
+    else {
+        response.setHeader("access-control-allow-origin", "*");
+    }
     response.setHeader("access-control-allow-methods", "GET,POST,DELETE,OPTIONS");
     response.setHeader("access-control-allow-headers", "authorization,content-type");
     response.setHeader("access-control-max-age", "86400");
+}
+function isAllowedWebOrigin(origin) {
+    const normalized = sanitizeOrigin(origin);
+    if (!normalized) {
+        return false;
+    }
+    if (isLocalOrigin(normalized)) {
+        return true;
+    }
+    const allowed = new Set([
+        sanitizeUrl(process.env.SNAPSHOT_SHARE_SITE_URL),
+        sanitizeUrl(process.env.SNAPSHOT_SHARE_PUBLIC_API_URL),
+        requestlessLocalApiOrigin(),
+        ...String(process.env.SNAPSHOT_AUTH_ALLOWED_ORIGINS || process.env.SNAPSHOT_SHARE_ALLOWED_ORIGINS || "")
+            .split(",")
+            .map((value) => sanitizeUrl(value)),
+    ]
+        .filter(Boolean)
+        .map((value) => new URL(value).origin));
+    return allowed.has(normalized);
+}
+function isLocalOrigin(origin) {
+    try {
+        const url = new URL(origin);
+        return (url.protocol === "http:" || url.protocol === "https:") && ["127.0.0.1", "localhost", "::1", "[::1]"].includes(url.hostname);
+    }
+    catch {
+        return false;
+    }
+}
+function sanitizeOrigin(value) {
+    const text = sanitizeText(Array.isArray(value) ? value[0] : value, 400);
+    if (!text) {
+        return "";
+    }
+    try {
+        const url = new URL(text);
+        return url.protocol === "http:" || url.protocol === "https:" ? url.origin : "";
+    }
+    catch {
+        return "";
+    }
+}
+function requestlessLocalApiOrigin() {
+    return `http://${host}:${port}`;
+}
+function sanitizeCookieName(value) {
+    const text = sanitizeText(value, 80);
+    return /^[A-Za-z0-9._-]+$/.test(text) ? text : "";
 }
 function sendJson(response, status, data) {
     send(response, status, "application/json; charset=utf-8", `${JSON.stringify(data, null, 2)}\n`);
@@ -683,14 +1123,22 @@ Usage:
   node server/share-api.mjs [--host 127.0.0.1] [--port 8787] [--data-file FILE] [--token TOKEN]
 
 Environment:
-  SNAPSHOT_SHARE_TOKEN       Bearer token required for publish/delete
-  SNAPSHOT_SHARE_DATA_FILE   JSON storage file. Defaults to .codex-snapshots/shares.json
-  SNAPSHOT_SHARE_SITE_URL    Base URL used in returned share links
-  SNAPSHOT_SHARE_PUBLIC_API_URL
-                             Public API base used in returned share links
-  SNAPSHOT_SHARE_VIEWER_PATH Share page path. Defaults to /snapshots/share/ for same-origin links,
-                             or /share/ when API and site origins differ
-  SNAPSHOT_SHARE_ALLOW_UNREDACTED=true
-  SNAPSHOT_SHARE_ALLOW_ANONYMOUS=false
-`);
+	  SNAPSHOT_SHARE_TOKEN       Bearer token required for publish/delete
+	                             when GitHub OAuth is not configured
+	  SNAPSHOT_SHARE_DATA_FILE   JSON storage file. Defaults to .codex-snapshots/shares.json
+	  SNAPSHOT_SHARE_SITE_URL    Base URL used in returned share links
+	  SNAPSHOT_SHARE_PUBLIC_API_URL
+	                             Public API base used in returned share links
+	  SNAPSHOT_SHARE_VIEWER_PATH Share page path. Defaults to /snapshots/share/ for same-origin links,
+	                             or /share/ when API and site origins differ
+	  SNAPSHOT_GITHUB_CLIENT_ID
+	  SNAPSHOT_GITHUB_CLIENT_SECRET
+	  SNAPSHOT_SESSION_SECRET    Enables GitHub login for publish/delete
+	  SNAPSHOT_GITHUB_OWNER_LOGIN
+	  SNAPSHOT_GITHUB_OWNER_ID   Site owner; can delete any shared session
+	  SNAPSHOT_AUTH_ALLOWED_ORIGINS
+	                             Extra comma-separated browser origins allowed to use login cookies
+	  SNAPSHOT_SHARE_ALLOW_UNREDACTED=true
+	  SNAPSHOT_SHARE_ALLOW_ANONYMOUS=false
+	`);
 }

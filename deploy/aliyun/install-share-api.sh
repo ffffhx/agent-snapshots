@@ -23,11 +23,25 @@ CERT_DIR="/etc/letsencrypt/live/${DOMAIN}"
 SITE_URL="${SNAPSHOT_SHARE_SITE_URL:-https://ffffhx.github.io/codex-snapshots/}"
 API_URL="${SNAPSHOT_SHARE_PUBLIC_API_URL:-https://${DOMAIN}}"
 TOKEN="${SNAPSHOT_SHARE_TOKEN:-}"
+GITHUB_CLIENT_ID="${SNAPSHOT_GITHUB_CLIENT_ID:-}"
+GITHUB_CLIENT_SECRET="${SNAPSHOT_GITHUB_CLIENT_SECRET:-}"
+GITHUB_OWNER_LOGIN="${SNAPSHOT_GITHUB_OWNER_LOGIN:-${SNAPSHOT_GITHUB_OWNER:-}}"
+GITHUB_OWNER_ID="${SNAPSHOT_GITHUB_OWNER_ID:-}"
+SESSION_SECRET="${SNAPSHOT_SESSION_SECRET:-}"
+AUTH_ALLOWED_ORIGINS="${SNAPSHOT_AUTH_ALLOWED_ORIGINS:-${SITE_URL%/}}"
 SHARE_HOST="${HOST:-127.0.0.1}"
 SHARE_PORT="${PORT:-${SNAPSHOT_SHARE_PORT:-8787}}"
 PROXY_MODE="${SNAPSHOT_SHARE_PROXY_MODE:-auto}"
 PUBLIC_PATH="${SNAPSHOT_SHARE_PUBLIC_PATH:-${SNAPSHOT_SHARE_PROXY_PATH:-}}"
 CADDY_FILE="${SNAPSHOT_SHARE_CADDY_FILE:-/etc/caddy/Caddyfile}"
+GITHUB_AUTH_ENABLED=0
+if [[ -n "${GITHUB_CLIENT_ID}${GITHUB_CLIENT_SECRET}${GITHUB_OWNER_LOGIN}${GITHUB_OWNER_ID}" ]]; then
+  GITHUB_AUTH_ENABLED=1
+fi
+
+if [[ "${GITHUB_AUTH_ENABLED}" -eq 1 && "${TOKEN}" == "change-me" ]]; then
+  TOKEN=""
+fi
 
 if [[ -z "${PUBLIC_PATH}" ]]; then
   PUBLIC_PATH="$(node -e 'const url = new URL(process.argv[1]); process.stdout.write(url.pathname === "/" ? "" : url.pathname.replace(/\/+$/, ""));' "${API_URL}")"
@@ -37,15 +51,32 @@ if [[ -n "${PUBLIC_PATH}" && "${PUBLIC_PATH}" != /* ]]; then
   PUBLIC_PATH="/${PUBLIC_PATH}"
 fi
 
-if [[ -z "${TOKEN}" ]]; then
+if [[ -z "${TOKEN}" && "${GITHUB_AUTH_ENABLED}" -ne 1 ]]; then
   TOKEN="$(openssl rand -base64 32)"
   echo "Generated SNAPSHOT_SHARE_TOKEN. Save it for your local publisher:"
   echo "${TOKEN}"
+elif [[ -z "${TOKEN}" ]]; then
+  echo "No SNAPSHOT_SHARE_TOKEN supplied; GitHub OAuth will authenticate publish/delete."
 fi
 
-if [[ "${TOKEN}" == *$'\n'* || "${TOKEN}" == *$'\r'* ]]; then
+if [[ -n "${TOKEN}" && ( "${TOKEN}" == *$'\n'* || "${TOKEN}" == *$'\r'* ) ]]; then
   echo "SNAPSHOT_SHARE_TOKEN must be a single-line value." >&2
   exit 1
+fi
+
+if [[ "${GITHUB_AUTH_ENABLED}" -eq 1 ]]; then
+  if [[ -z "${GITHUB_CLIENT_ID}" || -z "${GITHUB_CLIENT_SECRET}" ]]; then
+    echo "GitHub OAuth needs SNAPSHOT_GITHUB_CLIENT_ID and SNAPSHOT_GITHUB_CLIENT_SECRET." >&2
+    exit 1
+  fi
+  if [[ -z "${GITHUB_OWNER_LOGIN}${GITHUB_OWNER_ID}" ]]; then
+    echo "GitHub OAuth needs SNAPSHOT_GITHUB_OWNER_LOGIN or SNAPSHOT_GITHUB_OWNER_ID so the site owner can delete any share." >&2
+    exit 1
+  fi
+  if [[ -z "${SESSION_SECRET}" ]]; then
+    SESSION_SECRET="$(openssl rand -base64 48)"
+    echo "Generated SNAPSHOT_SESSION_SECRET for GitHub login cookies."
+  fi
 fi
 
 if ! command -v pnpm >/dev/null 2>&1; then
@@ -104,6 +135,14 @@ rm -rf "${APP_DIR}/backups"
   printf 'SNAPSHOT_SHARE_VIEWER_PATH=%s\n' "$(systemd_env_value "/share/")"
   printf 'SNAPSHOT_SHARE_DATA_FILE=%s\n' "$(systemd_env_value "${STATE_DIR}/shares.json")"
   printf 'SNAPSHOT_SHARE_ALLOW_ANONYMOUS=%s\n' "$(systemd_env_value "false")"
+  if [[ -n "${GITHUB_CLIENT_ID}${GITHUB_CLIENT_SECRET}" ]]; then
+    printf 'SNAPSHOT_GITHUB_CLIENT_ID=%s\n' "$(systemd_env_value "${GITHUB_CLIENT_ID}")"
+    printf 'SNAPSHOT_GITHUB_CLIENT_SECRET=%s\n' "$(systemd_env_value "${GITHUB_CLIENT_SECRET}")"
+    printf 'SNAPSHOT_SESSION_SECRET=%s\n' "$(systemd_env_value "${SESSION_SECRET}")"
+    printf 'SNAPSHOT_GITHUB_OWNER_LOGIN=%s\n' "$(systemd_env_value "${GITHUB_OWNER_LOGIN}")"
+    printf 'SNAPSHOT_GITHUB_OWNER_ID=%s\n' "$(systemd_env_value "${GITHUB_OWNER_ID}")"
+    printf 'SNAPSHOT_AUTH_ALLOWED_ORIGINS=%s\n' "$(systemd_env_value "${AUTH_ALLOWED_ORIGINS}")"
+  fi
 } > "${ENV_DIR}/share-api.env"
 chmod 0600 "${ENV_DIR}/share-api.env"
 chown root:root "${ENV_DIR}/share-api.env"

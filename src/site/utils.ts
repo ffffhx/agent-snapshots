@@ -63,6 +63,22 @@ export function safeLocalStorageSet(key: string, value: string): void {
   }
 }
 
+export function safeSessionStorageGet(key: string): string {
+  try {
+    return sessionStorage.getItem(key) || "";
+  } catch {
+    return "";
+  }
+}
+
+export function safeSessionStorageSet(key: string, value: string): void {
+  try {
+    sessionStorage.setItem(key, value);
+  } catch {
+    // Session storage can be disabled; authenticated one-off actions still work through React state.
+  }
+}
+
 export function timeoutSignal(ms: number): AbortSignal | undefined {
   return typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(ms) : undefined;
 }

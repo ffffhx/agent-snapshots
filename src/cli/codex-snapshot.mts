@@ -1,13 +1,15 @@
 #!/usr/bin/env node
 // @ts-nocheck
 
-import { readFileSync } from "node:fs";
+import { execFile } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
-import { appendFile, mkdir, readFile, unlink, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, rm, unlink, writeFile } from "node:fs/promises";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import {
   sanitizeSnapshotHtml as sanitizeSnapshotTurnHtml,
   stripAppDirectives as stripCodexAppDirectives,
@@ -18,14 +20,18 @@ import { serveLocalViewer } from "../server/local-viewer.mjs";
 import { listSessions, loadSnapshot } from "../sources/index.mjs";
 
 const packageRoot = findPackageRoot(path.dirname(fileURLToPath(import.meta.url)));
+const cliPath = fileURLToPath(import.meta.url);
 const VERSION = readPackageVersion(packageRoot);
 const DEFAULT_LIMIT = 40;
 const DEFAULT_SERVER_LIMIT = 80;
 const DEFAULT_TRAE_RECORDER_PORT = 4732;
+const DEFAULT_VIEWER_PORT = 4321;
 const MAX_TRAE_CAPTURE_POST_BYTES = 64 * 1024 * 1024;
 const DEFAULT_SNAPSHOT_SHARE_API_URL = "http://127.0.0.1:8787";
 const DEFAULT_SNAPSHOT_SHARE_SITE_URL = "http://127.0.0.1:8787";
+const DEFAULT_DAEMON_LABEL = "com.codex-snapshots.viewer";
 const SNAPSHOT_LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Codex Snapshots"><rect width="64" height="64" rx="14" fill="#17202a"/><path d="M19 16h26a3 3 0 0 1 3 3v26a3 3 0 0 1-3 3H19a3 3 0 0 1-3-3V19a3 3 0 0 1 3-3Z" fill="none" stroke="#eef9f6" stroke-width="4"/><path d="M23 22h11M22 23v11M41 42H30M42 41V30" fill="none" stroke="#7dd3c7" stroke-width="4" stroke-linecap="round"/><circle cx="32" cy="32" r="9" fill="#f2cc60"/><path d="M27 32h10M32 27v10" stroke="#17202a" stroke-width="3" stroke-linecap="round"/></svg>`;
+const execFileAsync = promisify(execFile);
 let defaultShareConfigCache;
 
 function findPackageRoot(startDir) {
@@ -62,7 +68,11 @@ main().catch((error) => {
 
 async function main() {
   const parsed = parseArgs(process.argv.slice(2));
-  if (parsed.help || parsed.command === "help" || !parsed.command) {
+  if (parsed.command === "daemon" && parsed.options.help) {
+    printDaemonHelp();
+    return;
+  }
+  if (parsed.options.help || parsed.command === "help" || !parsed.command) {
     printHelp();
     return;
   }
@@ -174,8 +184,13 @@ async function main() {
     return;
   }
 
+  if (parsed.command === "daemon") {
+    await runDaemonCommand(parsed.positionals[0] || "status", parsed.options);
+    return;
+  }
+
   if (parsed.command === "serve") {
-    const port = parsed.options.port || 4321;
+    const port = parsed.options.port || DEFAULT_VIEWER_PORT;
     const host = parsed.options.host || "127.0.0.1";
     await serve({ codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir, host, port });
     return;
@@ -207,6 +222,7 @@ function parseArgs(args) {
     includeToolOutput: false,
     includeTools: false,
     json: false,
+    label: "",
     limit: 0,
     md: false,
     noRedact: false,
@@ -279,7 +295,7 @@ function parseArgs(args) {
       options.includeArchived = false;
       continue;
     }
-    if (arg === "--codex-home" || arg === "--claude-home" || arg === "--trae-home" || arg === "--trae-app-home" || arg === "--trae-recordings-dir" || arg === "--cwd" || arg === "--limit" || arg === "--output" || arg === "-o" || arg === "--port" || arg === "--host" || arg === "--source" || arg === "--api-url" || arg === "--site-url" || arg === "--share-token" || arg === "--expires-in-days") {
+    if (arg === "--codex-home" || arg === "--claude-home" || arg === "--trae-home" || arg === "--trae-app-home" || arg === "--trae-recordings-dir" || arg === "--cwd" || arg === "--limit" || arg === "--output" || arg === "-o" || arg === "--port" || arg === "--host" || arg === "--source" || arg === "--api-url" || arg === "--site-url" || arg === "--share-token" || arg === "--expires-in-days" || arg === "--label") {
       const value = args[index + 1];
       if (!value) {
         throw new Error(`${arg} requires a value`);
@@ -298,6 +314,8 @@ function parseArgs(args) {
         options.cwd = value;
       } else if (arg === "--limit") {
         options.limit = readPositiveInteger(value, "--limit");
+      } else if (arg === "--label") {
+        options.label = value;
       } else if (arg === "--output" || arg === "-o") {
         options.output = value;
       } else if (arg === "--port") {
@@ -350,14 +368,242 @@ function readNonNegativeInteger(value, label) {
   return parsed;
 }
 
-async function publishSnapshot(snapshot, { apiUrl, token, siteUrl, expiresInDays, shareId }) {
-  const normalizedApiUrl = resolveShareApiUrl(apiUrl);
-  const shareToken = resolveShareToken(token);
-  const normalizedSiteUrl = resolveShareSiteUrl(siteUrl);
-
-  if (!normalizedApiUrl) {
-    throw new Error("Missing share API URL. Set SNAPSHOT_SHARE_API_URL or pass --api-url.");
+async function runDaemonCommand(action, options) {
+  if (action === "help" || options.help) {
+    printDaemonHelp();
+    return;
   }
+  if (action === "install") {
+    await installDaemon(options);
+    return;
+  }
+  if (action === "uninstall") {
+    await uninstallDaemon(options);
+    return;
+  }
+  if (action === "status") {
+    await printDaemonStatus(options);
+    return;
+  }
+  if (action === "logs") {
+    await printDaemonLogs(options);
+    return;
+  }
+  throw new Error(`unknown daemon command: ${action}`);
+}
+
+async function installDaemon(options) {
+  assertMacosDaemonSupported();
+  const config = resolveDaemonConfig(options);
+  await mkdir(config.launchAgentsDir, { recursive: true });
+  await mkdir(config.logsDir, { recursive: true });
+
+  await writeFile(config.plistPath, renderDaemonPlist(config), "utf8");
+  await bootoutDaemonIfLoaded(config);
+  await execLaunchctl(["bootstrap", guiDomain(), config.plistPath]);
+  await execLaunchctl(["kickstart", "-k", `${guiDomain()}/${config.label}`]);
+
+  console.log(`Installed ${config.label}`);
+  console.log(`Plist: ${config.plistPath}`);
+  console.log(`Logs: ${config.stdoutPath}`);
+  console.log(`Command: ${formatDaemonCommand(config)}`);
+  console.log(`Preview: http://${config.host}:${config.port}/`);
+}
+
+async function uninstallDaemon(options) {
+  assertMacosDaemonSupported();
+  const config = resolveDaemonConfig(options);
+  await bootoutDaemonIfLoaded(config);
+  await rm(config.plistPath, { force: true });
+  console.log(`Uninstalled ${config.label}`);
+}
+
+async function printDaemonStatus(options) {
+  assertMacosDaemonSupported();
+  const config = resolveDaemonConfig(options);
+  if (!existsSync(config.plistPath)) {
+    console.log(`Not installed: ${config.plistPath}`);
+    return;
+  }
+  try {
+    const { stdout } = await execLaunchctl(["print", `${guiDomain()}/${config.label}`]);
+    const state = stdout.match(/state = ([^\n]+)/)?.[1]?.trim() || "unknown";
+    const pid = stdout.match(/pid = (\d+)/)?.[1] || "";
+    console.log(`${config.label}: ${state}${pid ? `, pid=${pid}` : ""}`);
+    console.log(`Plist: ${config.plistPath}`);
+    console.log(`Preview: http://${config.host}:${config.port}/`);
+  } catch (error) {
+    console.log(`${config.label}: installed but not loaded`);
+    console.log(`Plist: ${config.plistPath}`);
+    if (error instanceof Error && error.message) {
+      console.log(error.message);
+    }
+  }
+}
+
+async function printDaemonLogs(options) {
+  const config = resolveDaemonConfig(options);
+  console.log(`==> ${config.stdoutPath}`);
+  console.log(await tailFile(config.stdoutPath));
+  console.log(`==> ${config.stderrPath}`);
+  console.log(await tailFile(config.stderrPath));
+}
+
+async function bootoutDaemonIfLoaded(config) {
+  try {
+    await execLaunchctl(["bootout", guiDomain(), config.plistPath]);
+  } catch {}
+  try {
+    await execLaunchctl(["bootout", `${guiDomain()}/${config.label}`]);
+  } catch {}
+}
+
+function resolveDaemonConfig(options) {
+  const homeDir = os.homedir();
+  const label = options.label || process.env.SNAPSHOT_LAUNCH_AGENT_LABEL || DEFAULT_DAEMON_LABEL;
+  const launchAgentsDir = path.join(homeDir, "Library", "LaunchAgents");
+  const logsDir = path.join(homeDir, "Library", "Logs", "codex-snapshots");
+  const nodePath = process.env.SNAPSHOT_DAEMON_NODE || process.execPath;
+  const daemonCliPath = process.env.SNAPSHOT_DAEMON_CLI || cliPath;
+  const host = options.host || process.env.SNAPSHOT_DAEMON_HOST || "127.0.0.1";
+  const port = options.port || readOptionalPositiveInteger(process.env.SNAPSHOT_DAEMON_PORT, "SNAPSHOT_DAEMON_PORT") || DEFAULT_VIEWER_PORT;
+  const apiUrl = options.apiUrl || process.env.SNAPSHOT_SHARE_API_URL || DEFAULT_SNAPSHOT_SHARE_API_URL;
+  const siteUrl = options.siteUrl || process.env.SNAPSHOT_SHARE_SITE_URL || DEFAULT_SNAPSHOT_SHARE_SITE_URL;
+  const stdoutPath = path.join(logsDir, "codex-snapshot.out.log");
+  const stderrPath = path.join(logsDir, "codex-snapshot.err.log");
+  const pathEntries = [
+    path.dirname(nodePath),
+    path.join(packageRoot, "node_modules", ".bin"),
+    "/opt/homebrew/bin",
+    "/usr/local/bin",
+    "/usr/bin",
+    "/bin",
+    "/usr/sbin",
+    "/sbin",
+  ];
+
+  return {
+    apiUrl,
+    cliPath: daemonCliPath,
+    envPath: process.env.SNAPSHOT_DAEMON_PATH || Array.from(new Set(pathEntries.filter(Boolean))).join(":"),
+    host,
+    label,
+    launchAgentsDir,
+    logsDir,
+    nodePath,
+    plistPath: path.join(launchAgentsDir, `${label}.plist`),
+    port,
+    siteUrl,
+    stderrPath,
+    stdoutPath,
+    viewerAllowedOrigins: process.env.SNAPSHOT_VIEWER_ALLOWED_ORIGINS || "http://127.0.0.1:3000,http://localhost:3000",
+  };
+}
+
+function renderDaemonPlist(config) {
+  const env = {
+    PATH: config.envPath,
+    SNAPSHOT_SHARE_API_URL: config.apiUrl,
+    SNAPSHOT_SHARE_SITE_URL: config.siteUrl,
+    SNAPSHOT_VIEWER_ALLOWED_ORIGINS: config.viewerAllowedOrigins,
+  };
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>${xmlEscape(config.label)}</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>${xmlEscape(config.nodePath)}</string>
+    <string>${xmlEscape(config.cliPath)}</string>
+    <string>serve</string>
+    <string>--host</string>
+    <string>${xmlEscape(config.host)}</string>
+    <string>--port</string>
+    <string>${xmlEscape(config.port)}</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>${xmlEscape(packageRoot)}</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+${Object.entries(env)
+  .map(([key, value]) => `    <key>${xmlEscape(key)}</key>\n    <string>${xmlEscape(value)}</string>`)
+  .join("\n")}
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>StandardOutPath</key>
+  <string>${xmlEscape(config.stdoutPath)}</string>
+  <key>StandardErrorPath</key>
+  <string>${xmlEscape(config.stderrPath)}</string>
+</dict>
+</plist>
+`;
+}
+
+function assertMacosDaemonSupported() {
+  if (process.platform !== "darwin") {
+    throw new Error("macOS LaunchAgent commands are only supported on macOS.");
+  }
+}
+
+function guiDomain() {
+  const uid = process.getuid?.() ?? Number.parseInt(process.env.UID || "", 10);
+  if (!Number.isFinite(uid)) {
+    throw new Error("Cannot determine current macOS user id.");
+  }
+  return `gui/${uid}`;
+}
+
+async function execLaunchctl(args) {
+  return execFileAsync("/bin/launchctl", args, {
+    cwd: packageRoot,
+    maxBuffer: 1024 * 1024,
+  });
+}
+
+async function tailFile(filePath, lines = 80) {
+  try {
+    const text = await readFile(filePath, "utf8");
+    return text.split(/\r?\n/).slice(-lines).join("\n").trimEnd() || "(empty)";
+  } catch {
+    return "(missing)";
+  }
+}
+
+function formatDaemonCommand(config) {
+  return `${shellQuote(config.nodePath)} ${shellQuote(config.cliPath)} serve --host ${shellQuote(config.host)} --port ${shellQuote(config.port)}`;
+}
+
+function readOptionalPositiveInteger(value, label) {
+  return value ? readPositiveInteger(value, label) : 0;
+}
+
+function shellQuote(value) {
+  return `'${String(value).replace(/'/g, "'\\''")}'`;
+}
+
+function xmlEscape(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+async function publishSnapshot(snapshot, { apiUrl, token, siteUrl, expiresInDays, shareId }) {
+  const requestPayload = createShareRequestPayload(snapshot, { apiUrl, siteUrl, expiresInDays, shareId });
+  const shareToken = resolveShareToken(token);
+
   if (!shareToken) {
     throw new Error("Missing share API token. Set SNAPSHOT_SHARE_TOKEN, pass --share-token, or create ~/.codex-snapshots-agent.json.");
   }
@@ -365,23 +611,17 @@ async function publishSnapshot(snapshot, { apiUrl, token, siteUrl, expiresInDays
   let response;
 
   try {
-    response = await fetch(`${normalizedApiUrl}/api/snapshots`, {
+    response = await fetch(`${requestPayload.apiUrl}/api/snapshots`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${shareToken}`,
         "Content-Type": "application/json",
         "User-Agent": `codex-snapshot/${VERSION}`,
       },
-      body: JSON.stringify({
-        snapshot: prepareSnapshotForCloud(snapshot),
-        siteUrl: normalizedSiteUrl,
-        apiUrl: normalizedApiUrl,
-        expiresInDays: expiresInDays || undefined,
-        shareId: shareId || undefined,
-      }),
+      body: JSON.stringify(requestPayload.body),
     });
   } catch (error) {
-    throw new Error(formatShareApiNetworkError(error, normalizedApiUrl));
+    throw new Error(formatShareApiNetworkError(error, requestPayload.apiUrl));
   }
 
   const text = await response.text();
@@ -401,6 +641,26 @@ async function publishSnapshot(snapshot, { apiUrl, token, siteUrl, expiresInDays
   }
 
   return payload;
+}
+
+function createShareRequestPayload(snapshot, { apiUrl, siteUrl, expiresInDays, shareId }) {
+  const normalizedApiUrl = resolveShareApiUrl(apiUrl);
+  const normalizedSiteUrl = resolveShareSiteUrl(siteUrl);
+
+  if (!normalizedApiUrl) {
+    throw new Error("Missing share API URL. Set SNAPSHOT_SHARE_API_URL or pass --api-url.");
+  }
+
+  return {
+    apiUrl: normalizedApiUrl,
+    body: {
+      snapshot: prepareSnapshotForCloud(snapshot),
+      siteUrl: normalizedSiteUrl,
+      apiUrl: normalizedApiUrl,
+      expiresInDays: expiresInDays || undefined,
+      shareId: shareId || undefined,
+    },
+  };
 }
 
 function formatShareApiNetworkError(error, apiUrl) {
@@ -1188,6 +1448,7 @@ async function serve({ codexHome, claudeHome, traeHome, traeAppHome, traeRecordi
     snapshotApiResponse,
     publishAllSnapshots,
     publishSnapshot,
+    createShareRequestPayload,
     stableSnapshotShareId,
     renderMarkdown,
     renderHtml,
@@ -2432,6 +2693,7 @@ Usage:
   codex-snapshot export <session-id|path> [--html|--md] [--output FILE] [--include-tools] [--include-tool-output]
   codex-snapshot publish <session-id|path> [--api-url URL] [--share-token TOKEN] [--site-url URL]
   codex-snapshot serve [--host 127.0.0.1] [--port 4321]
+  codex-snapshot daemon install|status|logs|uninstall [--host 127.0.0.1] [--port 4321]
   codex-snapshot record-trae [--host 127.0.0.1] [--port 4732]
 
 Options:
@@ -2454,6 +2716,7 @@ Options:
                            Defaults to $SNAPSHOT_SHARE_SITE_URL, ~/.codex-snapshots-agent.json, or local share API
   --share-token TOKEN      For publish only: API token. Defaults to $SNAPSHOT_SHARE_TOKEN or ~/.codex-snapshots-agent.json
   --expires-in-days N      For publish only: ask the server to expire the share after N days
+  --label LABEL            For daemon only: LaunchAgent label. Defaults to ${DEFAULT_DAEMON_LABEL}
   --live-only              Ignore archived_sessions when listing
   --record-sensitive-context
                            For record-trae only: persist captured request/response headers as local recorder context
@@ -2464,7 +2727,30 @@ Examples:
   codex-snapshot export 019e457b --html -o snapshot.html
   codex-snapshot publish 019e457b --api-url http://127.0.0.1:8787 --site-url http://127.0.0.1:8787
   codex-snapshot serve --port 4321
+  codex-snapshot daemon install
   codex-snapshot record-trae --port 4732`);
+}
+
+function printDaemonHelp() {
+  console.log(`codex-snapshot daemon
+
+Usage:
+  codex-snapshot daemon install [--host 127.0.0.1] [--port 4321]
+  codex-snapshot daemon status
+  codex-snapshot daemon logs
+  codex-snapshot daemon uninstall
+
+Installs a user-level macOS LaunchAgent that starts the npm-installed
+Codex Snapshots viewer after login.
+
+Environment:
+  SNAPSHOT_DAEMON_NODE=/absolute/path/to/node
+  SNAPSHOT_DAEMON_CLI=/absolute/path/to/codex-snapshot.mjs
+  SNAPSHOT_LAUNCH_AGENT_LABEL=${DEFAULT_DAEMON_LABEL}
+  SNAPSHOT_SHARE_API_URL=${DEFAULT_SNAPSHOT_SHARE_API_URL}
+  SNAPSHOT_SHARE_SITE_URL=${DEFAULT_SNAPSHOT_SHARE_SITE_URL}
+  SNAPSHOT_VIEWER_ALLOWED_ORIGINS=http://127.0.0.1:3000,http://localhost:3000
+`);
 }
 
 export { detectRisks, redactText } from "../core/privacy.js";

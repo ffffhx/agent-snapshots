@@ -12,13 +12,12 @@ usage() {
   cat <<'EOF'
 Usage:
   SNAPSHOT_SHARE_API_URL=https://snapshots.example.com \
-  SNAPSHOT_SHARE_TOKEN=change-me \
   deploy/aliyun/configure-local-publisher.sh [--reinstall-daemon]
 
 Options:
   --api-url URL          Public share API URL. Defaults to SNAPSHOT_SHARE_API_URL or SNAPSHOT_SHARE_PUBLIC_API_URL.
   --site-url URL         Public static site URL. Defaults to SNAPSHOT_SHARE_SITE_URL or GitHub Pages.
-  --token TOKEN          Publish token. Defaults to SNAPSHOT_SHARE_TOKEN.
+  --token TOKEN          Optional publish token for legacy token auth. Defaults to SNAPSHOT_SHARE_TOKEN.
   --token-file FILE      Local publisher config file for codex-snapshot. Defaults to ~/.codex-snapshots-agent.json.
   --reinstall-daemon     Reinstall the macOS LaunchAgent with the public API/site URLs.
   --no-check             Skip the API health check.
@@ -66,11 +65,6 @@ done
 
 if [[ -z "${API_URL}" ]]; then
   echo "Missing API URL. Set SNAPSHOT_SHARE_API_URL or pass --api-url." >&2
-  exit 1
-fi
-
-if [[ -z "${TOKEN}" ]]; then
-  echo "Missing token. Set SNAPSHOT_SHARE_TOKEN or pass --token." >&2
   exit 1
 fi
 
@@ -123,10 +117,12 @@ validate_public_publisher_config() {
   if [[ "${site_host}" == "127.0.0.1" || "${site_host}" == "localhost" || "${site_host}" == "::1" ]]; then
     errors+=("Site URL must be the public website, not ${SITE_URL}.")
   fi
-  if [[ "${TOKEN}" == "change-me" ]]; then
-    errors+=("Token still uses the placeholder change-me.")
-  elif [[ "${#TOKEN}" -lt 16 ]]; then
-    errors+=("Token should be at least 16 characters.")
+  if [[ -n "${TOKEN}" ]]; then
+    if [[ "${TOKEN}" == "change-me" ]]; then
+      errors+=("Token still uses the placeholder change-me.")
+    elif [[ "${#TOKEN}" -lt 16 ]]; then
+      errors+=("Token should be at least 16 characters.")
+    fi
   fi
 
   if [[ "${#errors[@]}" -gt 0 ]]; then
@@ -146,16 +142,24 @@ const file = process.argv[1];
 const token = process.argv[2];
 const apiUrl = process.argv[3].replace(/\/+$/, "");
 const siteUrl = process.argv[4].replace(/\/+$/, "");
-writeFileSync(file, `${JSON.stringify({
-  snapshotShareToken: token,
+const payload = {
   snapshotShareApiUrl: apiUrl,
   snapshotShareSiteUrl: siteUrl,
-}, null, 2)}\n`, { mode: 0o600 });
+};
+if (token) {
+  payload.snapshotShareToken = token;
+}
+writeFileSync(file, `${JSON.stringify(payload, null, 2)}\n`, { mode: 0o600 });
 ' "${TOKEN_FILE}" "${TOKEN}" "${API_URL}" "${SITE_URL}"
 
-echo "Wrote token file: ${TOKEN_FILE}"
+echo "Wrote local publisher config: ${TOKEN_FILE}"
 echo "Public share API: ${API_URL}"
 echo "Public site: ${SITE_URL}"
+if [[ -n "${TOKEN}" ]]; then
+  echo "Legacy publish token: configured"
+else
+  echo "Legacy publish token: not configured; GitHub OAuth browser publishing can still use this API/site config."
+fi
 
 if [[ "${CHECK_API}" -eq 1 ]]; then
   curl --fail --show-error --silent --max-time 8 "${API_URL%/}/api/snapshots/health" >/dev/null
@@ -184,7 +188,10 @@ To update the macOS LaunchAgent:
     --api-url ${API_URL} \\
     --site-url ${SITE_URL} \\
     --token-file ${TOKEN_FILE} \\
-    --token <same-token> \\
     --reinstall-daemon
+
+For legacy token auth, add:
+
+  --token <same-token>
 EOF
 fi

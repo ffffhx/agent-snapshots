@@ -25,6 +25,12 @@ DOMAIN="${DOMAIN:-${ALIYUN_DOMAIN:-}}"
 SITE_URL="${SITE_URL:-${SNAPSHOT_SHARE_SITE_URL:-https://ffffhx.github.io/codex-snapshots/}}"
 API_URL="${API_URL:-${SNAPSHOT_SHARE_PUBLIC_API_URL:-}}"
 TOKEN="${TOKEN:-${SNAPSHOT_SHARE_TOKEN:-}}"
+GITHUB_CLIENT_ID="${SNAPSHOT_GITHUB_CLIENT_ID:-${GITHUB_CLIENT_ID:-}}"
+GITHUB_CLIENT_SECRET="${SNAPSHOT_GITHUB_CLIENT_SECRET:-${GITHUB_CLIENT_SECRET:-}}"
+GITHUB_OWNER_LOGIN="${SNAPSHOT_GITHUB_OWNER_LOGIN:-${SNAPSHOT_GITHUB_OWNER:-}}"
+GITHUB_OWNER_ID="${SNAPSHOT_GITHUB_OWNER_ID:-}"
+SESSION_SECRET="${SNAPSHOT_SESSION_SECRET:-}"
+AUTH_ALLOWED_ORIGINS="${SNAPSHOT_AUTH_ALLOWED_ORIGINS:-}"
 REMOTE_DIR="${REMOTE_DIR:-/tmp/codex-snapshots-deploy}"
 SSH_IDENTITY_FILE="${SSH_IDENTITY_FILE:-${ALIYUN_SSH_IDENTITY_FILE:-}}"
 SSH_PORT="${SSH_PORT:-${ALIYUN_SSH_PORT:-}}"
@@ -51,16 +57,19 @@ Usage:
   deploy/aliyun/deploy-to-ecs.sh \
     --ssh root@1.2.3.4 \
     --domain snapshots.example.com \
-    --token change-me \
+    --configure-local \
     [--issue-cert --email you@example.com]
 
 Options:
   --ssh TARGET          SSH target, for example root@1.2.3.4.
   --config FILE         Source deployment variables from a local env file.
   --domain DOMAIN      Public API domain pointing to the ECS public IP.
-  --token TOKEN        Publish token shared by ECS and local publisher. Defaults to SNAPSHOT_SHARE_TOKEN
-                       or ~/.codex-snapshots-agent.json when present.
-  --generate-token     Generate a strong publish token for this run. Use with --configure-local to persist it locally.
+  --token TOKEN        Optional legacy publish token. Defaults to SNAPSHOT_SHARE_TOKEN or
+                       ~/.codex-snapshots-agent.json when present.
+  --generate-token     Generate a strong legacy publish token for this run.
+  GitHub OAuth vars   Set SNAPSHOT_GITHUB_CLIENT_ID, SNAPSHOT_GITHUB_CLIENT_SECRET,
+                       SNAPSHOT_SESSION_SECRET, and SNAPSHOT_GITHUB_OWNER_LOGIN/ID
+                       in the config file to require GitHub login for publish/delete.
   --site-url URL       Public static site URL. Defaults to https://ffffhx.github.io/codex-snapshots/.
   --api-url URL        Public API URL. Defaults to https://<domain>.
   --remote-dir DIR     Temporary remote deployment directory. Defaults to /tmp/codex-snapshots-deploy.
@@ -79,7 +88,7 @@ Options:
   --repo OWNER/REPO    GitHub repository for --configure-pages. Defaults to ffffhx/codex-snapshots.
   --workflow FILE      GitHub Pages workflow for --configure-pages. Defaults to pages.yml.
   --wait-pages         With --configure-pages, wait for Pages and run full public verification.
-  --configure-local    Write the local publisher token/API config after deploy.
+  --configure-local    Write the local viewer API/site config after deploy.
   --reinstall-daemon   With --configure-local, reinstall the macOS LaunchAgent.
   -h, --help           Show help.
 EOF
@@ -316,7 +325,20 @@ if is_enabled "${GENERATE_TOKEN}" || is_auto_token "${TOKEN}"; then
   TOKEN_GENERATED=1
 fi
 
-if [[ -z "${TOKEN}" ]]; then
+GITHUB_AUTH_ENABLED=0
+if [[ -n "${GITHUB_CLIENT_ID}${GITHUB_CLIENT_SECRET}${GITHUB_OWNER_LOGIN}${GITHUB_OWNER_ID}" ]]; then
+  GITHUB_AUTH_ENABLED=1
+fi
+
+if [[ "${GITHUB_AUTH_ENABLED}" -eq 1 && "${TOKEN}" == "change-me" ]]; then
+  TOKEN=""
+fi
+
+if [[ "${GITHUB_AUTH_ENABLED}" -eq 1 && -z "${SESSION_SECRET}" ]]; then
+  SESSION_SECRET="$(node -e 'const { randomBytes } = require("node:crypto"); process.stdout.write(randomBytes(48).toString("base64url"));')"
+fi
+
+if [[ -z "${TOKEN}" && "${GITHUB_AUTH_ENABLED}" -ne 1 ]]; then
   echo "Missing --token, SNAPSHOT_SHARE_TOKEN, ~/.codex-snapshots-agent.json token, TOKEN=auto, or --generate-token." >&2
   usage >&2
   exit 1
@@ -354,10 +376,25 @@ validate_deploy_inputs() {
   if ! is_http_url "${SITE_URL}"; then
     errors+=("SITE_URL must start with http:// or https://.")
   fi
-  if [[ "${TOKEN}" == "change-me" ]]; then
-    errors+=("TOKEN still uses the placeholder change-me.")
-  elif [[ "${#TOKEN}" -lt 16 ]]; then
-    errors+=("TOKEN should be at least 16 characters.")
+  if [[ -n "${TOKEN}" ]]; then
+    if [[ "${TOKEN}" == "change-me" ]]; then
+      errors+=("TOKEN still uses the placeholder change-me.")
+    elif [[ "${#TOKEN}" -lt 16 ]]; then
+      errors+=("TOKEN should be at least 16 characters.")
+    fi
+  elif [[ "${GITHUB_AUTH_ENABLED}" -ne 1 ]]; then
+    errors+=("TOKEN is required unless GitHub OAuth is configured.")
+  fi
+  if [[ "${GITHUB_AUTH_ENABLED}" -eq 1 ]]; then
+    if [[ -z "${GITHUB_CLIENT_ID}" || -z "${GITHUB_CLIENT_SECRET}" ]]; then
+      errors+=("GitHub OAuth needs SNAPSHOT_GITHUB_CLIENT_ID and SNAPSHOT_GITHUB_CLIENT_SECRET.")
+    fi
+    if [[ -z "${GITHUB_OWNER_LOGIN}${GITHUB_OWNER_ID}" ]]; then
+      errors+=("GitHub OAuth needs SNAPSHOT_GITHUB_OWNER_LOGIN or SNAPSHOT_GITHUB_OWNER_ID.")
+    fi
+    if [[ "${SESSION_SECRET}" == "change-me" || "${#SESSION_SECRET}" -lt 32 ]]; then
+      errors+=("SNAPSHOT_SESSION_SECRET should be a real secret with at least 32 characters.")
+    fi
   fi
   if [[ "${ISSUE_CERT}" -eq 1 ]]; then
     if [[ "${CERTBOT_EMAIL}" == "you@example.com" || "${CERTBOT_EMAIL}" != *@* ]]; then
@@ -404,6 +441,12 @@ fi
 REMOTE_DIR_Q="$(shell_quote "${REMOTE_DIR}")"
 DOMAIN_Q="$(shell_quote "${DOMAIN}")"
 TOKEN_Q="$(shell_quote "${TOKEN}")"
+GITHUB_CLIENT_ID_Q="$(shell_quote "${GITHUB_CLIENT_ID}")"
+GITHUB_CLIENT_SECRET_Q="$(shell_quote "${GITHUB_CLIENT_SECRET}")"
+GITHUB_OWNER_LOGIN_Q="$(shell_quote "${GITHUB_OWNER_LOGIN}")"
+GITHUB_OWNER_ID_Q="$(shell_quote "${GITHUB_OWNER_ID}")"
+SESSION_SECRET_Q="$(shell_quote "${SESSION_SECRET}")"
+AUTH_ALLOWED_ORIGINS_Q="$(shell_quote "${AUTH_ALLOWED_ORIGINS}")"
 SITE_URL_Q="$(shell_quote "${SITE_URL}")"
 API_URL_Q="$(shell_quote "${API_URL}")"
 CERTBOT_EMAIL_Q="$(shell_quote "${CERTBOT_EMAIL}")"
@@ -433,7 +476,9 @@ Resolved deployment plan:
   Service port: ${SHARE_PORT}
   Proxy mode: ${PROXY_MODE}
   Public path: ${PUBLIC_PATH:-"(none)"}
-  Token: $([[ "${TOKEN_GENERATED}" -eq 1 ]] && printf "generated" || printf "set") (${#TOKEN} chars)
+  Token: $(if [[ -z "${TOKEN}" ]]; then printf "not configured (GitHub OAuth mode)"; elif [[ "${TOKEN_GENERATED}" -eq 1 ]]; then printf "generated (%s chars)" "${#TOKEN}"; else printf "set (%s chars)" "${#TOKEN}"; fi)
+  GitHub OAuth: $([[ -n "${GITHUB_CLIENT_ID}${GITHUB_CLIENT_SECRET}" ]] && printf "configured" || printf "not configured")
+  GitHub site owner: ${GITHUB_OWNER_LOGIN:-${GITHUB_OWNER_ID:-"(unset)"}}
   Install deps: ${INSTALL_DEPS}
   Preflight: ${RUN_PREFLIGHT}
   Issue cert: ${ISSUE_CERT}
@@ -511,9 +556,9 @@ cd ${REMOTE_DIR_Q}
 rm -f .env deploy/aliyun/deploy.env
 rm -rf backups
 if [ "\$(id -u)" -eq 0 ]; then
-  env DOMAIN=${DOMAIN_Q} SNAPSHOT_SHARE_TOKEN=${TOKEN_Q} SNAPSHOT_SHARE_SITE_URL=${SITE_URL_Q} SNAPSHOT_SHARE_PUBLIC_API_URL=${API_URL_Q} PORT=${SHARE_PORT_Q} SNAPSHOT_SHARE_PROXY_MODE=${PROXY_MODE_Q} SNAPSHOT_SHARE_PUBLIC_PATH=${PUBLIC_PATH_Q} deploy/aliyun/install-share-api.sh
+  env DOMAIN=${DOMAIN_Q} SNAPSHOT_SHARE_TOKEN=${TOKEN_Q} SNAPSHOT_SHARE_SITE_URL=${SITE_URL_Q} SNAPSHOT_SHARE_PUBLIC_API_URL=${API_URL_Q} SNAPSHOT_GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID_Q} SNAPSHOT_GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET_Q} SNAPSHOT_GITHUB_OWNER_LOGIN=${GITHUB_OWNER_LOGIN_Q} SNAPSHOT_GITHUB_OWNER_ID=${GITHUB_OWNER_ID_Q} SNAPSHOT_SESSION_SECRET=${SESSION_SECRET_Q} SNAPSHOT_AUTH_ALLOWED_ORIGINS=${AUTH_ALLOWED_ORIGINS_Q} PORT=${SHARE_PORT_Q} SNAPSHOT_SHARE_PROXY_MODE=${PROXY_MODE_Q} SNAPSHOT_SHARE_PUBLIC_PATH=${PUBLIC_PATH_Q} deploy/aliyun/install-share-api.sh
 else
-  sudo env DOMAIN=${DOMAIN_Q} SNAPSHOT_SHARE_TOKEN=${TOKEN_Q} SNAPSHOT_SHARE_SITE_URL=${SITE_URL_Q} SNAPSHOT_SHARE_PUBLIC_API_URL=${API_URL_Q} PORT=${SHARE_PORT_Q} SNAPSHOT_SHARE_PROXY_MODE=${PROXY_MODE_Q} SNAPSHOT_SHARE_PUBLIC_PATH=${PUBLIC_PATH_Q} deploy/aliyun/install-share-api.sh
+  sudo env DOMAIN=${DOMAIN_Q} SNAPSHOT_SHARE_TOKEN=${TOKEN_Q} SNAPSHOT_SHARE_SITE_URL=${SITE_URL_Q} SNAPSHOT_SHARE_PUBLIC_API_URL=${API_URL_Q} SNAPSHOT_GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID_Q} SNAPSHOT_GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET_Q} SNAPSHOT_GITHUB_OWNER_LOGIN=${GITHUB_OWNER_LOGIN_Q} SNAPSHOT_GITHUB_OWNER_ID=${GITHUB_OWNER_ID_Q} SNAPSHOT_SESSION_SECRET=${SESSION_SECRET_Q} SNAPSHOT_AUTH_ALLOWED_ORIGINS=${AUTH_ALLOWED_ORIGINS_Q} PORT=${SHARE_PORT_Q} SNAPSHOT_SHARE_PROXY_MODE=${PROXY_MODE_Q} SNAPSHOT_SHARE_PUBLIC_PATH=${PUBLIC_PATH_Q} deploy/aliyun/install-share-api.sh
 fi
 EOF
 )
@@ -533,9 +578,9 @@ cd ${REMOTE_DIR_Q}
 rm -f .env deploy/aliyun/deploy.env
 rm -rf backups
 if [ "\$(id -u)" -eq 0 ]; then
-  env DOMAIN=${DOMAIN_Q} SNAPSHOT_SHARE_TOKEN=${TOKEN_Q} SNAPSHOT_SHARE_SITE_URL=${SITE_URL_Q} SNAPSHOT_SHARE_PUBLIC_API_URL=${API_URL_Q} PORT=${SHARE_PORT_Q} SNAPSHOT_SHARE_PROXY_MODE=${PROXY_MODE_Q} SNAPSHOT_SHARE_PUBLIC_PATH=${PUBLIC_PATH_Q} deploy/aliyun/install-share-api.sh
+  env DOMAIN=${DOMAIN_Q} SNAPSHOT_SHARE_TOKEN=${TOKEN_Q} SNAPSHOT_SHARE_SITE_URL=${SITE_URL_Q} SNAPSHOT_SHARE_PUBLIC_API_URL=${API_URL_Q} SNAPSHOT_GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID_Q} SNAPSHOT_GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET_Q} SNAPSHOT_GITHUB_OWNER_LOGIN=${GITHUB_OWNER_LOGIN_Q} SNAPSHOT_GITHUB_OWNER_ID=${GITHUB_OWNER_ID_Q} SNAPSHOT_SESSION_SECRET=${SESSION_SECRET_Q} SNAPSHOT_AUTH_ALLOWED_ORIGINS=${AUTH_ALLOWED_ORIGINS_Q} PORT=${SHARE_PORT_Q} SNAPSHOT_SHARE_PROXY_MODE=${PROXY_MODE_Q} SNAPSHOT_SHARE_PUBLIC_PATH=${PUBLIC_PATH_Q} deploy/aliyun/install-share-api.sh
 else
-  sudo env DOMAIN=${DOMAIN_Q} SNAPSHOT_SHARE_TOKEN=${TOKEN_Q} SNAPSHOT_SHARE_SITE_URL=${SITE_URL_Q} SNAPSHOT_SHARE_PUBLIC_API_URL=${API_URL_Q} PORT=${SHARE_PORT_Q} SNAPSHOT_SHARE_PROXY_MODE=${PROXY_MODE_Q} SNAPSHOT_SHARE_PUBLIC_PATH=${PUBLIC_PATH_Q} deploy/aliyun/install-share-api.sh
+  sudo env DOMAIN=${DOMAIN_Q} SNAPSHOT_SHARE_TOKEN=${TOKEN_Q} SNAPSHOT_SHARE_SITE_URL=${SITE_URL_Q} SNAPSHOT_SHARE_PUBLIC_API_URL=${API_URL_Q} SNAPSHOT_GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID_Q} SNAPSHOT_GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET_Q} SNAPSHOT_GITHUB_OWNER_LOGIN=${GITHUB_OWNER_LOGIN_Q} SNAPSHOT_GITHUB_OWNER_ID=${GITHUB_OWNER_ID_Q} SNAPSHOT_SESSION_SECRET=${SESSION_SECRET_Q} SNAPSHOT_AUTH_ALLOWED_ORIGINS=${AUTH_ALLOWED_ORIGINS_Q} PORT=${SHARE_PORT_Q} SNAPSHOT_SHARE_PROXY_MODE=${PROXY_MODE_Q} SNAPSHOT_SHARE_PUBLIC_PATH=${PUBLIC_PATH_Q} deploy/aliyun/install-share-api.sh
 fi
 EOF
   )
@@ -543,11 +588,19 @@ EOF
 fi
 
 if [[ "${RUN_VERIFY}" -eq 1 ]]; then
-  SNAPSHOT_SHARE_TOKEN="${TOKEN}" node "${REPO_ROOT}/deploy/aliyun/verify-public-share.mjs" \
-    --api-url "${API_URL}" \
-    --site-url "${SITE_URL}" \
-    --skip-site-config \
-    --publish
+  if [[ "${GITHUB_AUTH_ENABLED}" -eq 1 ]]; then
+    node "${REPO_ROOT}/deploy/aliyun/verify-public-share.mjs" \
+      --api-url "${API_URL}" \
+      --site-url "${SITE_URL}" \
+      --skip-site-config
+    echo "Skipped token publish verification because GitHub OAuth is configured; verify browser publishing after logging in with GitHub."
+  else
+    SNAPSHOT_SHARE_TOKEN="${TOKEN}" node "${REPO_ROOT}/deploy/aliyun/verify-public-share.mjs" \
+      --api-url "${API_URL}" \
+      --site-url "${SITE_URL}" \
+      --skip-site-config \
+      --publish
+  fi
 fi
 
 if [[ "${CONFIGURE_PAGES}" -eq 1 ]]; then
@@ -562,10 +615,17 @@ if [[ "${CONFIGURE_PAGES}" -eq 1 ]]; then
   "${REPO_ROOT}/deploy/aliyun/configure-github-pages-api.sh" "${pages_args[@]}"
 
   if [[ "${WAIT_PAGES}" -eq 1 && "${RUN_VERIFY}" -eq 1 ]]; then
-    SNAPSHOT_SHARE_TOKEN="${TOKEN}" node "${REPO_ROOT}/deploy/aliyun/verify-public-share.mjs" \
-      --api-url "${API_URL}" \
-      --site-url "${SITE_URL}" \
-      --publish
+    if [[ "${GITHUB_AUTH_ENABLED}" -eq 1 ]]; then
+      node "${REPO_ROOT}/deploy/aliyun/verify-public-share.mjs" \
+        --api-url "${API_URL}" \
+        --site-url "${SITE_URL}"
+      echo "Skipped token publish verification because GitHub OAuth is configured; verify browser publishing after logging in with GitHub."
+    else
+      SNAPSHOT_SHARE_TOKEN="${TOKEN}" node "${REPO_ROOT}/deploy/aliyun/verify-public-share.mjs" \
+        --api-url "${API_URL}" \
+        --site-url "${SITE_URL}" \
+        --publish
+    fi
   fi
 fi
 
@@ -573,8 +633,10 @@ if [[ "${CONFIGURE_LOCAL}" -eq 1 ]]; then
   local_args=(
     --api-url "${API_URL}"
     --site-url "${SITE_URL}"
-    --token "${TOKEN}"
   )
+  if [[ -n "${TOKEN}" ]]; then
+    local_args+=(--token "${TOKEN}")
+  fi
   if [[ "${REINSTALL_DAEMON}" -eq 1 ]]; then
     local_args+=(--reinstall-daemon)
   fi
@@ -599,8 +661,9 @@ Next:
      or run:
      deploy/aliyun/configure-github-pages-api.sh --api-url ${API_URL} --repo ffffhx/codex-snapshots
   2. Trigger the GitHub Pages workflow and wait for it to finish.
-  3. Run the full public site verification:
-     SNAPSHOT_SHARE_TOKEN=<same-token> node deploy/aliyun/verify-public-share.mjs --api-url ${API_URL} --site-url ${SITE_URL} --publish
-  4. Configure your local publisher:
-     SNAPSHOT_SHARE_TOKEN=<same-token> SNAPSHOT_SHARE_API_URL=${API_URL} SNAPSHOT_SHARE_SITE_URL=${SITE_URL} deploy/aliyun/configure-local-publisher.sh --reinstall-daemon
+  3. Run the public site verification:
+     node deploy/aliyun/verify-public-share.mjs --api-url ${API_URL} --site-url ${SITE_URL}
+  4. Configure your local viewer's public API/site settings:
+     SNAPSHOT_SHARE_API_URL=${API_URL} SNAPSHOT_SHARE_SITE_URL=${SITE_URL} deploy/aliyun/configure-local-publisher.sh --reinstall-daemon
+  5. If GitHub OAuth is configured, publish once from the browser after logging in with GitHub.
 EOF

@@ -61,6 +61,12 @@ export type PublicShare = {
   expiresAt?: string | null;
   redacted?: boolean;
   turnCount?: number;
+  owner?: {
+    id: string;
+    login: string;
+    avatarUrl?: string;
+    profileUrl?: string;
+  } | null;
 };
 
 export type SnapshotSharePayload = {

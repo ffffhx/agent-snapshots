@@ -8,7 +8,7 @@
 
 ## 快速开始
 
-临时审阅时，不需要克隆仓库，可以直接通过 npm 启动本地查看器：
+临时审阅时，不需要克隆仓库，可以直接通过已发布的 npm 包启动本地查看器：
 
 ```bash
 npx codex-snapshots@latest serve --port 4321
@@ -16,19 +16,19 @@ npx codex-snapshots@latest serve --port 4321
 
 打开 <http://127.0.0.1:4321/>。
 
-也可以全局安装后手动启动：
+也可以全局安装 npm 包后手动启动：
 
 ```bash
 npm install -g codex-snapshots
 codex-snapshot serve --port 4321
 ```
 
-如果需要在 macOS 登录后自动保持查看器可用，可以从源码目录安装为用户级 LaunchAgent：
+如果需要在 macOS 登录后自动保持查看器可用，全局安装 npm 包后可以注册为用户级 LaunchAgent：
 
 ```bash
-pnpm install
-pnpm snapshot:install-daemon
-pnpm snapshot:daemon:status
+npm install -g codex-snapshots
+codex-snapshot daemon install
+codex-snapshot daemon status
 ```
 
 要求 Node.js 18 或更高版本。
@@ -85,7 +85,7 @@ pnpm snapshot record-trae --port 4732
 
 ## 云端分享服务
 
-启动可选的分享 API：
+启动可选的分享 API。未配置 GitHub OAuth 时，可以继续用本地/兼容模式的分享 token：
 
 ```bash
 SNAPSHOT_SHARE_TOKEN=change-me codex-snapshot-share
@@ -104,7 +104,29 @@ npx -p codex-snapshots@latest codex-snapshot-share
 SNAPSHOT_SHARE_TOKEN=change-me pnpm share:server
 ```
 
-发布已脱敏的快照：
+生产公网分享建议改用 GitHub OAuth。先在 GitHub OAuth App 中配置 callback URL：
+
+```text
+https://your-share-api.example.com/api/auth/github/callback
+```
+
+然后启动分享 API：
+
+```bash
+SNAPSHOT_GITHUB_CLIENT_ID=your-client-id \
+SNAPSHOT_GITHUB_CLIENT_SECRET=your-client-secret \
+SNAPSHOT_SESSION_SECRET="$(openssl rand -base64 48)" \
+SNAPSHOT_GITHUB_OWNER_LOGIN=your-github-login \
+SNAPSHOT_SHARE_SITE_URL=https://ffffhx.github.io/codex-snapshots/ \
+SNAPSHOT_SHARE_PUBLIC_API_URL=https://your-share-api.example.com \
+SNAPSHOT_SHARE_VIEWER_PATH=/share/ \
+SNAPSHOT_SHARE_ALLOW_ANONYMOUS=false \
+codex-snapshot-share
+```
+
+配置 GitHub OAuth 后，发布和删除都需要 GitHub 登录：发布记录会保存发布者 GitHub 账号，站长账号可以删除任何分享，其他用户只能删除自己发布的分享。旧的 `SNAPSHOT_SHARE_TOKEN` 只在未启用 GitHub OAuth 时默认生效。
+
+兼容模式下也可以从命令行发布已脱敏的快照：
 
 ```bash
 SNAPSHOT_SHARE_TOKEN=change-me \
@@ -121,14 +143,21 @@ codex-snapshot publish <session-id> \
 curl http://127.0.0.1:8787/api/snapshots
 ```
 
-官网首页会使用同一个分享 API 地址展示“公开 Session”卡片列表。
+兼容模式下删除已发布的分享快照需要同一个分享 token：
+
+```bash
+curl -X DELETE \
+  -H "Authorization: Bearer change-me" \
+  http://127.0.0.1:8787/api/snapshots/snap_...
+```
+
+官网首页会使用同一个分享 API 地址展示“公开 Session”卡片列表。启用 GitHub OAuth 后，首页会显示 GitHub 登录状态，并只给站长或分享发布者显示删除入口。
 
 如果要让发布的 Session 出现在公开官网上，需要把分享 API 部署到公网，并让 GitHub Pages 默认读取这个公网 API。`127.0.0.1` 只对本机可见，不能作为公开分享地址。
 
-公网分享服务建议配置：
+公网分享服务至少需要配置：
 
 ```bash
-SNAPSHOT_SHARE_TOKEN=change-me \
 SNAPSHOT_SHARE_SITE_URL=https://ffffhx.github.io/codex-snapshots/ \
 SNAPSHOT_SHARE_PUBLIC_API_URL=https://your-share-api.example.com \
 SNAPSHOT_SHARE_VIEWER_PATH=/share/ \
@@ -144,7 +173,6 @@ CODEX_SNAPSHOTS_PUBLIC_API_URL=https://your-share-api.example.com
 Pages 部署时会写入 `site/assets/config.js`，官网首页和 `/share/` 页面会默认读取这个公网 API。发布时本地查看器也需要指向同一个公网 API，可以写入本地发布配置：
 
 ```bash
-SNAPSHOT_SHARE_TOKEN=change-me \
 SNAPSHOT_SHARE_API_URL=https://your-share-api.example.com \
 SNAPSHOT_SHARE_SITE_URL=https://ffffhx.github.io/codex-snapshots/ \
 deploy/aliyun/configure-local-publisher.sh
@@ -156,7 +184,7 @@ deploy/aliyun/configure-local-publisher.sh
 codex-snapshot serve --port 4321
 ```
 
-本地查看器里的“发布分享”按钮会调用本机 `/api/publish`，再由本机 Node 进程带着 token 转发到 `SNAPSHOT_SHARE_API_URL` 或 `~/.codex-snapshots-agent.json` 中的公网 API。页面发布状态会显示当前目标 API，方便确认没有仍然指向 `127.0.0.1`。
+本地查看器里的“发布分享”按钮会先检查公网分享 API 的 GitHub 登录态；没有登录时会跳转到 GitHub 登录，登录后浏览器带着 session cookie 直接发布脱敏快照。页面发布状态会显示当前目标 API，方便确认没有仍然指向 `127.0.0.1`。
 公开官网如果没有配置 `CODEX_SNAPSHOTS_PUBLIC_API_URL`，会显示“公开分享 API 尚未配置”，不会回退请求访问者自己的 `127.0.0.1`。
 Pages workflow 会校验 `CODEX_SNAPSHOTS_PUBLIC_API_URL`，拒绝 localhost、示例域名、内网 IP 和非 http/https 地址。
 
@@ -164,7 +192,17 @@ Pages workflow 会校验 `CODEX_SNAPSHOTS_PUBLIC_API_URL`，拒绝 localhost、�
 
 ## macOS LaunchAgent
 
-从源码运行时，可以把本地查看器安装为用户级 LaunchAgent：
+全局安装 npm 包后，可以把本地查看器安装为用户级 LaunchAgent：
+
+```bash
+npm install -g codex-snapshots
+codex-snapshot daemon install
+codex-snapshot daemon status
+codex-snapshot daemon logs
+codex-snapshot daemon uninstall
+```
+
+从源码运行时，也可以使用对应的 pnpm 脚本：
 
 ```bash
 pnpm snapshot:install-daemon

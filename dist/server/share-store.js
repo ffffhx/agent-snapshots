@@ -101,7 +101,25 @@ function normalizeShareRecord(value) {
         expiresAt: normalizeDate(record.expiresAt) || undefined,
         redacted: record.redacted !== false,
         turnCount: Number.isFinite(Number(record.turnCount)) ? Number(record.turnCount) : 0,
+        owner: normalizeShareOwner(record.owner),
         snapshot: record.snapshot,
+    };
+}
+function normalizeShareOwner(value) {
+    if (!value || typeof value !== "object") {
+        return undefined;
+    }
+    const owner = value;
+    const id = sanitizeText(owner.id, 80);
+    const login = sanitizeText(owner.login, 80);
+    if (!id || !login) {
+        return undefined;
+    }
+    return {
+        id,
+        login,
+        avatarUrl: sanitizeText(owner.avatarUrl, 400) || undefined,
+        profileUrl: sanitizeText(owner.profileUrl, 400) || undefined,
     };
 }
 function normalizeDate(value) {

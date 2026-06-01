@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import type { PublicShare, StatusState } from "./types";
+import type { AuthUser, PublicShare, StatusState } from "./types";
 import {
   DEFAULT_VIEWER_URL,
   normalizeApiUrl,
@@ -20,11 +20,42 @@ type PublicSessionsState =
       shares: PublicShare[];
     };
 
+type AuthState =
+  | {
+      kind: "checking";
+      text: string;
+    }
+  | {
+      kind: "anonymous";
+      configured: boolean;
+      loginUrl?: string | null;
+      text: string;
+    }
+  | {
+      kind: "authenticated";
+      configured: true;
+      user: AuthUser;
+    }
+  | {
+      kind: "error";
+      text: string;
+    };
+
 const STATUS_LABELS: Record<StatusState, string> = {
   checking: "检查中",
   ready: "已连接",
   error: "未启动",
 };
+
+const TEMP_REVIEW_COMMAND = `npx codex-snapshots@latest serve --port 4321
+
+# 或者全局安装 npm 包
+npm install -g codex-snapshots
+codex-snapshot serve --port 4321`;
+
+const DAEMON_INSTALL_COMMAND = `npm install -g codex-snapshots
+codex-snapshot daemon install
+codex-snapshot daemon status`;
 
 export function HomePage() {
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
@@ -38,6 +69,12 @@ export function HomePage() {
     kind: "message",
     text: "正在加载公开 Session...",
   });
+  const [authState, setAuthState] = useState<AuthState>({
+    kind: "checking",
+    text: "正在检查 GitHub 登录...",
+  });
+  const [deletingShareId, setDeletingShareId] = useState("");
+  const [deleteStatus, setDeleteStatus] = useState("");
 
   const shareInputRef = useRef<HTMLInputElement | null>(null);
   const apiInputRef = useRef<HTMLInputElement | null>(null);
@@ -48,14 +85,17 @@ export function HomePage() {
 
   useEffect(() => {
     checkApi(apiValue, setApiStatus, setApiStatusText);
+    loadAuthState(apiValue, setAuthState);
     loadPublicSessions(apiValue, setPublicSessions);
   }, []);
 
   function commitApiUrl(value: string) {
     const nextApiUrl = normalizeApiUrl(value);
     setApiValue(nextApiUrl);
+    setDeleteStatus("");
     safeLocalStorageSet("codex-snapshots.api", nextApiUrl);
     checkApi(nextApiUrl, setApiStatus, setApiStatusText);
+    loadAuthState(nextApiUrl, setAuthState);
     loadPublicSessions(nextApiUrl, setPublicSessions);
   }
 
@@ -80,6 +120,99 @@ export function HomePage() {
     target.searchParams.set("id", id);
     target.searchParams.set("api", api);
     openInNewTab(target.toString());
+  }
+
+  async function handleDeleteShare(share: PublicShare) {
+    const api = normalizeApiUrl(apiValue);
+
+    if (!api) {
+      setDeleteStatus("分享 API 尚未配置。");
+      return;
+    }
+
+    if (authState.kind !== "authenticated") {
+      setDeleteStatus("请先登录 GitHub。");
+      return;
+    }
+
+    if (!canDeleteShare(authState.user, share)) {
+      setDeleteStatus("你只能删除自己发布的 Session。");
+      return;
+    }
+
+    const confirmed = window.confirm(`删除「${share.title || share.id}」？删除后分享链接会失效。`);
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingShareId(share.id);
+    setDeleteStatus("");
+
+    try {
+      const response = await fetch(`${api}/api/snapshots/${encodeURIComponent(share.id)}`, {
+        method: "DELETE",
+        cache: "no-store",
+        credentials: "include",
+      });
+      const payload = (await response.json().catch(() => ({}))) as { error?: string };
+
+      if (!response.ok) {
+        const message =
+          response.status === 401
+            ? "请先登录 GitHub。"
+            : response.status === 404
+              ? "分享快照不存在或已被删除。"
+              : response.status === 403
+                ? "你只能删除自己发布的 Session。"
+                : payload.error || `删除失败：HTTP ${response.status}`;
+        throw new Error(message);
+      }
+
+      setPublicSessions((state) =>
+        state.kind === "shares"
+          ? {
+              kind: "shares",
+              shares: state.shares.filter((item) => item.id !== share.id),
+            }
+          : state,
+      );
+      setDeleteStatus("已删除分享快照。");
+    } catch (error) {
+      setDeleteStatus(error instanceof Error ? error.message : String(error));
+    } finally {
+      setDeletingShareId("");
+    }
+  }
+
+  function handleGithubLogin() {
+    const api = normalizeApiUrl(apiValue);
+    if (!api) {
+      setDeleteStatus("分享 API 尚未配置。");
+      apiInputRef.current?.focus();
+      return;
+    }
+    const loginUrl =
+      authState.kind === "anonymous" && authState.loginUrl
+        ? authState.loginUrl
+        : `${api}/api/auth/github/start?returnTo=${encodeURIComponent(window.location.href)}`;
+    window.location.href = loginUrl;
+  }
+
+  async function handleGithubLogout() {
+    const api = normalizeApiUrl(apiValue);
+    if (!api) {
+      return;
+    }
+    try {
+      await fetch(`${api}/api/auth/logout`, {
+        method: "POST",
+        credentials: "include",
+        cache: "no-store",
+      });
+    } finally {
+      await loadAuthState(api, setAuthState);
+      setDeleteStatus("");
+    }
   }
 
   return (
@@ -182,13 +315,36 @@ export function HomePage() {
             <p className="eyebrow">公开 Session</p>
             <h2 id="public-sessions-title">最近发布的分享快照</h2>
           </div>
-          <button className="button" id="public-sessions-refresh" type="button" onClick={() => loadPublicSessions(normalizeApiUrl(apiValue), setPublicSessions)}>
-            <span aria-hidden="true">↻</span>
-            刷新
-          </button>
+          <div className="public-session-actions">
+            <AuthControls state={authState} onLogin={handleGithubLogin} onLogout={handleGithubLogout} />
+            <button
+              className="button"
+              id="public-sessions-refresh"
+              type="button"
+              onClick={() => {
+                setDeleteStatus("");
+                loadAuthState(normalizeApiUrl(apiValue), setAuthState);
+                loadPublicSessions(normalizeApiUrl(apiValue), setPublicSessions);
+              }}
+            >
+              <span aria-hidden="true">↻</span>
+              刷新
+            </button>
+          </div>
         </div>
+        {deleteStatus ? (
+          <p className="public-session-status" role="status">
+            {deleteStatus}
+          </p>
+        ) : null}
         <div className="public-session-grid" id="public-sessions" aria-live="polite">
-          <PublicSessions state={publicSessions} api={normalizeApiUrl(apiValue)} />
+          <PublicSessions
+            state={publicSessions}
+            api={normalizeApiUrl(apiValue)}
+            authUser={authState.kind === "authenticated" ? authState.user : null}
+            deletingShareId={deletingShareId}
+            onDelete={handleDeleteShare}
+          />
         </div>
       </section>
 
@@ -196,39 +352,33 @@ export function HomePage() {
         <div>
           <p className="eyebrow">运行方式</p>
           <h2>选择临时审阅或常驻运行</h2>
-          <p>临时审阅适合手动开一段时间；macOS LaunchAgent 适合登录后自动保持本地查看器可用。</p>
+          <p>临时审阅可以直接 npx 运行；常驻运行也已经做进 npm 包，适合 macOS 登录后自动保持本地查看器可用。</p>
         </div>
         <div className="command-options">
           <article className="command-option">
             <div className="command-option-heading">
-              <p className="eyebrow">临时审阅</p>
+              <p className="eyebrow">临时审阅 / npm 包</p>
               <h3>不用克隆，直接运行</h3>
             </div>
             <p>手动启动本地只读查看器；关闭终端或停止进程后服务结束。</p>
             <div className="command-line large">
               <pre>
-                <code>{`npx codex-snapshots@latest serve --port 4321
-
-# 或者全局安装
-npm install -g codex-snapshots
-codex-snapshot serve --port 4321`}</code>
+                <code>{TEMP_REVIEW_COMMAND}</code>
               </pre>
               <CopyButton command="npx codex-snapshots@latest serve --port 4321">复制 npx 命令</CopyButton>
             </div>
           </article>
           <article className="command-option">
             <div className="command-option-heading">
-              <p className="eyebrow">macOS LaunchAgent</p>
+              <p className="eyebrow">macOS LaunchAgent / npm 包</p>
               <h3>安装成后台常驻</h3>
             </div>
-            <p>从源码目录安装为用户级后台服务；登录 macOS 后自动保持查看器可用。</p>
+            <p>全局安装 npm 包后注册为用户级后台服务；不需要克隆仓库或安装 pnpm。</p>
             <div className="command-line large">
               <pre>
-                <code>{`pnpm install
-pnpm snapshot:install-daemon
-pnpm snapshot:daemon:status`}</code>
+                <code>{DAEMON_INSTALL_COMMAND}</code>
               </pre>
-              <CopyButton command="pnpm snapshot:install-daemon">复制安装命令</CopyButton>
+              <CopyButton command={DAEMON_INSTALL_COMMAND}>复制安装命令</CopyButton>
             </div>
           </article>
         </div>
@@ -339,7 +489,63 @@ function CopyButton({ command, children }: { command: string; children: string }
   );
 }
 
-function PublicSessions({ state, api }: { state: PublicSessionsState; api: string }) {
+function AuthControls({
+  state,
+  onLogin,
+  onLogout,
+}: {
+  state: AuthState;
+  onLogin: () => void;
+  onLogout: () => void;
+}) {
+  if (state.kind === "authenticated") {
+    return (
+      <div className="github-auth" id="github-auth">
+        <span className="github-auth-user">
+          {state.user.avatarUrl ? <img src={state.user.avatarUrl} alt="" /> : null}
+          <span>{state.user.isOwner ? "站长" : "已登录"} @{state.user.login}</span>
+        </span>
+        <button className="button" type="button" onClick={onLogout}>
+          退出
+        </button>
+      </div>
+    );
+  }
+
+  if (state.kind === "checking") {
+    return (
+      <div className="github-auth" id="github-auth">
+        <span className="github-auth-note">{state.text}</span>
+      </div>
+    );
+  }
+
+  const disabled = state.kind === "error" || (state.kind === "anonymous" && !state.configured);
+  const text = state.kind === "error" ? state.text : state.kind === "anonymous" && !state.configured ? "GitHub 登录未配置" : state.text;
+
+  return (
+    <div className="github-auth" id="github-auth">
+      <span className="github-auth-note">{text}</span>
+      <button className="button primary" type="button" disabled={disabled} onClick={onLogin}>
+        登录 GitHub
+      </button>
+    </div>
+  );
+}
+
+function PublicSessions({
+  state,
+  api,
+  authUser,
+  deletingShareId,
+  onDelete,
+}: {
+  state: PublicSessionsState;
+  api: string;
+  authUser: AuthUser | null;
+  deletingShareId: string;
+  onDelete: (share: PublicShare) => void;
+}) {
   if (state.kind === "message") {
     return <div className="public-session-empty">{state.text}</div>;
   }
@@ -348,21 +554,57 @@ function PublicSessions({ state, api }: { state: PublicSessionsState; api: strin
     return <div className="public-session-empty">暂无公开 Session。</div>;
   }
 
-  return state.shares.map((share) => <PublicSessionCard key={share.id} share={share} api={api} />);
+  return state.shares.map((share) => (
+    <PublicSessionCard
+      key={share.id}
+      share={share}
+      api={api}
+      canDelete={canDeleteShare(authUser, share)}
+      isDeleting={deletingShareId === share.id}
+      onDelete={onDelete}
+    />
+  ));
 }
 
-function PublicSessionCard({ share, api }: { share: PublicShare; api: string }) {
+function PublicSessionCard({
+  share,
+  api,
+  canDelete,
+  isDeleting,
+  onDelete,
+}: {
+  share: PublicShare;
+  api: string;
+  canDelete: boolean;
+  isDeleting: boolean;
+  onDelete: (share: PublicShare) => void;
+}) {
   return (
-    <a className="public-session-card" href={sharePageUrl(share.id, api)} target="_blank" rel="noopener noreferrer">
-      <div className="public-session-top">
-        <span className="public-session-engine">{share.engineLabel || share.engine || "Codex"}</span>
-        <time dateTime={share.createdAt || ""}>{formatDateLabel(share.createdAt || share.updatedAt)}</time>
-      </div>
-      <h3>{share.title || share.id}</h3>
-      <p className="public-session-meta">
-        {Number(share.turnCount || 0)} 条记录 · {(share.redacted ?? true) ? "已脱敏" : "未脱敏"}
-      </p>
-    </a>
+    <article className="public-session-card">
+      <a className="public-session-link" href={sharePageUrl(share.id, api)} target="_blank" rel="noopener noreferrer">
+        <div className="public-session-top">
+          <span className="public-session-engine">{share.engineLabel || share.engine || "Codex"}</span>
+          <time dateTime={share.createdAt || ""}>{formatDateLabel(share.createdAt || share.updatedAt)}</time>
+        </div>
+        <h3>{share.title || share.id}</h3>
+        <p className="public-session-meta">
+          {Number(share.turnCount || 0)} 条记录 · {(share.redacted ?? true) ? "已脱敏" : "未脱敏"}
+        </p>
+        {share.owner?.login ? <p className="public-session-owner">by @{share.owner.login}</p> : null}
+      </a>
+      {canDelete ? (
+        <button
+          className="public-session-delete"
+          type="button"
+          disabled={isDeleting}
+          aria-label={`删除分享快照：${share.title || share.id}`}
+          title="删除分享快照"
+          onClick={() => onDelete(share)}
+        >
+          {isDeleting ? "删除中" : "删除"}
+        </button>
+      ) : null}
+    </article>
   );
 }
 
@@ -409,6 +651,61 @@ async function checkApi(url: string, setApiStatus: (state: StatusState) => void,
   }
 }
 
+async function loadAuthState(url: string, setAuthState: (state: AuthState) => void) {
+  if (!url) {
+    setAuthState({
+      kind: "anonymous",
+      configured: false,
+      text: "GitHub 登录未配置",
+    });
+    return;
+  }
+
+  setAuthState({
+    kind: "checking",
+    text: "正在检查 GitHub 登录...",
+  });
+
+  try {
+    const response = await fetch(`${url}/api/auth/me?returnTo=${encodeURIComponent(window.location.href)}`, {
+      cache: "no-store",
+      credentials: "include",
+      signal: timeoutSignal(3000),
+    });
+    const payload = (await response.json().catch(() => ({}))) as {
+      configured?: boolean;
+      loginUrl?: string | null;
+      user?: AuthUser | null;
+      error?: string;
+    };
+
+    if (!response.ok) {
+      throw new Error(payload.error || `HTTP ${response.status}`);
+    }
+
+    if (payload.user) {
+      setAuthState({
+        kind: "authenticated",
+        configured: true,
+        user: payload.user,
+      });
+      return;
+    }
+
+    setAuthState({
+      kind: "anonymous",
+      configured: Boolean(payload.configured),
+      loginUrl: payload.loginUrl,
+      text: payload.configured ? "登录后可发布和管理自己的 Session" : "GitHub 登录未配置",
+    });
+  } catch {
+    setAuthState({
+      kind: "error",
+      text: "登录状态不可用",
+    });
+  }
+}
+
 async function loadPublicSessions(url: string, setPublicSessions: (state: PublicSessionsState) => void) {
   if (!url) {
     setPublicSessions({
@@ -445,6 +742,19 @@ async function loadPublicSessions(url: string, setPublicSessions: (state: Public
       text: "分享 API 暂不可用，稍后再试。",
     });
   }
+}
+
+function canDeleteShare(user: AuthUser | null, share: PublicShare): boolean {
+  if (!user) {
+    return false;
+  }
+  if (user.isOwner) {
+    return true;
+  }
+  if (share.owner?.id && user.id && share.owner.id === user.id) {
+    return true;
+  }
+  return Boolean(share.owner?.login && user.login && share.owner.login.toLowerCase() === user.login.toLowerCase());
 }
 
 function sharePageUrl(id: string, api: string): string {

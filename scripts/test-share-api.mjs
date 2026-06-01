@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { spawn } from "node:child_process";
+import { createHmac } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import http from "node:http";
 import net from "node:net";
@@ -45,12 +46,18 @@ try {
   await assertPublish(localApiUrl);
   await assertPublicList(localApiUrl, 1);
   await assertShareDetail(localApiUrl, FIXED_SHARE_ID);
+  await assertUnauthorizedDelete(localApiUrl, FIXED_SHARE_ID);
   await assertVerifyScriptReadOnly(localApiUrl);
   await assertPublicList(localApiUrl, 1);
   await assertVerifyScriptPublish(localApiUrl);
   await assertPublicList(localApiUrl, 2);
   await assertLocalViewerPublish(localApiUrl);
   await assertPublicList(localApiUrl, 3);
+  await assertDelete(localApiUrl, FIXED_SHARE_ID);
+  await assertPublicList(localApiUrl, 2);
+  await stopChild(serverProcess);
+  serverProcess = null;
+  await assertGithubOwnershipAuth();
 
   console.log("✓ share API integration checks passed");
 } finally {
@@ -70,29 +77,35 @@ async function assertInitialHealth(apiUrl) {
 }
 
 async function assertCorsHeaders(apiUrl) {
+  const siteOrigin = new URL(SITE_URL).origin;
   const getResponse = await fetch(`${apiUrl}/api/snapshots`, {
     headers: {
-      origin: SITE_URL.replace(/\/+$/, ""),
+      origin: siteOrigin,
     },
   });
 
   assert(getResponse.ok, `cross-origin public list should return ok, got ${getResponse.status}`);
-  assert(getResponse.headers.get("access-control-allow-origin") === "*", "public list should allow cross-origin reads");
+  assert(getResponse.headers.get("access-control-allow-origin") === siteOrigin, "public list should allow configured cross-origin reads");
+  assert(getResponse.headers.get("access-control-allow-credentials") === "true", "public list should allow GitHub session credentials");
 
   const optionsResponse = await fetch(`${apiUrl}/api/snapshots`, {
     method: "OPTIONS",
     headers: {
       "access-control-request-headers": "authorization,content-type",
       "access-control-request-method": "POST",
-      origin: SITE_URL.replace(/\/+$/, ""),
+      origin: siteOrigin,
     },
   });
 
   assert(optionsResponse.status === 204, `CORS preflight should return 204, got ${optionsResponse.status}`);
-  assert(optionsResponse.headers.get("access-control-allow-origin") === "*", "CORS preflight should allow the public site origin");
+  assert(optionsResponse.headers.get("access-control-allow-origin") === siteOrigin, "CORS preflight should allow the public site origin");
   assert(
     String(optionsResponse.headers.get("access-control-allow-methods") || "").includes("OPTIONS"),
     "CORS preflight should include OPTIONS in allowed methods"
+  );
+  assert(
+    String(optionsResponse.headers.get("access-control-allow-methods") || "").includes("DELETE"),
+    "CORS preflight should include DELETE in allowed methods"
   );
   assert(
     String(optionsResponse.headers.get("access-control-allow-headers") || "").includes("authorization"),
@@ -161,6 +174,177 @@ async function assertShareDetail(apiUrl, shareId) {
   assert(!assistantTurn.html.includes("<script"), "share API should strip script tags from HTML");
   assert(assistantTurn.html.includes('target="_blank"'), "share API should force links to open in a new tab");
   assert(assistantTurn.html.includes('rel="noopener noreferrer"'), "share API should force safe link rel attributes");
+}
+
+async function assertUnauthorizedDelete(apiUrl, shareId) {
+  const response = await fetch(`${apiUrl}/api/snapshots/${encodeURIComponent(shareId)}`, {
+    method: "DELETE",
+  });
+  assert(response.status === 401, `unauthorized delete should return 401, got ${response.status}`);
+
+  const payload = await fetchJson(`${apiUrl}/api/snapshots/${encodeURIComponent(shareId)}`);
+  assert(payload.share?.id === shareId, "unauthorized delete should leave the share available");
+}
+
+async function assertDelete(apiUrl, shareId) {
+  const response = await fetch(`${apiUrl}/api/snapshots/${encodeURIComponent(shareId)}`, {
+    method: "DELETE",
+    headers: {
+      authorization: `Bearer ${TOKEN}`,
+    },
+  });
+  const payload = await response.json();
+
+  assert(response.status === 200, `authenticated delete should return 200, got ${response.status}`);
+  assert(payload.ok === true, `authenticated delete should return ok=true: ${JSON.stringify(payload)}`);
+  assert(payload.deleted === true, `authenticated delete should report deleted=true: ${JSON.stringify(payload)}`);
+  assert(payload.id === shareId, `authenticated delete should echo the share id: ${JSON.stringify(payload)}`);
+
+  const detailResponse = await fetch(`${apiUrl}/api/snapshots/${encodeURIComponent(shareId)}`);
+  assert(detailResponse.status === 404, `deleted share detail should return 404, got ${detailResponse.status}`);
+}
+
+async function assertGithubOwnershipAuth() {
+  const port = await getFreePort();
+  const apiUrl = `http://127.0.0.1:${port}`;
+  const dataFile = path.join(tempDir, "github-auth-shares.json");
+  const sessionSecret = "github-session-secret-for-tests";
+  let authServer;
+
+  try {
+    authServer = spawn(process.execPath, ["server/share-api.mjs", "--host", "127.0.0.1", "--port", String(port)], {
+      cwd: ROOT_DIR,
+      env: {
+        ...process.env,
+        SNAPSHOT_AUTH_ALLOWED_ORIGINS: SITE_URL.replace(/\/+$/, ""),
+        SNAPSHOT_AUTH_COOKIE_SAMESITE: "Lax",
+        SNAPSHOT_AUTH_COOKIE_SECURE: "false",
+        SNAPSHOT_GITHUB_CLIENT_ID: "test-client-id",
+        SNAPSHOT_GITHUB_CLIENT_SECRET: "test-client-secret",
+        SNAPSHOT_GITHUB_OWNER_LOGIN: "site-owner",
+        SNAPSHOT_SESSION_SECRET: sessionSecret,
+        SNAPSHOT_SHARE_DATA_FILE: dataFile,
+        SNAPSHOT_SHARE_PUBLIC_API_URL: apiUrl,
+        SNAPSHOT_SHARE_SITE_URL: SITE_URL,
+        SNAPSHOT_SHARE_TOKEN: TOKEN,
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    serverProcess = authServer;
+    const output = collectChildOutput(authServer);
+    await waitForHealth(apiUrl, output);
+
+    const aliceCookie = githubSessionCookie(
+      {
+        id: "42",
+        login: "alice",
+        avatarUrl: "",
+        profileUrl: "https://github.com/alice",
+      },
+      sessionSecret,
+    );
+    const bobCookie = githubSessionCookie(
+      {
+        id: "77",
+        login: "bob",
+        avatarUrl: "",
+        profileUrl: "https://github.com/bob",
+      },
+      sessionSecret,
+    );
+    const ownerCookie = githubSessionCookie(
+      {
+        id: "1",
+        login: "site-owner",
+        avatarUrl: "",
+        profileUrl: "https://github.com/site-owner",
+      },
+      sessionSecret,
+    );
+
+    const siteOrigin = new URL(SITE_URL).origin;
+    const corsResponse = await fetch(`${apiUrl}/api/auth/me`, {
+      headers: {
+        cookie: ownerCookie,
+        origin: siteOrigin,
+      },
+    });
+    const corsPayload = await corsResponse.json();
+    assert(corsPayload.user?.isOwner === true, "owner GitHub session should be marked as site owner");
+    assert(
+      corsResponse.headers.get("access-control-allow-origin") === siteOrigin,
+      "auth endpoint should echo the configured site origin",
+    );
+    assert(corsResponse.headers.get("access-control-allow-credentials") === "true", "auth endpoint should allow credentials");
+
+    const tokenPublishResponse = await fetch(`${apiUrl}/api/snapshots`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${TOKEN}`,
+        "content-type": "application/json",
+        origin: SITE_URL.replace(/\/+$/, ""),
+      },
+      body: JSON.stringify({ shareId: "snap_tokenblocked123456", snapshot: createSnapshot("Token should not publish with GitHub auth") }),
+    });
+    assert(tokenPublishResponse.status === 401, `GitHub auth mode should reject bearer-token publish by default, got ${tokenPublishResponse.status}`);
+
+    const aliceShare = await publishWithGithubSession(apiUrl, aliceCookie, "snap_aliceowned123456", "Alice owned session");
+    assert(aliceShare.owner?.login === "alice", `published share should include owner login: ${JSON.stringify(aliceShare)}`);
+
+    const bobDeleteResponse = await fetch(`${apiUrl}/api/snapshots/snap_aliceowned123456`, {
+      method: "DELETE",
+      headers: {
+        cookie: bobCookie,
+        origin: SITE_URL.replace(/\/+$/, ""),
+      },
+    });
+    assert(bobDeleteResponse.status === 403, `other GitHub users should not delete Alice's share, got ${bobDeleteResponse.status}`);
+
+    const aliceDeleteResponse = await fetch(`${apiUrl}/api/snapshots/snap_aliceowned123456`, {
+      method: "DELETE",
+      headers: {
+        cookie: aliceCookie,
+        origin: SITE_URL.replace(/\/+$/, ""),
+      },
+    });
+    assert(aliceDeleteResponse.status === 200, `share owner should delete their own share, got ${aliceDeleteResponse.status}`);
+
+    await publishWithGithubSession(apiUrl, aliceCookie, "snap_ownerdelete123456", "Owner can delete this session");
+    const ownerDeleteResponse = await fetch(`${apiUrl}/api/snapshots/snap_ownerdelete123456`, {
+      method: "DELETE",
+      headers: {
+        cookie: ownerCookie,
+        origin: SITE_URL.replace(/\/+$/, ""),
+      },
+    });
+    assert(ownerDeleteResponse.status === 200, `site owner should delete any share, got ${ownerDeleteResponse.status}`);
+  } finally {
+    await stopChild(authServer);
+    if (serverProcess === authServer) {
+      serverProcess = null;
+    }
+  }
+}
+
+async function publishWithGithubSession(apiUrl, cookie, shareId, title) {
+  const response = await fetch(`${apiUrl}/api/snapshots`, {
+    method: "POST",
+    headers: {
+      cookie,
+      "content-type": "application/json",
+      origin: SITE_URL.replace(/\/+$/, ""),
+    },
+    body: JSON.stringify({
+      shareId,
+      apiUrl,
+      siteUrl: SITE_URL,
+      snapshot: createSnapshot(title),
+    }),
+  });
+  const payload = await response.json();
+  assert(response.status === 200, `GitHub session publish should succeed, got ${response.status}: ${JSON.stringify(payload)}`);
+  const detail = await fetchJson(`${apiUrl}/api/snapshots/${encodeURIComponent(shareId)}`);
+  return detail.share;
 }
 
 async function assertVerifyScriptReadOnly(apiUrl) {
@@ -705,6 +889,18 @@ function extractCsrfToken(html) {
   const token = JSON.parse(match[1]);
   assert(typeof token === "string" && token.length >= 32, "CSRF token should be a strong string");
   return token;
+}
+
+function githubSessionCookie(user, secret) {
+  const body = Buffer.from(
+    JSON.stringify({
+      expiresAt: Date.now() + 30 * 24 * 60 * 60 * 1000,
+      user,
+    }),
+    "utf8",
+  ).toString("base64url");
+  const signature = createHmac("sha256", secret).update(body).digest("base64url");
+  return `codex_snapshots_session=${encodeURIComponent(`${body}.${signature}`)}`;
 }
 
 async function getFreePort() {

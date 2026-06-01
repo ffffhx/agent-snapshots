@@ -469,6 +469,57 @@ h2 {
   margin-bottom: 0;
 }
 
+.public-session-actions {
+  display: flex;
+  align-items: end;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.github-auth {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.github-auth-user,
+.github-auth-note {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "PingFang SC", "Microsoft YaHei", monospace;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.github-auth-user img {
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border: 1px solid rgba(23, 32, 42, 0.18);
+  border-radius: 50%;
+  background: #fff;
+}
+
+.github-auth-user span,
+.github-auth-note {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.public-session-status {
+  margin: -6px 0 14px;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "PingFang SC", "Microsoft YaHei", monospace;
+  font-size: 12px;
+  font-weight: 900;
+}
+
 .public-session-grid {
   display: grid;
   gap: 14px;
@@ -485,11 +536,10 @@ h2 {
 }
 
 .public-session-card {
+  position: relative;
   display: grid;
   min-height: 178px;
-  gap: 18px;
-  align-content: space-between;
-  padding: 18px;
+  overflow: hidden;
   transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
 }
 
@@ -497,6 +547,48 @@ h2 {
   border-color: rgba(47, 111, 187, 0.24);
   box-shadow: 0 22px 62px -48px rgba(23, 32, 42, 0.62);
   transform: translateY(-2px);
+}
+
+.public-session-link {
+  display: grid;
+  min-height: 178px;
+  gap: 18px;
+  align-content: space-between;
+  padding: 18px 18px 62px;
+}
+
+.public-session-link:focus-visible,
+.public-session-delete:focus-visible {
+  outline: 3px solid rgba(47, 111, 187, 0.22);
+  outline-offset: -3px;
+}
+
+.public-session-delete {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  min-height: 34px;
+  border: 1px solid rgba(180, 59, 69, 0.26);
+  border-radius: 8px;
+  background: rgba(180, 59, 69, 0.08);
+  padding: 0 12px;
+  color: var(--red);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "PingFang SC", "Microsoft YaHei", monospace;
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+  transition: transform 160ms ease, border-color 160ms ease, background-color 160ms ease;
+}
+
+.public-session-delete:hover:not(:disabled) {
+  border-color: rgba(180, 59, 69, 0.46);
+  background: rgba(180, 59, 69, 0.13);
+  transform: translateY(-1px);
+}
+
+.public-session-delete:disabled {
+  cursor: wait;
+  opacity: 0.62;
 }
 
 .public-session-top {
@@ -548,6 +640,14 @@ h2 {
   margin: 0;
   color: var(--muted);
   font-size: 12px;
+  font-weight: 900;
+}
+
+.public-session-owner {
+  margin: -10px 0 0;
+  color: var(--soft);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "PingFang SC", "Microsoft YaHei", monospace;
+  font-size: 11px;
   font-weight: 900;
 }
 
@@ -982,6 +1082,15 @@ input:focus {
   .section-heading {
     display: grid;
     align-items: start;
+  }
+
+  .public-session-actions {
+    display: grid;
+    justify-content: stretch;
+  }
+
+  .github-auth {
+    justify-content: space-between;
   }
 
   .product-shot {

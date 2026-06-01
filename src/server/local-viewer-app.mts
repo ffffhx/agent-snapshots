@@ -518,9 +518,6 @@ button:disabled {
 .project-group.no-project .project-header {
   grid-template-columns: minmax(0, 1fr) auto;
   margin-left: 34px;
-  color: rgba(23, 32, 42, 0.58);
-  font-size: 13px;
-  letter-spacing: 0;
   width: calc(100% - 34px);
 }
 .project-group.no-project .project-icon {
@@ -1509,6 +1506,27 @@ function mergeLinkRel(value) {
   return Array.from(rel).join(" ");
 }
 
+function shareApiBaseUrl() {
+  return String(shareConfig.apiUrl || "").replace(/\\/+$/, "");
+}
+
+async function fetchShareAuth(apiUrl) {
+  const response = await fetch(apiUrl + "/api/auth/me?returnTo=" + encodeURIComponent(window.location.href), {
+    cache: "no-store",
+    credentials: "include",
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.error || "GitHub login check failed");
+  }
+  return payload;
+}
+
+function redirectToShareLogin(apiUrl, auth) {
+  const loginUrl = auth?.loginUrl || apiUrl + "/api/auth/github/start?returnTo=" + encodeURIComponent(window.location.href);
+  window.location.href = loginUrl;
+}
+
 async function publishSelectedSession() {
   if (!state.selected) {
     return;
@@ -1517,18 +1535,50 @@ async function publishSelectedSession() {
   const button = document.querySelector("[data-publish-cloud]");
   if (button) button.disabled = true;
   if (status) {
-    status.textContent = shareConfig.apiUrl ? "正在发布到 " + shareConfig.apiUrl + "..." : "正在发布...";
+    status.textContent = shareConfig.apiUrl ? "正在检查 GitHub 登录..." : "正在发布...";
     status.classList.remove("error");
   }
   try {
+    const apiUrl = shareApiBaseUrl();
+    if (!apiUrl) {
+      throw new Error("分享 API 尚未配置。");
+    }
+    const auth = await fetchShareAuth(apiUrl);
+    if (!auth.configured) {
+      throw new Error("分享 API 尚未配置 GitHub 登录。");
+    }
+    if (!auth.user) {
+      if (status) {
+        status.textContent = "请先登录 GitHub，登录后会回到这里继续发布。";
+      }
+      redirectToShareLogin(apiUrl, auth);
+      return;
+    }
+    if (status) {
+      status.textContent = "正在发布到 " + apiUrl + "...";
+    }
     const options = activeOptions();
     options.set("redact", "1");
-    const response = await fetch("/api/publish?" + options.toString(), {
+    const payloadResponse = await fetch("/api/share-payload?" + options.toString(), {
       method: "POST",
       headers: { "${MUTATION_CSRF_HEADER}": csrfToken },
     });
-    const result = await response.json();
+    const payload = await payloadResponse.json();
+    if (!payloadResponse.ok) {
+      throw new Error(payload.error || "Publish failed");
+    }
+    const response = await fetch(String(payload.apiUrl || apiUrl).replace(/\\/+$/, "") + "/api/snapshots", {
+      method: "POST",
+      credentials: "include",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload.body || {}),
+    });
+    const result = await response.json().catch(() => ({}));
     if (!response.ok) {
+      if (response.status === 401) {
+        redirectToShareLogin(apiUrl, auth);
+        return;
+      }
       throw new Error(result.error || "Publish failed");
     }
     if (status) {

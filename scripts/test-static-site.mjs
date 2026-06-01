@@ -13,10 +13,14 @@ async function testHomepagePublicSessions() {
   const { document } = await runStaticPage("site/index.html", {
     locationHref: "https://ffffhx.github.io/codex-snapshots/",
     config: { apiUrl: PUBLIC_API_URL },
-    fetch: async (url) => {
+    fetch: async (url, options = {}) => {
       requests.push(String(url));
       if (String(url) === "http://127.0.0.1:4321/") {
         return jsonResponse({ ok: true });
+      }
+      if (String(url).startsWith(`${PUBLIC_API_URL}/api/auth/me`)) {
+        assert(options.credentials === "include", "homepage auth check should include credentials");
+        return jsonResponse({ configured: true, user: null, loginUrl: `${PUBLIC_API_URL}/api/auth/github/start` });
       }
       if (String(url) === `${PUBLIC_API_URL}/api/snapshots/health`) {
         return jsonResponse({ ok: true, shares: 1 });
@@ -49,16 +53,18 @@ async function testHomepagePublicSessions() {
   await waitFor(() => document.querySelector(".public-session-card"));
 
   const card = document.querySelector(".public-session-card");
+  const link = card?.querySelector(".public-session-link");
   const title = card?.querySelector("h3");
 
   assert(requests.includes(`${PUBLIC_API_URL}/api/snapshots?limit=12`), "homepage should fetch the configured public list API");
   assert(document.getElementById("api-url")?.value === PUBLIC_API_URL, "homepage API input should use configured public API");
   assert(card, "homepage should render a public session card");
   assert(title?.textContent === "Public Session from Aliyun", "homepage should render public session title");
-  assert(card.href.includes("/share/index.html?"), `homepage card should link to the static share page: ${card.href}`);
-  assert(card.href.includes(`api=${encodeURIComponent(PUBLIC_API_URL)}`), `homepage card should preserve the public API URL: ${card.href}`);
-  assert(card.target === "_blank", "homepage card should open in a new tab");
-  assert(card.rel === "noopener noreferrer", "homepage card should protect the opener");
+  assert(link?.href.includes("/share/index.html?"), `homepage card should link to the static share page: ${link?.href}`);
+  assert(link?.href.includes(`api=${encodeURIComponent(PUBLIC_API_URL)}`), `homepage card should preserve the public API URL: ${link?.href}`);
+  assert(link?.target === "_blank", "homepage card should open in a new tab");
+  assert(link?.rel === "noopener noreferrer", "homepage card should protect the opener");
+  assert(!card?.querySelector(".public-session-delete"), "anonymous users should not see a delete action");
 }
 
 async function testShareFormOpensShareInNewTab() {
@@ -69,6 +75,9 @@ async function testShareFormOpensShareInNewTab() {
     fetch: async (url) => {
       if (String(url) === "http://127.0.0.1:4321/") {
         return jsonResponse({ ok: true });
+      }
+      if (String(url).startsWith(`${PUBLIC_API_URL}/api/auth/me`)) {
+        return jsonResponse({ configured: true, user: null, loginUrl: `${PUBLIC_API_URL}/api/auth/github/start` });
       }
       if (String(url) === `${PUBLIC_API_URL}/api/snapshots/health`) {
         return jsonResponse({ ok: true, shares: 0 });
@@ -113,6 +122,96 @@ async function testShareFormOpensShareInNewTab() {
   assert(opened.searchParams.get("api") === PUBLIC_API_URL, "share form should pass the API URL");
 }
 
+async function testHomepageDeletesOwnPublicSessionWithGithubLogin() {
+  const requests = [];
+  let deleted = false;
+  const { document, window } = await runStaticPage("site/index.html", {
+    locationHref: "https://ffffhx.github.io/codex-snapshots/",
+    config: { apiUrl: PUBLIC_API_URL },
+    confirm: () => true,
+    fetch: async (url, options = {}) => {
+      requests.push({
+        url: String(url),
+        method: String(options.method || "GET").toUpperCase(),
+        authorization: options.headers?.authorization || "",
+        credentials: options.credentials || "",
+      });
+      if (String(url) === "http://127.0.0.1:4321/") {
+        return jsonResponse({ ok: true });
+      }
+      if (String(url).startsWith(`${PUBLIC_API_URL}/api/auth/me`)) {
+        return jsonResponse({
+          configured: true,
+          user: {
+            id: "42",
+            login: "alice",
+            avatarUrl: "",
+            profileUrl: "https://github.com/alice",
+            isOwner: false,
+          },
+          loginUrl: `${PUBLIC_API_URL}/api/auth/github/start`,
+        });
+      }
+      if (String(url) === `${PUBLIC_API_URL}/api/snapshots/health`) {
+        return jsonResponse({ ok: true, shares: deleted ? 0 : 1 });
+      }
+      if (String(url) === `${PUBLIC_API_URL}/api/snapshots?limit=12`) {
+        return jsonResponse({
+          schemaVersion: 1,
+          shares: deleted
+            ? []
+            : [
+                {
+                  id: "snap_publicsession123456",
+                  title: "Public Session from Aliyun",
+                  engine: "codex",
+                  engineLabel: "Codex",
+                  createdAt: "2026-05-28T00:00:00.000Z",
+                  redacted: true,
+                  turnCount: 2,
+                  owner: {
+                    id: "42",
+                    login: "alice",
+                  },
+                },
+              ],
+          count: deleted ? 0 : 1,
+          total: deleted ? 0 : 1,
+          limit: 12,
+          offset: 0,
+        });
+      }
+      if (String(url) === `${PUBLIC_API_URL}/api/snapshots/snap_publicsession123456` && options.method === "DELETE") {
+        assert(!options.headers?.authorization, "delete should not send the old shared bearer token");
+        assert(options.credentials === "include", "delete should send the GitHub session cookie");
+        deleted = true;
+        return jsonResponse({ ok: true, deleted: true, id: "snap_publicsession123456" });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    },
+  });
+
+  await waitFor(() => document.querySelector(".public-session-card"));
+  await flushPromises(window);
+
+  document.querySelector(".public-session-delete")?.dispatchEvent(
+    new window.MouseEvent("click", {
+      bubbles: true,
+      cancelable: true,
+    }),
+  );
+
+  await waitFor(() => !document.querySelector(".public-session-card"));
+
+  assert(deleted, "homepage should call the delete endpoint");
+  assert(
+    requests.some((request) => request.method === "DELETE" && request.url.endsWith("/api/snapshots/snap_publicsession123456")),
+    "homepage should issue a DELETE request for the selected share",
+  );
+  assert(document.querySelector(".public-session-status")?.textContent === "已删除分享快照。", "homepage should show delete success");
+  assert(document.getElementById("public-sessions")?.textContent === "暂无公开 Session。", "homepage should remove the deleted share from the list");
+}
+
 async function testPublicHomepageWithoutConfiguredApiDoesNotFetchLoopback() {
   const requests = [];
   const { document } = await runStaticPage("site/index.html", {
@@ -153,6 +252,9 @@ async function testLocalHomepageDefaultsToLocalApi() {
       requests.push(String(url));
       if (String(url) === "http://127.0.0.1:4321/") {
         return jsonResponse({ ok: true });
+      }
+      if (String(url).startsWith("http://127.0.0.1:8787/api/auth/me")) {
+        return jsonResponse({ configured: false, user: null, loginUrl: null });
       }
       if (String(url) === "http://127.0.0.1:8787/api/snapshots/health") {
         return jsonResponse({ ok: true, shares: 0 });
@@ -262,7 +364,7 @@ async function testPublicSharePageWithoutConfiguredApiDoesNotFetchLoopback() {
   assert(requests.length === 0, "share page should not fetch loopback API when public config is missing");
 }
 
-async function runStaticPage(relativeHtmlPath, { locationHref, config, fetch, storage = {}, open = () => null }) {
+async function runStaticPage(relativeHtmlPath, { locationHref, config, fetch, storage = {}, open = () => null, confirm = () => false }) {
   const html = await readFile(path.join(ROOT_DIR, relativeHtmlPath), "utf8");
   const dom = new JSDOM(html, {
     pretendToBeVisual: true,
@@ -274,6 +376,7 @@ async function runStaticPage(relativeHtmlPath, { locationHref, config, fetch, st
   window.CODEX_SNAPSHOTS_CONFIG = config;
   window.fetch = fetch;
   window.open = open;
+  window.confirm = confirm;
   Object.defineProperty(window.navigator, "clipboard", {
     configurable: true,
     value: {
@@ -351,6 +454,7 @@ function assert(condition, message) {
 
 await testHomepagePublicSessions();
 await testShareFormOpensShareInNewTab();
+await testHomepageDeletesOwnPublicSessionWithGithubLogin();
 await testPublicHomepageWithoutConfiguredApiDoesNotFetchLoopback();
 await testLocalHomepageDefaultsToLocalApi();
 await testSharePageLoadsFromConfiguredApi();
