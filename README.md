@@ -19,14 +19,14 @@ npx codex-snapshots@latest serve --port 4321
 也可以全局安装 npm 包后手动启动：
 
 ```bash
-npm install -g codex-snapshots
+npm install -g codex-snapshots@latest
 codex-snapshot serve --port 4321
 ```
 
 如果需要在 macOS 登录后自动保持查看器可用，全局安装 npm 包后可以注册为用户级 LaunchAgent。安装完成后服务会在后台监听 4321，直到你卸载 daemon 或停止服务：
 
 ```bash
-npm install -g codex-snapshots
+npm install -g codex-snapshots@latest
 codex-snapshot daemon install
 codex-snapshot daemon status
 ```
@@ -195,7 +195,7 @@ Pages workflow 会校验 `CODEX_SNAPSHOTS_PUBLIC_API_URL`，拒绝 localhost、�
 全局安装 npm 包后，可以把本地查看器安装为用户级 LaunchAgent：
 
 ```bash
-npm install -g codex-snapshots
+npm install -g codex-snapshots@latest
 codex-snapshot daemon install
 codex-snapshot daemon status
 codex-snapshot daemon logs

@@ -48,10 +48,10 @@ const STATUS_LABELS: Record<StatusState, string> = {
 const TEMP_REVIEW_COMMAND = `npx codex-snapshots@latest serve --port 4321
 
 # 或者全局安装 npm 包
-npm install -g codex-snapshots
+npm install -g codex-snapshots@latest
 codex-snapshot serve --port 4321`;
 
-const DAEMON_INSTALL_COMMAND = `npm install -g codex-snapshots
+const DAEMON_INSTALL_COMMAND = `npm install -g codex-snapshots@latest
 codex-snapshot daemon install
 codex-snapshot daemon status`;
 
