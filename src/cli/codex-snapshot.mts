@@ -27,8 +27,8 @@ const DEFAULT_SERVER_LIMIT = 80;
 const DEFAULT_TRAE_RECORDER_PORT = 4732;
 const DEFAULT_VIEWER_PORT = 4321;
 const MAX_TRAE_CAPTURE_POST_BYTES = 64 * 1024 * 1024;
-const DEFAULT_SNAPSHOT_SHARE_API_URL = "http://127.0.0.1:8787";
-const DEFAULT_SNAPSHOT_SHARE_SITE_URL = "http://127.0.0.1:8787";
+const DEFAULT_SNAPSHOT_SHARE_API_URL = "https://8-218-149-148.anyip.dev/codex-snapshots";
+const DEFAULT_SNAPSHOT_SHARE_SITE_URL = "https://ffffhx.github.io/codex-snapshots";
 const DEFAULT_DAEMON_LABEL = "com.codex-snapshots.viewer";
 const SNAPSHOT_LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Codex Snapshots"><rect width="64" height="64" rx="14" fill="#17202a"/><path d="M19 16h26a3 3 0 0 1 3 3v26a3 3 0 0 1-3 3H19a3 3 0 0 1-3-3V19a3 3 0 0 1 3-3Z" fill="none" stroke="#eef9f6" stroke-width="4"/><path d="M23 22h11M22 23v11M41 42H30M42 41V30" fill="none" stroke="#7dd3c7" stroke-width="4" stroke-linecap="round"/><circle cx="32" cy="32" r="9" fill="#f2cc60"/><path d="M27 32h10M32 27v10" stroke="#17202a" stroke-width="3" stroke-linecap="round"/></svg>`;
 const execFileAsync = promisify(execFile);
@@ -2711,9 +2711,10 @@ Options:
   --allow-unredacted       For publish only: allow publishing a --no-redact snapshot
   --with-safety            For publish only: include local safety review rows in the cloud snapshot
   --api-url URL            For publish only: cloud API base. Defaults to $SNAPSHOT_SHARE_API_URL,
-                           ~/.codex-snapshots-agent.json, or http://127.0.0.1:8787
+                           ~/.codex-snapshots-agent.json, or ${DEFAULT_SNAPSHOT_SHARE_API_URL}
   --site-url URL           For publish only: public site base used to print the share link.
-                           Defaults to $SNAPSHOT_SHARE_SITE_URL, ~/.codex-snapshots-agent.json, or local share API
+                           Defaults to $SNAPSHOT_SHARE_SITE_URL, ~/.codex-snapshots-agent.json,
+                           or ${DEFAULT_SNAPSHOT_SHARE_SITE_URL}
   --share-token TOKEN      For publish only: API token. Defaults to $SNAPSHOT_SHARE_TOKEN or ~/.codex-snapshots-agent.json
   --expires-in-days N      For publish only: ask the server to expire the share after N days
   --label LABEL            For daemon only: LaunchAgent label. Defaults to ${DEFAULT_DAEMON_LABEL}
@@ -2725,7 +2726,7 @@ Options:
 Examples:
   codex-snapshot list --limit 20
   codex-snapshot export 019e457b --html -o snapshot.html
-  codex-snapshot publish 019e457b --api-url http://127.0.0.1:8787 --site-url http://127.0.0.1:8787
+  codex-snapshot publish 019e457b --api-url ${DEFAULT_SNAPSHOT_SHARE_API_URL} --site-url ${DEFAULT_SNAPSHOT_SHARE_SITE_URL}
   codex-snapshot serve --port 4321
   codex-snapshot daemon install
   codex-snapshot record-trae --port 4732`);

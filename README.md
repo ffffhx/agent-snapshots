@@ -170,7 +170,13 @@ codex-snapshot-share
 CODEX_SNAPSHOTS_PUBLIC_API_URL=https://your-share-api.example.com
 ```
 
-Pages 部署时会写入 `site/assets/config.js`，官网首页和 `/share/` 页面会默认读取这个公网 API。发布时本地查看器也需要指向同一个公网 API，可以写入本地发布配置：
+Pages 部署时会写入 `site/assets/config.js`，官网首页和 `/share/` 页面会默认读取这个公网 API。npm 包内置的本地查看器默认指向 `https://8-218-149-148.anyip.dev/codex-snapshots` 和 `https://ffffhx.github.io/codex-snapshots/`，所以普通用户直接启动即可：
+
+```bash
+npx codex-snapshots@latest serve --port 4321
+```
+
+如果你部署了自己的公网分享 API，可以写入本地发布配置覆盖默认值：
 
 ```bash
 SNAPSHOT_SHARE_API_URL=https://your-share-api.example.com \
