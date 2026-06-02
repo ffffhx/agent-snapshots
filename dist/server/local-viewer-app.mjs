@@ -1510,14 +1510,61 @@ function shareApiBaseUrl() {
   return String(shareConfig.apiUrl || "").replace(/\\/+$/, "");
 }
 
+function messageFromError(error) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function formatFetchError(error) {
+  if (error?.name === "AbortError") {
+    return "请求超时，请检查分享 API 是否可访问。";
+  }
+  const message = messageFromError(error);
+  if (message === "Failed to fetch") {
+    return "网络请求失败，可能是分享 API 不可访问、CORS 未放行，或浏览器插件/代理拦截。";
+  }
+  return message;
+}
+
+async function fetchJsonRequest(url, options, label) {
+  const controller = typeof AbortController === "function" ? new AbortController() : null;
+  const timeoutId = controller ? setTimeout(() => controller.abort(), 12000) : 0;
+  let response;
+  try {
+    response = await fetch(url, controller ? { ...(options || {}), signal: controller.signal } : options);
+  } catch (error) {
+    throw new Error(label + "失败：" + formatFetchError(error));
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+
+  if (!response || typeof response.text !== "function") {
+    throw new Error(label + "失败：浏览器没有返回有效响应，请检查插件或代理是否改写了 fetch。");
+  }
+
+  const text = await response.text();
+  let payload = {};
+  if (String(text || "").trim()) {
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      if (!response.ok) {
+        payload = { error: String(text).trim().slice(0, 240) };
+      } else {
+        throw new Error(label + "失败：服务返回的不是 JSON。");
+      }
+    }
+  }
+
+  return { response, payload };
+}
+
 async function fetchShareAuth(apiUrl) {
-  const response = await fetch(apiUrl + "/api/auth/me?returnTo=" + encodeURIComponent(window.location.href), {
+  const { response, payload } = await fetchJsonRequest(apiUrl + "/api/auth/me?returnTo=" + encodeURIComponent(window.location.href), {
     cache: "no-store",
     credentials: "include",
-  });
-  const payload = await response.json().catch(() => ({}));
+  }, "检查 GitHub 登录");
   if (!response.ok) {
-    throw new Error(payload.error || "GitHub login check failed");
+    throw new Error(payload.error || "检查 GitHub 登录失败：HTTP " + response.status);
   }
   return payload;
 }
@@ -1559,27 +1606,28 @@ async function publishSelectedSession() {
     }
     const options = activeOptions();
     options.set("redact", "1");
-    const payloadResponse = await fetch("/api/share-payload?" + options.toString(), {
+    const payloadResult = await fetchJsonRequest("/api/share-payload?" + options.toString(), {
       method: "POST",
       headers: { "${MUTATION_CSRF_HEADER}": csrfToken },
-    });
-    const payload = await payloadResponse.json();
-    if (!payloadResponse.ok) {
-      throw new Error(payload.error || "Publish failed");
+    }, "生成分享内容");
+    const payload = payloadResult.payload;
+    if (!payloadResult.response.ok) {
+      throw new Error(payload.error || "生成分享内容失败：HTTP " + payloadResult.response.status);
     }
-    const response = await fetch(String(payload.apiUrl || apiUrl).replace(/\\/+$/, "") + "/api/snapshots", {
+    const publishResult = await fetchJsonRequest(String(payload.apiUrl || apiUrl).replace(/\\/+$/, "") + "/api/snapshots", {
       method: "POST",
       credentials: "include",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload.body || {}),
-    });
-    const result = await response.json().catch(() => ({}));
+    }, "发布快照");
+    const response = publishResult.response;
+    const result = publishResult.payload;
     if (!response.ok) {
       if (response.status === 401) {
         redirectToShareLogin(apiUrl, auth);
         return;
       }
-      throw new Error(result.error || "Publish failed");
+      throw new Error(result.error || "发布快照失败：HTTP " + response.status);
     }
     if (status) {
       status.innerHTML = "<a href='" + esc(result.url) + "' target='_blank' rel='noopener noreferrer'>" + esc(result.url) + "</a>";
