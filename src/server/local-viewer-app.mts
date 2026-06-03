@@ -698,6 +698,9 @@ button:disabled {
 .publish-status.error {
   color: var(--red);
 }
+.publish-status.warning {
+  color: var(--amber);
+}
 .turns {
   display: grid;
   gap: 32px;
@@ -1574,6 +1577,47 @@ function redirectToShareLogin(apiUrl, auth) {
   window.location.href = loginUrl;
 }
 
+async function copyShareUrlToClipboard(url) {
+  const text = String(url || "");
+  if (!text) {
+    return false;
+  }
+  if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch (_error) {}
+  }
+  return copyTextWithSelection(text);
+}
+
+function copyTextWithSelection(text) {
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.top = "-1000px";
+  textarea.style.left = "-1000px";
+  textarea.style.width = "1px";
+  textarea.style.height = "1px";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  try {
+    try {
+      textarea.focus({ preventScroll: true });
+    } catch (_error) {
+      textarea.focus();
+    }
+    textarea.select();
+    textarea.setSelectionRange(0, textarea.value.length);
+    return document.execCommand("copy") === true;
+  } catch (_error) {
+    return false;
+  } finally {
+    document.body.removeChild(textarea);
+  }
+}
+
 async function publishSelectedSession() {
   if (!state.selected) {
     return;
@@ -1583,7 +1627,7 @@ async function publishSelectedSession() {
   if (button) button.disabled = true;
   if (status) {
     status.textContent = shareConfig.apiUrl ? "正在检查 GitHub 登录..." : "正在发布...";
-    status.classList.remove("error");
+    status.classList.remove("error", "warning");
   }
   try {
     const apiUrl = shareApiBaseUrl();
@@ -1629,14 +1673,21 @@ async function publishSelectedSession() {
       }
       throw new Error(result.error || "发布快照失败：HTTP " + response.status);
     }
-    if (status) {
-      status.innerHTML = "<a href='" + esc(result.url) + "' target='_blank' rel='noopener noreferrer'>" + esc(result.url) + "</a>";
+    const shareUrl = String(result.url || "");
+    if (!shareUrl) {
+      throw new Error("发布响应未返回分享链接。");
     }
-    await navigator.clipboard?.writeText(result.url).catch(() => undefined);
+    const copied = await copyShareUrlToClipboard(shareUrl);
+    if (status) {
+      status.classList.toggle("warning", !copied);
+      status.innerHTML = (copied ? "已复制到剪切板：" : "已发布，复制失败，请手动复制：") +
+        " <a href='" + esc(shareUrl) + "' target='_blank' rel='noopener noreferrer'>" + esc(shareUrl) + "</a>";
+    }
   } catch (error) {
     if (status) {
       status.textContent = error instanceof Error ? error.message : String(error);
       status.classList.add("error");
+      status.classList.remove("warning");
     }
   } finally {
     if (button) button.disabled = false;
