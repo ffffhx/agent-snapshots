@@ -526,6 +526,7 @@ async function assertLocalViewerPublish(apiUrl) {
     const publishUrl = `${viewerUrl}/api/publish?${options.toString()}`;
     const snapshotPayload = await fetchJson(`${viewerUrl}/api/snapshot?${options.toString()}`);
     assert(snapshotPayload.goalObjective === GOAL_OBJECTIVE, "local viewer snapshot metadata should expose the goal objective");
+    assert(snapshotPayload.tokenUsage?.totalTokens === 3456, "local viewer snapshot metadata should expose Codex token usage");
     assert(
       !snapshotPayload.turns?.some((turn) => String(turn.text || "").includes("<goal_context>")),
       "local viewer snapshot turns should not include Codex internal goal context",
@@ -681,6 +682,30 @@ function createCodexSessionJsonl() {
             text: "The session is redacted and ready for [public listing](https://example.com/share).",
           },
         ],
+      },
+    },
+    {
+      type: "event_msg",
+      timestamp: "2026-05-28T00:00:04.000Z",
+      payload: {
+        type: "token_count",
+        info: {
+          total_token_usage: {
+            input_tokens: 3000,
+            cached_input_tokens: 1200,
+            output_tokens: 456,
+            reasoning_output_tokens: 123,
+            total_tokens: 3456,
+          },
+          last_token_usage: {
+            input_tokens: 3000,
+            cached_input_tokens: 1200,
+            output_tokens: 456,
+            reasoning_output_tokens: 123,
+            total_tokens: 3456,
+          },
+          model_context_window: 237500,
+        },
       },
     },
   ].map((row) => JSON.stringify(row)).join("\n");

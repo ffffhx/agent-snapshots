@@ -278,8 +278,10 @@ async function loadCodexSnapshot(ref, { codexHome, includeTools, includeToolOutp
   const turns = [];
   let turnNumber = 0;
   let goalObjective = "";
+  let tokenUsage = null;
 
   for await (const row of readJsonl(filePath)) {
+    tokenUsage = extractCodexTokenUsage(row) || tokenUsage;
     if (row.type !== "response_item" || !row.payload) {
       continue;
     }
@@ -346,10 +348,42 @@ async function loadCodexSnapshot(ref, { codexHome, includeTools, includeToolOutp
     redacted: redact,
     includeTools,
     includeToolOutput,
+    tokenUsage,
     notices: [],
     risks: [...risks.values()].sort((a, b) => severityRank(b.severity) - severityRank(a.severity)),
     turns,
   };
+}
+
+function extractCodexTokenUsage(row) {
+  if (row?.type !== "event_msg" || row.payload?.type !== "token_count") {
+    return null;
+  }
+  const total = row.payload.info?.total_token_usage;
+  if (!total || typeof total !== "object") {
+    return null;
+  }
+  const inputTokens = tokenNumber(total.input_tokens);
+  const cachedInputTokens = tokenNumber(total.cached_input_tokens);
+  const outputTokens = tokenNumber(total.output_tokens);
+  const reasoningOutputTokens = tokenNumber(total.reasoning_output_tokens);
+  const totalTokens = tokenNumber(total.total_tokens) || inputTokens + outputTokens;
+  if (!totalTokens && !inputTokens && !outputTokens && !cachedInputTokens && !reasoningOutputTokens) {
+    return null;
+  }
+  return {
+    inputTokens,
+    cachedInputTokens,
+    outputTokens,
+    reasoningOutputTokens,
+    totalTokens,
+    updatedAt: row.timestamp || "",
+  };
+}
+
+function tokenNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? Math.round(number) : 0;
 }
 
 function splitSnapshotRef(ref) {

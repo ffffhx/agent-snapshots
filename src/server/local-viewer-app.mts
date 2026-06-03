@@ -168,6 +168,8 @@ body {
   outline-offset: -3px;
 }
 .viewer {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
   min-height: 0;
   padding: 14px clamp(18px, 2vw, 34px) 34px;
@@ -577,13 +579,24 @@ button:disabled {
   box-shadow: var(--shadow-soft);
 }
 .meta.loading {
+  display: grid;
+  flex: 1 1 auto;
+  min-height: 260px;
+  margin-top: 0;
   border: 0;
   background: transparent;
   padding: 0;
+  place-items: center;
   box-shadow: none;
 }
 .meta.loading .loading-state {
-  width: 100%;
+  justify-content: center;
+  width: min(460px, 100%);
+  min-height: 86px;
+}
+.meta.loading ~ .exports,
+.meta.loading ~ .turns {
+  margin-top: 0;
 }
 .meta-pills {
   display: flex;
@@ -969,6 +982,17 @@ function renderLoading(message) {
   "</div>";
 }
 
+function showViewerLoading(message) {
+  $("title").textContent = "正在加载会话";
+  $("meta").classList.add("empty", "loading");
+  $("meta").setAttribute("aria-busy", "true");
+  $("meta").innerHTML = renderLoading(message || "正在加载...");
+  $("risks").innerHTML = "";
+  $("exports").innerHTML = "";
+  $("turns").innerHTML = "";
+  $("turns").removeAttribute("aria-busy");
+}
+
 function activeOptions() {
   if ($("includeToolOutput").checked) {
     $("includeTools").checked = true;
@@ -1206,12 +1230,7 @@ async function selectFirstSessionForActiveSource() {
 
 function setViewerLoading(message) {
   state.requestToken += 1;
-  $("title").textContent = "正在加载会话";
-  $("meta").classList.add("empty", "loading");
-  $("meta").innerHTML = renderLoading(message || "正在加载...");
-  $("risks").innerHTML = "";
-  $("exports").innerHTML = "";
-  $("turns").innerHTML = "";
+  showViewerLoading(message);
 }
 
 function clearViewer(message) {
@@ -1220,6 +1239,7 @@ function clearViewer(message) {
   $("meta").textContent = message || "还没有选择会话。";
   $("meta").classList.add("empty");
   $("meta").classList.remove("loading");
+  $("meta").removeAttribute("aria-busy");
   $("risks").innerHTML = "";
   $("exports").innerHTML = "";
   $("turns").innerHTML = "";
@@ -1418,25 +1438,28 @@ async function selectSession(id) {
   state.requestToken = requestToken;
   state.selected = id;
   renderSessions();
-  $("turns").innerHTML = renderLoading("正在加载会话内容...");
-  $("turns").setAttribute("aria-busy", "true");
+  showViewerLoading("正在加载会话内容...");
   const response = await fetch("/api/snapshot?" + activeOptions().toString());
   const snapshot = await response.json();
   if (requestToken !== state.requestToken || id !== state.selected) {
     return;
   }
   if (snapshot.error) {
+    $("title").textContent = "会话加载失败";
+    $("meta").classList.add("empty");
+    $("meta").classList.remove("loading");
+    $("meta").removeAttribute("aria-busy");
+    $("meta").textContent = "会话内容加载失败。";
     $("turns").innerHTML = "<div class='meta'>" + esc(snapshot.error) + "</div>";
-    $("turns").removeAttribute("aria-busy");
     return;
   }
   renderSnapshot(snapshot);
 }
 
 function renderSnapshot(snapshot) {
-  $("turns").removeAttribute("aria-busy");
   $("title").textContent = snapshot.title;
   $("meta").classList.remove("empty", "loading");
+  $("meta").removeAttribute("aria-busy");
   $("meta").innerHTML = renderSnapshotMeta(snapshot);
   const notices = (snapshot.notices || []).map((notice) => {
     return "<div class='notice " + esc(notice.severity || "medium") + "'><b>NOTE</b><span><strong>" + esc(notice.label || "Notice") + ".</strong> " + esc(notice.text || "") + "</span></div>";
@@ -1453,13 +1476,21 @@ function renderSnapshot(snapshot) {
 }
 
 function renderSnapshotMeta(snapshot) {
-  const items = [
-    ["来源", (snapshot.engineLabel || "Codex") + (snapshot.sourceDetail ? " / " + snapshot.sourceDetail : "")],
-    ["会话", snapshot.id || "unknown"],
-    ["项目", projectDisplayPath(snapshot) || "no cwd"],
-    ["记录", String((snapshot.turns || []).length) + " 条"],
-    ["脱敏", snapshot.redacted ? "已开启" : "未开启"],
-  ];
+  const usage = snapshot.tokenUsage || {};
+  const totalTokens = tokenUsageNumber(usage.totalTokens ?? usage.total_tokens);
+  const inputTokens = tokenUsageNumber(usage.inputTokens ?? usage.input_tokens);
+  const cachedInputTokens = tokenUsageNumber(usage.cachedInputTokens ?? usage.cached_input_tokens);
+  const outputTokens = tokenUsageNumber(usage.outputTokens ?? usage.output_tokens);
+  const reasoningOutputTokens = tokenUsageNumber(usage.reasoningOutputTokens ?? usage.reasoning_output_tokens);
+  const items = totalTokens || inputTokens || outputTokens || cachedInputTokens || reasoningOutputTokens
+    ? [
+      ["总用量", formatTokenCount(totalTokens || inputTokens + outputTokens) + " tokens"],
+      ["输入", formatTokenCount(inputTokens)],
+      ...(cachedInputTokens ? [["缓存输入", formatTokenCount(cachedInputTokens)]] : []),
+      ["输出", formatTokenCount(outputTokens)],
+      ...(reasoningOutputTokens ? [["推理", formatTokenCount(reasoningOutputTokens)]] : []),
+    ]
+    : [["Token", "暂无 token 统计"]];
   const pills = "<div class='meta-pills'>" + items.map(([label, value]) => {
     return "<span class='meta-pill'><b>" + esc(label) + "</b><span>" + esc(value) + "</span></span>";
   }).join("") + "</div>";
@@ -1467,6 +1498,16 @@ function renderSnapshotMeta(snapshot) {
     ? "<div class='meta-goal'><b>目标</b><span>" + esc(snapshot.goalObjective) + "</span></div>"
     : "";
   return pills + goal;
+}
+
+function tokenUsageNumber(value) {
+  const number = Number(value || 0);
+  return Number.isFinite(number) && number > 0 ? Math.round(number) : 0;
+}
+
+function formatTokenCount(value) {
+  const number = tokenUsageNumber(value);
+  return number ? new Intl.NumberFormat("zh-CN").format(number) : "0";
 }
 
 function postSnapshotState(snapshot) {

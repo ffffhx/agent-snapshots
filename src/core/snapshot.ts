@@ -28,6 +28,15 @@ export type SnapshotNotice = {
   text?: string;
 };
 
+export type SnapshotTokenUsage = {
+  inputTokens?: number;
+  cachedInputTokens?: number;
+  outputTokens?: number;
+  reasoningOutputTokens?: number;
+  totalTokens?: number;
+  updatedAt?: string;
+};
+
 export type Snapshot = {
   id?: string;
   ref?: string;
@@ -44,6 +53,7 @@ export type Snapshot = {
   redacted?: boolean;
   size?: number;
   turnCount?: number;
+  tokenUsage?: SnapshotTokenUsage;
   turns?: SnapshotTurn[];
   risks?: SnapshotRisk[];
   notices?: SnapshotNotice[];
