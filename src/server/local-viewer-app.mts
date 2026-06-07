@@ -114,6 +114,8 @@ body {
   user-select: none;
 }
 .sidebar {
+  display: flex;
+  flex-direction: column;
   min-height: 0;
   background: var(--panel-soft);
   padding: 12px 14px 24px;
@@ -182,6 +184,7 @@ body {
   position: sticky;
   top: -1px;
   z-index: 6;
+  flex: 0 0 auto;
   margin: -12px -14px 0;
   padding: 14px 14px 12px;
   background: var(--panel-soft);
@@ -280,8 +283,19 @@ button:disabled {
 }
 .sessions {
   display: grid;
+  flex: 1 1 auto;
   gap: 14px;
+  align-content: start;
+  min-height: 0;
   margin-top: 16px;
+}
+.sessions.sessions-loading {
+  align-content: center;
+  margin-top: 0;
+}
+.sessions.sessions-loading > .loading-state {
+  justify-content: center;
+  min-height: 86px;
 }
 .source-switcher {
   position: sticky;
@@ -1092,6 +1106,7 @@ function initSplitter() {
 
 async function loadSessions() {
   setViewerLoading("正在加载会话...");
+  $("sessions").classList.add("sessions-loading");
   $("sessions").innerHTML = renderLoading("正在加载会话...");
   $("sessions").setAttribute("aria-busy", "true");
   $("reload").disabled = true;
@@ -1115,6 +1130,7 @@ async function loadSessions() {
     renderSessions();
     clearViewer("会话列表加载失败。");
   } finally {
+    $("sessions").classList.remove("sessions-loading");
     $("sessions").removeAttribute("aria-busy");
     $("reload").disabled = false;
   }
@@ -1171,6 +1187,7 @@ async function loadMoreSessions() {
 }
 
 function renderSessions() {
+  $("sessions").classList.remove("sessions-loading");
   const filter = $("filter").value.trim().toLowerCase();
   const source = sourceByKey(state.activeSource);
   const sessions = sourceSessions(source.key);
