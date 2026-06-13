@@ -15,6 +15,11 @@ const MAX_TEXT_CHARS = 20000;
 const MAX_SUMMARY_LINES = 140;
 const TOOL_OUTPUT_PREVIEW_CHARS = 24000;
 const MAX_INLINE_IMAGE_CHARS = 5_000_000;
+const DEFAULT_SEARCH_LIMIT = 20;
+const DEFAULT_SEARCH_SCAN_LIMIT = 600;
+const MAX_SEARCH_TEXT_CHARS = 180_000;
+const MAX_SEARCH_SEGMENT_CHARS = 60_000;
+const SEARCH_SNIPPET_CHARS = 280;
 const execFileAsync = promisify(execFile);
 
 function formatBytes(bytes) {
@@ -51,8 +56,435 @@ export async function listSessions({ codexHome, claudeHome, traeHome, traeAppHom
   return filterSessionCompleteness(await listCodexSessions({ codexHome, limit, cwd, includeArchived }), completeOnly);
 }
 
+export async function searchSessions({
+  codexHome,
+  claudeHome,
+  traeHome,
+  traeAppHome,
+  traeRecordingsDir,
+  query,
+  limit = DEFAULT_SEARCH_LIMIT,
+  scanLimit = DEFAULT_SEARCH_SCAN_LIMIT,
+  cwd = "",
+  includeArchived = true,
+  source = "all",
+  completeOnly = true,
+  includeTools = false,
+  includeToolOutput = false,
+}) {
+  const cleanQuery = String(query || "").trim();
+  const normalizedQuery = foldSearchText(cleanQuery);
+  const terms = searchTerms(cleanQuery);
+  const resultLimit = positiveIntegerOrDefault(limit, DEFAULT_SEARCH_LIMIT);
+  const sessionScanLimit = positiveIntegerOrDefault(scanLimit, DEFAULT_SEARCH_SCAN_LIMIT);
+
+  if (!normalizedQuery || !terms.length) {
+    return {
+      query: cleanQuery,
+      terms: [],
+      scanned: 0,
+      matched: 0,
+      failed: 0,
+      scanLimit: sessionScanLimit,
+      results: [],
+    };
+  }
+
+  const sessions = await listSessions({
+    codexHome,
+    claudeHome,
+    traeHome,
+    traeAppHome,
+    traeRecordingsDir,
+    limit: sessionScanLimit,
+    cwd,
+    includeArchived,
+    source,
+    completeOnly,
+  });
+  const results = [];
+  let failed = 0;
+
+  for (const session of sessions) {
+    try {
+      const document = await readSearchDocument(session, {
+        codexHome,
+        claudeHome,
+        traeHome,
+        traeAppHome,
+        traeRecordingsDir,
+        includeTools,
+        includeToolOutput,
+      });
+      const match = matchSearchDocument(document, cleanQuery, normalizedQuery, terms);
+      if (match) {
+        results.push(match);
+      }
+    } catch {
+      failed += 1;
+    }
+  }
+
+  results.sort((a, b) => {
+    const score = b.score - a.score;
+    if (score) {
+      return score;
+    }
+    return new Date(b.mtime || 0).getTime() - new Date(a.mtime || 0).getTime();
+  });
+
+  return {
+    query: cleanQuery,
+    terms,
+    scanned: sessions.length,
+    matched: results.length,
+    failed,
+    scanLimit: sessionScanLimit,
+    results: results.slice(0, resultLimit),
+  };
+}
+
 function filterSessionCompleteness(sessions, completeOnly) {
   return completeOnly ? sessions.filter((summary) => isCompleteSessionSummary(summary)) : sessions;
+}
+
+async function readSearchDocument(summary, options) {
+  const segments = await readSearchSegments(summary, options);
+  return {
+    summary,
+    fields: [
+      summary.title,
+      summary.engineLabel,
+      summary.engine,
+      summary.sourceDetail,
+      summary.cwd,
+      summary.displayCwd,
+      summary.id,
+      summary.ref,
+    ].filter(Boolean).map(String),
+    segments,
+  };
+}
+
+async function readSearchSegments(summary, options) {
+  if (summary.engine === "claude") {
+    return readClaudeSearchSegments(summary, options);
+  }
+  if (summary.engine === "trae") {
+    return readTraeSearchSegments(summary, options);
+  }
+  return readCodexSearchSegments(summary, options);
+}
+
+async function readCodexSearchSegments(summary, { includeTools, includeToolOutput }) {
+  const segments = [];
+  let turnNumber = 0;
+  let totalChars = 0;
+  for await (const row of readJsonl(summary.filePath)) {
+    if (row.type !== "response_item" || !row.payload) {
+      continue;
+    }
+    const item = row.payload;
+    if (item.type === "message") {
+      if (item.role !== "user" && item.role !== "assistant") {
+        continue;
+      }
+      const rawText = stripCodexAppDirectives(extractMessageParts(item).text);
+      if (isBootstrapUserMessage(item.role, rawText) || !rawText.trim()) {
+        continue;
+      }
+      turnNumber += 1;
+      totalChars += pushSearchSegment(segments, {
+        role: item.role,
+        label: item.role === "user" ? "User" : "Assistant",
+        turn: turnNumber,
+        text: rawText,
+        timestamp: row.timestamp || "",
+      });
+    } else if (includeTools && isToolPayload(item)) {
+      const rawText = renderToolText(item, includeToolOutput);
+      totalChars += pushSearchSegment(segments, {
+        role: "tool",
+        label: toolName(item),
+        turn: turnNumber || 1,
+        text: rawText,
+        timestamp: row.timestamp || "",
+      });
+    }
+    if (totalChars >= MAX_SEARCH_TEXT_CHARS) {
+      break;
+    }
+  }
+  return segments;
+}
+
+async function readClaudeSearchSegments(summary, { claudeHome, includeTools, includeToolOutput }) {
+  if (summary.sourceKind === "history") {
+    const groups = await readClaudeHistoryGroups(claudeHome);
+    const group = groups.find((item) => item.id === summary.id || item.id.startsWith(summary.id));
+    return (group?.entries || []).map((row, index) => ({
+      role: "user",
+      label: "User",
+      turn: index + 1,
+      text: stripCodexAppDirectives(row.display || ""),
+      timestamp: normalizeClaudeTimestamp(row.timestamp),
+    })).filter((segment) => segment.text.trim());
+  }
+
+  const segments = [];
+  let turnNumber = 0;
+  let totalChars = 0;
+  for await (const row of readJsonl(summary.filePath)) {
+    const role = claudeRole(row);
+    if (!role) {
+      continue;
+    }
+    const message = extractClaudeMessageParts(row.message || row);
+    const rawText = stripCodexAppDirectives(message.text);
+    if (rawText.trim()) {
+      turnNumber += 1;
+      totalChars += pushSearchSegment(segments, {
+        role,
+        label: role === "user" ? "User" : "Assistant",
+        turn: turnNumber,
+        text: rawText,
+        timestamp: normalizeClaudeTimestamp(row.timestamp),
+      });
+    }
+    if (includeTools) {
+      for (const tool of message.toolCalls) {
+        totalChars += pushSearchSegment(segments, {
+          role: "tool",
+          label: tool.name,
+          turn: turnNumber || 1,
+          text: tool.text,
+          timestamp: normalizeClaudeTimestamp(row.timestamp),
+        });
+      }
+      for (const tool of message.toolResults) {
+        totalChars += pushSearchSegment(segments, {
+          role: "tool",
+          label: tool.name,
+          turn: turnNumber || 1,
+          text: includeToolOutput ? tool.text : "",
+          timestamp: normalizeClaudeTimestamp(row.timestamp),
+        });
+      }
+    }
+    if (totalChars >= MAX_SEARCH_TEXT_CHARS) {
+      break;
+    }
+  }
+  return segments;
+}
+
+async function readTraeSearchSegments(summary, { includeTools, includeToolOutput }) {
+  if (summary.sourceKind === "recorded") {
+    const allRecords = await readTraeCaptureRecords(summary.filePath);
+    const records = summary.recordGroupId
+      ? allRecords.filter((record) => {
+        const key = safeCaptureId(record.domThreadId || record.captureSessionId || record.actualSessionId || record.pageSession || "");
+        return key === summary.recordGroupId;
+      })
+      : allRecords;
+    const { turns } = buildTraeRecordedTurns(records, { redact: false });
+    return turns.map((turn) => ({
+      role: turn.role,
+      label: turn.role === "user" ? "User" : "Assistant",
+      turn: turn.turn,
+      text: turn.text || "",
+      timestamp: turn.timestamp || "",
+    })).filter((segment) => segment.text.trim());
+  }
+
+  if (summary.sourceKind === "input-history") {
+    const entries = await readTraeInputHistoryEntries(summary.filePath);
+    return entries.map((entry, index) => ({
+      role: "user",
+      label: "User",
+      turn: index + 1,
+      text: stripCodexAppDirectives(traeInputEntryText(entry)),
+      timestamp: "",
+    })).filter((segment) => segment.text.trim());
+  }
+
+  const segments = [];
+  let turnNumber = 0;
+  let totalChars = 0;
+  for (const filePath of summary.filePaths || [summary.filePath]) {
+    for await (const row of readJsonl(filePath)) {
+      const rawText = stripCodexAppDirectives(renderTraeMemoryText(row));
+      if (!rawText.trim()) {
+        continue;
+      }
+      turnNumber += 1;
+      totalChars += pushSearchSegment(segments, {
+        role: "assistant",
+        label: "Memory",
+        turn: turnNumber,
+        text: rawText,
+        timestamp: normalizeTraeTimestamp(row.message_summary_time),
+      });
+      if (totalChars >= MAX_SEARCH_TEXT_CHARS) {
+        return segments;
+      }
+    }
+  }
+  return segments;
+}
+
+function pushSearchSegment(segments, segment) {
+  const text = trimSearchSegment(segment.text);
+  if (!text) {
+    return 0;
+  }
+  segments.push({
+    role: segment.role || "",
+    label: segment.label || "",
+    turn: segment.turn || 0,
+    text,
+    timestamp: segment.timestamp || "",
+  });
+  return text.length;
+}
+
+function trimSearchSegment(text) {
+  const clean = String(text || "").replace(/\u0000/g, "").trim();
+  if (!clean) {
+    return "";
+  }
+  return clean.length > MAX_SEARCH_SEGMENT_CHARS ? clean.slice(0, MAX_SEARCH_SEGMENT_CHARS) : clean;
+}
+
+function matchSearchDocument(document, rawQuery, normalizedQuery, terms) {
+  const summary = document.summary;
+  const fieldText = document.fields.join("\n");
+  const searchableText = foldSearchText([fieldText, ...document.segments.map((segment) => segment.text)].join("\n"));
+  if (!searchableText || !searchTextMatches(searchableText, normalizedQuery, terms)) {
+    return null;
+  }
+
+  const fieldScore = searchScore(fieldText, normalizedQuery, terms) * 2.4;
+  let bestSegment = null;
+  let bestSegmentScore = 0;
+  for (const segment of document.segments) {
+    const score = searchScore(segment.text, normalizedQuery, terms);
+    if (score > bestSegmentScore) {
+      bestSegmentScore = score;
+      bestSegment = segment;
+    }
+  }
+
+  const snippetSource = bestSegment && bestSegmentScore >= fieldScore / 2
+    ? bestSegment.text
+    : fieldText || bestSegment?.text || summary.title || "";
+  const score = fieldScore + bestSegmentScore + recencySearchBoost(summary.mtime);
+
+  return {
+    id: summary.id,
+    ref: summary.ref || `${summary.engine || "codex"}:${summary.id}`,
+    title: summary.title || summary.id,
+    engine: summary.engine || "codex",
+    engineLabel: summary.engineLabel || "Codex",
+    sourceDetail: summary.sourceDetail || "",
+    cwd: summary.cwd || "",
+    displayCwd: summary.displayCwd || summary.cwd || "",
+    mtime: summary.mtime || "",
+    createdAt: summary.createdAt || "",
+    projectKind: summary.projectKind || "",
+    score: Math.round(score * 100) / 100,
+    role: bestSegment?.role || "metadata",
+    label: bestSegment?.label || "Metadata",
+    turn: bestSegment?.turn || 0,
+    timestamp: bestSegment?.timestamp || "",
+    snippet: redactText(makeSearchSnippet(snippetSource, rawQuery, terms)),
+    terms,
+    session: summary,
+  };
+}
+
+function searchTextMatches(foldedText, normalizedQuery, terms) {
+  return foldedText.includes(normalizedQuery) || terms.every((term) => foldedText.includes(term));
+}
+
+function searchScore(text, normalizedQuery, terms) {
+  const folded = foldSearchText(text);
+  if (!folded) {
+    return 0;
+  }
+  let score = 0;
+  if (normalizedQuery && folded.includes(normalizedQuery)) {
+    score += 18 + normalizedQuery.length / 2;
+  }
+  for (const term of terms) {
+    const count = countFoldedOccurrences(folded, term);
+    if (count) {
+      score += 4 + Math.min(20, count * Math.max(1, term.length / 3));
+    }
+  }
+  return score;
+}
+
+function recencySearchBoost(value) {
+  const time = new Date(value || 0).getTime();
+  if (!Number.isFinite(time)) {
+    return 0;
+  }
+  const ageDays = Math.max(0, (Date.now() - time) / (24 * 60 * 60 * 1000));
+  return Math.max(0, 6 - Math.log2(ageDays + 1));
+}
+
+function countFoldedOccurrences(text, term) {
+  if (!term) {
+    return 0;
+  }
+  let count = 0;
+  let index = 0;
+  while (index < text.length) {
+    const found = text.indexOf(term, index);
+    if (found < 0) {
+      break;
+    }
+    count += 1;
+    index = found + Math.max(1, term.length);
+  }
+  return count;
+}
+
+function makeSearchSnippet(text, rawQuery, terms) {
+  const clean = String(text || "").replace(/\s+/g, " ").trim();
+  if (clean.length <= SEARCH_SNIPPET_CHARS) {
+    return clean;
+  }
+  const folded = clean.toLocaleLowerCase();
+  const needles = uniqueStrings([String(rawQuery || "").trim().toLocaleLowerCase(), ...terms])
+    .filter((term) => term.length >= 2 || /[\u4e00-\u9fff]/.test(term));
+  const matchIndex = needles
+    .map((term) => folded.indexOf(term))
+    .filter((index) => index >= 0)
+    .sort((a, b) => a - b)[0] ?? 0;
+  const half = Math.floor(SEARCH_SNIPPET_CHARS / 2);
+  const start = Math.max(0, matchIndex - half);
+  const end = Math.min(clean.length, start + SEARCH_SNIPPET_CHARS);
+  return `${start > 0 ? "..." : ""}${clean.slice(start, end)}${end < clean.length ? "..." : ""}`;
+}
+
+function foldSearchText(value) {
+  return String(value || "").toLocaleLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function searchTerms(query) {
+  const normalized = foldSearchText(query);
+  if (!normalized) {
+    return [];
+  }
+  const terms = normalized.split(/\s+/).filter(Boolean);
+  return uniqueStrings(terms.length ? terms : [normalized]).slice(0, 12);
+}
+
+function positiveIntegerOrDefault(value, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? Math.floor(number) : fallback;
 }
 
 function isCompleteSessionSummary(summary) {

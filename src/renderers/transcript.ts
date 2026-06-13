@@ -22,6 +22,7 @@ export type TranscriptRenderLabels = {
   processed?: string;
   tool?: string;
   user?: string;
+  interrupted?: string;
   imageUnavailable?: string;
   imageAltPrefix?: string;
 };
@@ -161,6 +162,7 @@ function normalizeTranscriptRenderOptions(
       processed: base.labels?.processed || "已处理",
       tool: base.labels?.tool || "工具",
       user: base.labels?.user || "User",
+      interrupted: base.labels?.interrupted || "用户中断了此轮回复",
       imageUnavailable: base.labels?.imageUnavailable || "图片暂不可用",
       imageAltPrefix: base.labels?.imageAltPrefix || "图片附件",
     },
@@ -169,6 +171,25 @@ function normalizeTranscriptRenderOptions(
 
 function buildProcessDurationTurns(startTurn: SnapshotTurn | null, turns: SnapshotTurn[]): SnapshotTurn[] {
   return [startTurn, ...turns].filter(Boolean) as SnapshotTurn[];
+}
+
+const INTERRUPTION_MARKER_PATTERNS = [
+  // Codex CLI 在用户按 Esc 中断时注入的 user 角色标记
+  /^<turn_aborted>[\s\S]*<\/turn_aborted>$/,
+  // Claude Code 中断时记录的占位用户消息
+  /^\[Request interrupted by user(?: for tool use)?\]$/,
+];
+
+export function isInterruptionMarker(text: unknown): boolean {
+  const value = String(text ?? "").trim();
+  if (!value) {
+    return false;
+  }
+  return INTERRUPTION_MARKER_PATTERNS.some((pattern) => pattern.test(value));
+}
+
+function isInterruptionTurn(turn: SnapshotTurn): boolean {
+  return turn.kind !== "tool" && turn.role === "user" && !(turn.images || []).length && isInterruptionMarker(turn.text);
 }
 
 function isUserMessageTurn(turn: SnapshotTurn | undefined): boolean {
@@ -191,11 +212,18 @@ function renderTranscriptItemHtml(
 }
 
 function renderTurnHtml(turn: SnapshotTurn, options: NormalizedTranscriptRenderOptions): string {
+  if (isInterruptionTurn(turn)) {
+    return renderInterruptionNoticeHtml(options);
+  }
   const role = turnRole(turn);
   const meta = options.includeTopLevelToolMeta && role === "tool"
     ? `<div class="turn-meta">${escapeHtml(turnLabel(role, turn, options))}</div>`
     : "";
   return `<article class="${escapeHtml(turnClassName(role, options))}"><div class="message-card">${meta}${renderBodyContainerHtml(turn, options)}</div></article>`;
+}
+
+function renderInterruptionNoticeHtml(options: NormalizedTranscriptRenderOptions): string {
+  return `<article class="${escapeHtml(turnClassName("interrupt", options))}"><div class="turn-notice"><span aria-hidden="true">⏹</span><span>${escapeHtml(options.labels.interrupted)}</span></div></article>`;
 }
 
 function renderProcessGroupHtml(

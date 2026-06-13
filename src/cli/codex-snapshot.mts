@@ -14,10 +14,10 @@ import {
   sanitizeSnapshotHtml as sanitizeSnapshotTurnHtml,
   stripAppDirectives as stripCodexAppDirectives,
 } from "../shared/sanitize.js";
-import { renderTranscriptHtml } from "../renderers/transcript.js";
+import { isInterruptionMarker, renderTranscriptHtml } from "../renderers/transcript.js";
 import { send, sendJson } from "../server/http.js";
 import { serveLocalViewer } from "../server/local-viewer.mjs";
-import { listSessions, loadSnapshot } from "../sources/index.mjs";
+import { listSessions, loadSnapshot, searchSessions } from "../sources/index.mjs";
 
 const packageRoot = findPackageRoot(path.dirname(fileURLToPath(import.meta.url)));
 const cliPath = fileURLToPath(import.meta.url);
@@ -99,6 +99,35 @@ async function main() {
       console.log(JSON.stringify(sessions, null, 2));
     } else {
       printSessionList(sessions);
+    }
+    return;
+  }
+
+  if (parsed.command === "search") {
+    const query = parsed.positionals.join(" ").trim();
+    if (!query) {
+      throw new Error("search requires a query");
+    }
+    const result = await searchSessions({
+      codexHome,
+      claudeHome,
+      traeHome,
+      traeAppHome,
+      traeRecordingsDir,
+      query,
+      limit: parsed.options.limit || 10,
+      scanLimit: parsed.options.scanLimit || 600,
+      cwd: parsed.options.cwd,
+      includeArchived: parsed.options.includeArchived,
+      source: parsed.options.source,
+      completeOnly: true,
+      includeTools: parsed.options.includeTools,
+      includeToolOutput: parsed.options.includeToolOutput,
+    });
+    if (parsed.options.json) {
+      console.log(JSON.stringify(result, null, 2));
+    } else {
+      printSearchResults(result);
     }
     return;
   }
@@ -228,6 +257,7 @@ function parseArgs(args) {
     noRedact: false,
     output: "",
     port: 0,
+    scanLimit: 0,
     apiUrl: "",
     siteUrl: "",
     shareToken: "",
@@ -295,7 +325,7 @@ function parseArgs(args) {
       options.includeArchived = false;
       continue;
     }
-    if (arg === "--codex-home" || arg === "--claude-home" || arg === "--trae-home" || arg === "--trae-app-home" || arg === "--trae-recordings-dir" || arg === "--cwd" || arg === "--limit" || arg === "--output" || arg === "-o" || arg === "--port" || arg === "--host" || arg === "--source" || arg === "--api-url" || arg === "--site-url" || arg === "--share-token" || arg === "--expires-in-days" || arg === "--label") {
+    if (arg === "--codex-home" || arg === "--claude-home" || arg === "--trae-home" || arg === "--trae-app-home" || arg === "--trae-recordings-dir" || arg === "--cwd" || arg === "--limit" || arg === "--scan-limit" || arg === "--output" || arg === "-o" || arg === "--port" || arg === "--host" || arg === "--source" || arg === "--api-url" || arg === "--site-url" || arg === "--share-token" || arg === "--expires-in-days" || arg === "--label") {
       const value = args[index + 1];
       if (!value) {
         throw new Error(`${arg} requires a value`);
@@ -314,6 +344,8 @@ function parseArgs(args) {
         options.cwd = value;
       } else if (arg === "--limit") {
         options.limit = readPositiveInteger(value, "--limit");
+      } else if (arg === "--scan-limit") {
+        options.scanLimit = readPositiveInteger(value, "--scan-limit");
       } else if (arg === "--label") {
         options.label = value;
       } else if (arg === "--output" || arg === "-o") {
@@ -910,6 +942,30 @@ function printSessionList(sessions) {
   }
 }
 
+function printSearchResults(result) {
+  if (!result.results.length) {
+    console.log(`No sessions matched "${result.query}".`);
+    console.log(`Scanned ${result.scanned} session(s).`);
+    return;
+  }
+  console.log(`Found ${result.matched} match(es) for "${result.query}" across ${result.scanned} scanned session(s).`);
+  if (result.failed) {
+    console.log(`Skipped ${result.failed} session(s) that could not be parsed.`);
+  }
+  console.log("");
+  result.results.forEach((item, index) => {
+    const source = item.engineLabel || "Codex";
+    const date = formatDate(item.mtime);
+    const location = item.displayCwd || item.cwd || "No project";
+    const turn = item.turn ? ` turn ${item.turn}` : "";
+    console.log(`${index + 1}. [${source}] ${date}  ${item.title}`);
+    console.log(`   ${location}`);
+    console.log(`   ${item.label || item.role || "Match"}${turn}: "${item.snippet}"`);
+    console.log(`   Ref: ${item.ref}`);
+    console.log("");
+  });
+}
+
 function renderTextPreview(snapshot) {
   const lines = [
     `${snapshot.title}`,
@@ -921,6 +977,10 @@ function renderTextPreview(snapshot) {
     "",
   ];
   for (const turn of snapshot.turns) {
+    if (turn.kind !== "tool" && turn.role === "user" && isInterruptionMarker(turn.text)) {
+      lines.push(`--- interrupted #${turn.turn} ---`, "[User interrupted this turn]", "");
+      continue;
+    }
     lines.push(`--- ${turn.role}${turn.kind === "tool" ? `:${turn.name}` : ""} #${turn.turn} ---`);
     const visibleText = stripCodexAppDirectives(turn.text);
     if (visibleText) {
@@ -973,6 +1033,10 @@ function renderMarkdown(snapshot) {
 
   lines.push("## Transcript", "");
   for (const turn of snapshot.turns) {
+    if (turn.kind !== "tool" && turn.role === "user" && isInterruptionMarker(turn.text)) {
+      lines.push(`### Interrupted ${turn.turn}`, "", "> ⏹ User interrupted this turn.", "");
+      continue;
+    }
     const heading = turn.kind === "tool" ? `Tool: ${turn.name}` : turn.role === "user" ? "User" : "Assistant";
     lines.push(`### ${heading} ${turn.turn}`, "");
     if (turn.kind === "tool") {
@@ -1025,6 +1089,7 @@ function renderHtml(snapshot) {
     labels: {
       processed: "Processed",
       tool: "Tool",
+      interrupted: "User interrupted this turn",
       imageUnavailable: "Image unavailable",
       imageAltPrefix: "Image attachment",
     },
@@ -1182,6 +1247,19 @@ code, pre {
 }
 .turn-user, .turn.user { justify-content: flex-end; }
 .turn-assistant, .turn-tool, .turn-process, .turn.assistant, .turn.tool, .turn.process { justify-content: flex-start; }
+.turn-interrupt, .turn.interrupt { justify-content: center; }
+.turn-notice {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px dashed rgba(23, 32, 42, 0.3);
+  border-radius: 999px;
+  background: rgba(23, 32, 42, 0.05);
+  color: #8492a3;
+  padding: 7px 15px;
+  font: 600 11px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.08em;
+}
 .message-card {
   min-width: 0;
   max-width: min(1160px, 74%);
@@ -1330,6 +1408,31 @@ code, pre {
   line-height: 1.25;
   font-size: 1.08em;
 }
+.markdown-body table {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+.markdown-body th, .markdown-body td {
+  border: 1px solid rgba(23, 32, 42, 0.16);
+  padding: 7px 12px;
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+.markdown-body th {
+  background: rgba(23, 32, 42, 0.05);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.markdown-body tbody tr:nth-child(even) td,
+.markdown-body tr:nth-child(even) td {
+  background: rgba(23, 32, 42, 0.025);
+}
 .attachment-grid {
   display: grid;
   gap: 18px;
@@ -1444,6 +1547,7 @@ async function serve({ codexHome, claudeHome, traeHome, traeAppHome, traeRecordi
     shareConfig: browserShareConfig(),
     listSessions,
     loadSnapshot,
+    searchSessions,
     applySafetyChecksOption,
     snapshotApiResponse,
     publishAllSnapshots,
@@ -2689,6 +2793,7 @@ function printHelp() {
 
 Usage:
   codex-snapshot list [--json] [--limit N] [--cwd DIR]
+  codex-snapshot search <query> [--json] [--limit N] [--scan-limit N] [--cwd DIR]
   codex-snapshot preview <session-id|path> [--json] [--include-tools] [--include-tool-output]
   codex-snapshot export <session-id|path> [--html|--md] [--output FILE] [--include-tools] [--include-tool-output]
   codex-snapshot publish <session-id|path> [--api-url URL] [--share-token TOKEN] [--site-url URL]
@@ -2704,7 +2809,8 @@ Options:
   --trae-recordings-dir DIR
                            Use a custom Trae recorder output dir. Defaults to $TRAE_RECORDINGS_DIR or ~/.codex-snapshot/trae-recordings
   --source codex|claude|trae|all
-                           Choose which local agent history to list. Serve shows all configured sources in the UI.
+                           Choose which local agent history to list or search. Serve shows all configured sources in the UI.
+  --scan-limit N           For search only: number of recent sessions to scan. Defaults to 600
   --include-tools          Include tool calls in previews and exports
   --include-tool-output    Include tool output as well as tool calls
   --no-redact              Disable automatic redaction
@@ -2725,6 +2831,7 @@ Options:
 
 Examples:
   codex-snapshot list --limit 20
+  codex-snapshot search "redis race condition" --source all
   codex-snapshot export 019e457b --html -o snapshot.html
   codex-snapshot publish 019e457b --api-url ${DEFAULT_SNAPSHOT_SHARE_API_URL} --site-url ${DEFAULT_SNAPSHOT_SHARE_SITE_URL}
   codex-snapshot serve --port 4321

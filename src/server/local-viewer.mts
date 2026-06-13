@@ -23,6 +23,7 @@ export async function serveLocalViewer({
   shareConfig,
   listSessions,
   loadSnapshot,
+  searchSessions,
   applySafetyChecksOption,
   snapshotApiResponse,
   publishAllSnapshots,
@@ -76,6 +77,29 @@ export async function serveLocalViewer({
           completeOnly: url.searchParams.get("completeOnly") !== "0",
         });
         sendJson(response, Number.isFinite(limit) ? sessions.slice(offset, offset + limit) : sessions.slice(offset));
+        return;
+      }
+      if (url.pathname === "/api/search") {
+        const query = url.searchParams.get("q") || url.searchParams.get("query") || "";
+        const limit = readPositiveInteger(url.searchParams.get("limit") || "20", "limit");
+        const scanLimit = readPositiveInteger(url.searchParams.get("scanLimit") || "600", "scanLimit");
+        const result = await searchSessions({
+          codexHome,
+          claudeHome,
+          traeHome,
+          traeAppHome,
+          traeRecordingsDir,
+          query,
+          limit,
+          scanLimit,
+          cwd: url.searchParams.get("cwd") || "",
+          includeArchived: url.searchParams.get("liveOnly") !== "1",
+          source: url.searchParams.get("source") || "all",
+          completeOnly: url.searchParams.get("completeOnly") !== "0",
+          includeTools: url.searchParams.get("includeTools") === "1" || url.searchParams.get("includeToolOutput") === "1",
+          includeToolOutput: url.searchParams.get("includeToolOutput") === "1",
+        });
+        sendJson(response, result);
         return;
       }
       if (url.pathname === "/api/snapshot") {

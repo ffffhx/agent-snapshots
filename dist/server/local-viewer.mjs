@@ -3,7 +3,7 @@ import http from "node:http";
 import { send, sendJson } from "./http.js";
 import { allowMutationRequest, createMutationCsrfToken, isAllowedSnapshotServerRequest, setSnapshotServerCorsHeaders, } from "./local-security.js";
 import { renderServerApp } from "./local-viewer-app.mjs";
-export async function serveLocalViewer({ codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir, host, port, defaultServerLimit, snapshotLogoSvg, shareConfig, listSessions, loadSnapshot, applySafetyChecksOption, snapshotApiResponse, publishAllSnapshots, publishSnapshot, createShareRequestPayload, stableSnapshotShareId, renderMarkdown, renderHtml, readPositiveInteger, readNonNegativeInteger, safeFileName, }) {
+export async function serveLocalViewer({ codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir, host, port, defaultServerLimit, snapshotLogoSvg, shareConfig, listSessions, loadSnapshot, searchSessions, applySafetyChecksOption, snapshotApiResponse, publishAllSnapshots, publishSnapshot, createShareRequestPayload, stableSnapshotShareId, renderMarkdown, renderHtml, readPositiveInteger, readNonNegativeInteger, safeFileName, }) {
     const csrfToken = createMutationCsrfToken();
     const server = http.createServer(async (request, response) => {
         try {
@@ -45,6 +45,29 @@ export async function serveLocalViewer({ codexHome, claudeHome, traeHome, traeAp
                     completeOnly: url.searchParams.get("completeOnly") !== "0",
                 });
                 sendJson(response, Number.isFinite(limit) ? sessions.slice(offset, offset + limit) : sessions.slice(offset));
+                return;
+            }
+            if (url.pathname === "/api/search") {
+                const query = url.searchParams.get("q") || url.searchParams.get("query") || "";
+                const limit = readPositiveInteger(url.searchParams.get("limit") || "20", "limit");
+                const scanLimit = readPositiveInteger(url.searchParams.get("scanLimit") || "600", "scanLimit");
+                const result = await searchSessions({
+                    codexHome,
+                    claudeHome,
+                    traeHome,
+                    traeAppHome,
+                    traeRecordingsDir,
+                    query,
+                    limit,
+                    scanLimit,
+                    cwd: url.searchParams.get("cwd") || "",
+                    includeArchived: url.searchParams.get("liveOnly") !== "1",
+                    source: url.searchParams.get("source") || "all",
+                    completeOnly: url.searchParams.get("completeOnly") !== "0",
+                    includeTools: url.searchParams.get("includeTools") === "1" || url.searchParams.get("includeToolOutput") === "1",
+                    includeToolOutput: url.searchParams.get("includeToolOutput") === "1",
+                });
+                sendJson(response, result);
                 return;
             }
             if (url.pathname === "/api/snapshot") {

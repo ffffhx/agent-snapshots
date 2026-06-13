@@ -833,6 +833,23 @@ pre {
   justify-content: flex-start;
 }
 
+.turn.interrupt {
+  justify-content: center;
+}
+
+.turn-notice {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px dashed rgba(23, 32, 42, 0.28);
+  border-radius: 999px;
+  background: rgba(23, 32, 42, 0.05);
+  color: var(--soft);
+  padding: 7px 15px;
+  font: 600 11px/1.3 ui-monospace, SFMono-Regular, Menlo, Consolas, "PingFang SC", "Microsoft YaHei", monospace;
+  letter-spacing: 0.08em;
+}
+
 .message-card {
   min-width: 0;
   max-width: min(930px, 76%);
@@ -943,6 +960,37 @@ pre {
   color: #edf4ff;
   padding: 16px;
   font: 13px/1.58 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.body table {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.body th,
+.body td {
+  border: 1px solid rgba(23, 32, 42, 0.14);
+  padding: 7px 12px;
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.body th {
+  background: rgba(23, 32, 42, 0.05);
+  color: var(--ink);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.body tbody tr:nth-child(even) td,
+.body tr:nth-child(even) td {
+  background: rgba(23, 32, 42, 0.022);
 }
 
 .attachment-grid {
