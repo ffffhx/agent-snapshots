@@ -532,7 +532,8 @@ async function discoverSessionFiles(codexHome, includeArchived = true) {
   return files;
 }
 
-async function collectJsonlFiles(dir, files) {
+async function collectJsonlFiles(dir, files, options = {}) {
+  const { skipDirNames, skipFile } = options;
   let entries = [];
   try {
     entries = await readdir(dir, { withFileTypes: true });
@@ -543,10 +544,16 @@ async function collectJsonlFiles(dir, files) {
     entries.map(async (entry) => {
       const entryPath = path.join(dir, entry.name);
       if (entry.isDirectory()) {
-        await collectJsonlFiles(entryPath, files);
+        if (skipDirNames && skipDirNames.has(entry.name)) {
+          return;
+        }
+        await collectJsonlFiles(entryPath, files, options);
         return;
       }
       if (!entry.isFile() || !entry.name.endsWith(".jsonl")) {
+        return;
+      }
+      if (skipFile && skipFile(entry.name)) {
         return;
       }
       const info = await stat(entryPath);
@@ -840,6 +847,9 @@ async function listClaudeSessions({ claudeHome, limit, cwd }) {
   for (const fileInfo of files) {
     const summary = await scanClaudeFileSessionSummary(fileInfo.filePath, fileInfo, claudeHome);
     fileSessionIds.add(summary.id);
+    if (summary.isSubagent) {
+      continue;
+    }
     if (cwdFilter && summary.cwd && !path.resolve(summary.cwd).startsWith(cwdFilter)) {
       continue;
     }
@@ -858,11 +868,25 @@ async function listClaudeSessions({ claudeHome, limit, cwd }) {
   return Number.isFinite(limit) ? summaries.slice(0, limit) : summaries;
 }
 
+// Claude Code writes subagent transcripts, workflow journals, and tool-result
+// dumps into nested folders alongside the real session transcript (for example
+// `<project>/<session-id>/subagents/.../agent-*.jsonl` and `journal.jsonl`).
+// Those are internal artifacts of a parent session, not standalone sessions, so
+// they must not be discovered as their own entries.
+const CLAUDE_ARTIFACT_DIR_NAMES = new Set(["subagents", "workflows", "tool-results", "memory"]);
+
+function isClaudeArtifactFileName(name) {
+  return /^agent-[0-9a-f]+\.jsonl$/i.test(name) || name === "journal.jsonl";
+}
+
 async function discoverClaudeSessionFiles(claudeHome) {
   const roots = [path.join(claudeHome, "projects"), path.join(claudeHome, "sessions")];
   const files = [];
   for (const root of roots) {
-    await collectJsonlFiles(root, files);
+    await collectJsonlFiles(root, files, {
+      skipDirNames: CLAUDE_ARTIFACT_DIR_NAMES,
+      skipFile: isClaudeArtifactFileName,
+    });
   }
   files.sort((a, b) => b.mtimeMs - a.mtimeMs);
   return files;
@@ -878,6 +902,9 @@ async function scanClaudeFileSessionSummary(filePath, fileInfo, claudeHome) {
   });
   summary.cwd = cwdFromClaudeProjectPath(filePath, claudeHome);
   let firstUser = "";
+  let firstUserAny = "";
+  let aiTitle = "";
+  let summaryTitle = "";
   let lineCount = 0;
 
   for await (const row of readJsonl(filePath)) {
@@ -887,6 +914,15 @@ async function scanClaudeFileSessionSummary(filePath, fileInfo, claudeHome) {
     }
     if (row.cwd) {
       summary.cwd = row.cwd;
+    }
+    if (row.isSidechain === true) {
+      summary.isSubagent = true;
+    }
+    if (!aiTitle && row.type === "ai-title" && row.aiTitle) {
+      aiTitle = truncateForTitle(String(row.aiTitle));
+    }
+    if (!summaryTitle && row.type === "summary" && row.summary) {
+      summaryTitle = truncateForTitle(String(row.summary));
     }
     const timestamp = normalizeClaudeTimestamp(row.timestamp);
     if (timestamp && !summary.createdAt) {
@@ -901,8 +937,14 @@ async function scanClaudeFileSessionSummary(filePath, fileInfo, claudeHome) {
     summary.toolCallCount += message.toolCalls.length + message.toolResults.length;
     if (rawText || message.images.length) {
       summary.messageCount += 1;
-      if (!firstUser && role === "user" && !isClaudeCommand(rawText)) {
-        firstUser = rawText ? truncateForTitle(rawText) : "[image]";
+      if (role === "user") {
+        const candidate = rawText ? truncateForTitle(rawText) : "[image]";
+        if (!firstUserAny) {
+          firstUserAny = candidate;
+        }
+        if (!firstUser && !isClaudeCommand(rawText)) {
+          firstUser = candidate;
+        }
       }
       summary.riskCount += detectRisks(rawText).length;
       if (message.images.length) {
@@ -912,7 +954,7 @@ async function scanClaudeFileSessionSummary(filePath, fileInfo, claudeHome) {
     for (const tool of message.toolCalls) {
       summary.riskCount += detectRisks(tool.text).length;
     }
-    if (summary.id && summary.cwd && firstUser && lineCount >= 12) {
+    if (summary.id && summary.cwd && aiTitle && firstUser && lineCount >= 12) {
       break;
     }
     if (lineCount >= MAX_SUMMARY_LINES) {
@@ -920,7 +962,7 @@ async function scanClaudeFileSessionSummary(filePath, fileInfo, claudeHome) {
     }
   }
 
-  summary.title = firstUser || summary.id;
+  summary.title = aiTitle || firstUser || summaryTitle || firstUserAny || summary.id;
   return finishClaudeSummary(summary);
 }
 
@@ -964,6 +1006,9 @@ async function readClaudeHistoryGroups(claudeHome, excludeIds = new Set()) {
     }
     group.messageCount += 1;
     group.riskCount += detectRisks(display).length;
+    if (!group.firstDisplay) {
+      group.firstDisplay = truncateForTitle(display);
+    }
     if (!group.title && !isClaudeCommand(display)) {
       group.title = truncateForTitle(display);
     }
@@ -971,7 +1016,7 @@ async function readClaudeHistoryGroups(claudeHome, excludeIds = new Set()) {
 
   return [...groups.values()].map((group) => finishClaudeSummary({
     ...group,
-    title: group.title || group.id,
+    title: group.title || group.firstDisplay || group.id,
   }));
 }
 
@@ -1284,7 +1329,20 @@ function cwdFromClaudeProjectPath(filePath, claudeHome) {
 }
 
 function isClaudeCommand(text) {
-  return String(text || "").trim().startsWith("/");
+  let trimmed = String(text || "").trim();
+  // stripAppDirectives renders slash commands as a backtick-wrapped `/clear`,
+  // so unwrap surrounding backticks before testing.
+  const fenced = trimmed.match(/^`+\s*([^`]+?)\s*`+$/);
+  if (fenced) {
+    trimmed = fenced[1].trim();
+  }
+  if (!trimmed.startsWith("/")) {
+    return false;
+  }
+  // A real slash command is a single bare token such as /clear or /compact,
+  // not a filesystem path like /Users/foo/bar.doc that merely starts with /.
+  const firstToken = trimmed.split(/\s+/)[0];
+  return /^\/[a-zA-Z][\w-]*$/.test(firstToken);
 }
 
 async function listTraeSessions({ traeHome, traeAppHome, traeRecordingsDir, limit, cwd }) {
