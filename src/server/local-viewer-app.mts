@@ -1333,11 +1333,13 @@ function groupSessions(sessions, filter) {
     const key = projectKey(session);
     const isNoProject = isNoProjectSession(session);
     if (!groupMap.has(key)) {
+      const ephemeral = isNoProject ? null : ephemeralAgentInfo(session);
       groupMap.set(key, {
         key,
-        label: projectLabel(session),
-        displayPath: projectDisplayPath(session),
+        label: ephemeral ? ephemeral.prefix : projectLabel(session),
+        displayPath: ephemeral ? "临时 agent 运行 · " + ephemeral.prefix + "-*" : projectDisplayPath(session),
         isNoProject,
+        isEphemeral: Boolean(ephemeral),
         newestMs: 0,
         sessions: [],
       });
@@ -1363,9 +1365,45 @@ function groupSessions(sessions, filter) {
   }).filter((group) => group.sessions.length));
 }
 
+// Eval/judge harnesses (and headless claude -p runs) execute each agent in its
+// own throwaway temp directory such as
+// /private/var/folders/<x>/<y>/T/judge-cl-k5jv9X or /tmp/eval-2CwQp3.
+// Every one of those would otherwise become its own sidebar "project". Collapse
+// them into a single parent group per prefix so the spawned agents nest under
+// their batch instead of flooding the list.
+function ephemeralAgentInfo(session) {
+  // NOTE: this runs inside a template literal, so backslash-heavy regexes get
+  // mangled by template escaping. Detect the temp path with plain string ops
+  // and keep the only regex backslash-free.
+  const cwd = normalizeProjectPath(projectPath(session));
+  const parts = cwd.split("/").filter(Boolean);
+  if (parts.length < 2) {
+    return null;
+  }
+  const base = parts[parts.length - 1];
+  const parent = parts[parts.length - 2];
+  // System temp roots: macOS var/folders/<x>/<y>/T/<name>, or /tmp/<name>.
+  const underTemp = parent === "tmp" || (parent === "T" && parts.indexOf("folders") !== -1);
+  if (!underTemp) {
+    return null;
+  }
+  // Collapse the generated suffix of an ephemeral run dir: <prefix>-<id> ->
+  // <prefix>. Gated on the temp root above, so a 5-16 char alphanumeric tail
+  // is safe to treat as a generated id (eval-ne05uj, judge-cl-k8qxz2, ...).
+  const split = base.match(/^(.+)-([A-Za-z0-9_]{5,16})$/);
+  if (!split) {
+    return null;
+  }
+  return { prefix: split[1], base: base };
+}
+
 function projectKey(session) {
   if (isNoProjectSession(session)) {
     return sessionEngine(session) + "::no-project";
+  }
+  const ephemeral = ephemeralAgentInfo(session);
+  if (ephemeral) {
+    return sessionEngine(session) + "::agent::" + ephemeral.prefix;
   }
   return sessionEngine(session) + "::" + projectPath(session);
 }
@@ -1406,10 +1444,18 @@ function normalizeProjectPath(value) {
   return String(value || "").trim().replace(/\\\\/g, "/").replace(/\\/+$/, "");
 }
 
+function projectGroupTier(group) {
+  if (group.isNoProject) {
+    return 2;
+  }
+  return group.isEphemeral ? 1 : 0;
+}
+
 function sortProjectGroups(groups) {
   return groups.slice().sort((a, b) => {
-    if (a.isNoProject !== b.isNoProject) {
-      return a.isNoProject ? 1 : -1;
+    const tier = projectGroupTier(a) - projectGroupTier(b);
+    if (tier) {
+      return tier;
     }
     return (b.newestMs || 0) - (a.newestMs || 0) || a.label.localeCompare(b.label);
   });
@@ -1444,18 +1490,19 @@ function renderProjectGroup(group) {
   const expanded = state.expandedProjects.has(group.key);
   const collapsed = state.collapsedProjects.has(group.key);
   const activeIndex = group.sessions.findIndex((session) => sessionRef(session) === state.selected);
-  const expandedLimit = group.isNoProject ? Math.min(noisyExpandedLimit, group.sessions.length) : group.sessions.length;
+  const noisy = group.isNoProject || group.isEphemeral;
+  const expandedLimit = noisy ? Math.min(noisyExpandedLimit, group.sessions.length) : group.sessions.length;
   const visibleLimit = expanded ? expandedLimit : Math.min(collapsedLimit, group.sessions.length);
   let visible = group.sessions.slice(0, visibleLimit);
   if (!collapsed && activeIndex >= visibleLimit) {
     visible = visible.slice(0, Math.max(0, visibleLimit - 1)).concat(group.sessions[activeIndex]);
   }
   const showToggle = !collapsed && group.sessions.length > collapsedLimit;
-  const toggleLabel = expanded ? "收起" : group.isNoProject ? "显示最近 " + Math.min(noisyExpandedLimit, group.sessions.length) : "展开显示";
+  const toggleLabel = expanded ? "收起" : noisy ? "显示最近 " + Math.min(noisyExpandedLimit, group.sessions.length) : "展开显示";
   const toggle = showToggle
     ? "<button class='project-more' type='button' data-project-toggle='" + esc(group.key) + "'>" + toggleLabel + "</button>"
     : "";
-  const note = !collapsed && group.isNoProject && expanded && group.sessions.length > noisyExpandedLimit
+  const note = !collapsed && noisy && expanded && group.sessions.length > noisyExpandedLimit
     ? "<div class='project-note'>仅显示最近 " + noisyExpandedLimit + " / " + esc(group.sessions.length) + "，可搜索标题定位更多</div>"
     : "";
   const sessionList = collapsed ? "" : "<div class='session-list'>" + visible.map(renderSessionRow).join("") + "</div>";
