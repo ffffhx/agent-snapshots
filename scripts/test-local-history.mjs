@@ -105,6 +105,27 @@ test("a /clear-only session keeps a stable non-uuid title", async () => {
   }
 });
 
+test("a secret in the first prompt is redacted from the snapshot title", async () => {
+  const home = await makeClaudeHome();
+  try {
+    const id = "66666666-6666-6666-6666-666666666666";
+    await writeClaudeSession(home, "-tmp-projF", id, [
+      userRow(id, "/tmp/projF", "fix this leaked key AKIAIOSFODNN7EXAMPLE in my repo"),
+      assistantRow(id, "ok"),
+    ]);
+    const snap = await loadSnapshot(`claude:${id}`, {
+      claudeHome: home,
+      includeTools: false,
+      includeToolOutput: false,
+      redact: true,
+    });
+    assert.ok(!/AKIAIOSFODNN7EXAMPLE/.test(snap.title), `title leaked the secret: ${snap.title}`);
+    assert.ok(/REDACTED/.test(snap.title), `expected a redaction marker in title: ${snap.title}`);
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
 // --- Subagent exclusion + nesting ------------------------------------------
 
 async function writeParentWithSubagent(home) {

@@ -206,12 +206,18 @@ function renderImagesHtml(images, options) {
     }
     return `<div class="attachment-grid">${images
         .map((image, index) => {
-        if (!image.src) {
+        // Only inline data: images are rendered. A remote http(s) src would make
+        // the viewer's browser fetch it on render — a tracking beacon / blind SSRF
+        // — so it is shown as unavailable instead, regardless of the source data.
+        if (!image.src || !isInlineImageSrc(image.src)) {
             return `<figure class="image-attachment image-unavailable"><div>${escapeHtml(image.unavailableReason || options.labels.imageUnavailable)}</div></figure>`;
         }
         return `<figure class="image-attachment"><img src="${escapeHtml(image.src)}" alt="${escapeHtml(image.alt || `${options.labels.imageAltPrefix} ${index + 1}`)}" decoding="async"></figure>`;
     })
         .join("")}</div>`;
+}
+function isInlineImageSrc(src) {
+    return /^data:image\/(?:png|jpe?g|gif|webp);base64,/i.test(src);
 }
 export function sanitizeTranscriptHtml(value) {
     return sanitizeRenderedHtml(value);

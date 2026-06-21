@@ -2,7 +2,7 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { readdir, readFile, stat } from "node:fs/promises";
+import { readdir, readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 import { createInterface } from "node:readline";
 import { promisify } from "node:util";
@@ -10,6 +10,7 @@ import { addImageRisk, addRisks, detectRisks, redactText, severityRank } from ".
 import { renderMarkdownHtml } from "../renderers/markdown.mjs";
 import { stripAppDirectives as stripCodexAppDirectives } from "../shared/sanitize.js";
 const MAX_TEXT_CHARS = 20000;
+const MAX_TURNS = 5000;
 const MAX_SUMMARY_LINES = 140;
 const TOOL_OUTPUT_PREVIEW_CHARS = 24000;
 const MAX_INLINE_IMAGE_CHARS = 5_000_000;
@@ -34,11 +35,13 @@ function formatBytes(bytes) {
 }
 export async function listSessions({ codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir, limit, cwd, includeArchived, source = "codex", completeOnly = false }) {
     if (source === "all") {
-        const [codexSessions, claudeSessions, traeSessions] = await Promise.all([
+        // allSettled so a failure in one engine's discovery never blanks the
+        // sessions from the others.
+        const [codexSessions, claudeSessions, traeSessions] = (await Promise.allSettled([
             listCodexSessions({ codexHome, limit, cwd, includeArchived }),
             listClaudeSessions({ claudeHome, limit, cwd }),
             listTraeSessions({ traeHome, traeAppHome, traeRecordingsDir, limit, cwd }),
-        ]);
+        ])).map((result) => (result.status === "fulfilled" ? result.value : []));
         const sessions = [...codexSessions, ...claudeSessions, ...traeSessions]
             .filter((summary) => !completeOnly || isCompleteSessionSummary(summary))
             .sort((a, b) => new Date(b.mtime).getTime() - new Date(a.mtime).getTime());
@@ -458,7 +461,15 @@ async function listCodexSessions({ codexHome, limit, cwd, includeArchived }) {
     const unlimited = !Number.isFinite(limit);
     const scanLimit = unlimited ? files.length : Math.max(limit * 4, limit);
     for (const fileInfo of files.slice(0, scanLimit)) {
-        const summary = await scanSessionSummary(fileInfo.filePath, fileInfo, titleIndex);
+        let summary;
+        try {
+            summary = await scanSessionSummary(fileInfo.filePath, fileInfo, titleIndex);
+        }
+        catch {
+            // A single unreadable/corrupt session must not abort the whole listing;
+            // surface it as a placeholder so it stays visible but degraded.
+            summary = fallbackCodexSummary(fileInfo);
+        }
         if (cwdFilter && summary.cwd && !path.resolve(summary.cwd).startsWith(cwdFilter)) {
             continue;
         }
@@ -612,6 +623,30 @@ async function scanSessionSummary(filePath, fileInfo, titleIndex) {
     summary.displayFilePath = redactText(summary.filePath || "");
     return summary;
 }
+function fallbackCodexSummary(fileInfo) {
+    const id = sessionIdFromPath(fileInfo.filePath);
+    return {
+        id,
+        title: "(unreadable Codex session)",
+        cwd: "",
+        filePath: fileInfo.filePath,
+        size: fileInfo.size,
+        mtime: fileInfo.mtime,
+        createdAt: "",
+        modelProvider: "",
+        source: "",
+        messageCount: 0,
+        toolCallCount: 0,
+        riskCount: 0,
+        engine: "codex",
+        engineLabel: "Codex",
+        projectKind: "none",
+        ref: `codex:${id}`,
+        displayCwd: "",
+        displayFilePath: redactText(fileInfo.filePath || ""),
+        parseError: true,
+    };
+}
 function projectKindForCodexCwd(cwd) {
     if (!cwd) {
         return "none";
@@ -628,16 +663,17 @@ function isCodexStandaloneConversationCwd(cwd) {
 }
 export async function loadSnapshot(ref, { codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir, includeTools, includeToolOutput, redact }) {
     const target = splitSnapshotRef(ref);
+    let snapshot;
     if (target.engine === "claude") {
-        return loadClaudeSnapshot(target.ref, {
+        snapshot = await loadClaudeSnapshot(target.ref, {
             claudeHome,
             includeTools,
             includeToolOutput,
             redact,
         });
     }
-    if (target.engine === "trae") {
-        return loadTraeSnapshot(target.ref, {
+    else if (target.engine === "trae") {
+        snapshot = await loadTraeSnapshot(target.ref, {
             traeHome,
             traeAppHome,
             traeRecordingsDir,
@@ -646,12 +682,27 @@ export async function loadSnapshot(ref, { codexHome, claudeHome, traeHome, traeA
             redact,
         });
     }
-    return loadCodexSnapshot(target.ref, {
-        codexHome,
-        includeTools,
-        includeToolOutput,
-        redact,
-    });
+    else {
+        snapshot = await loadCodexSnapshot(target.ref, {
+            codexHome,
+            includeTools,
+            includeToolOutput,
+            redact,
+        });
+    }
+    // The session title is derived from the first user prompt, so a secret pasted
+    // into that prompt would otherwise ride through verbatim (the snapshot spreads
+    // the raw summary). Redact it — and the goal objective — at the one chokepoint
+    // every engine and sub-variant flows through, so exports and publishes are safe.
+    if (snapshot && redact) {
+        if (typeof snapshot.title === "string") {
+            snapshot.title = redactText(snapshot.title);
+        }
+        if (typeof snapshot.goalObjective === "string") {
+            snapshot.goalObjective = redactText(snapshot.goalObjective);
+        }
+    }
+    return snapshot;
 }
 async function loadCodexSnapshot(ref, { codexHome, includeTools, includeToolOutput, redact }) {
     const titleIndex = await readTitleIndex(codexHome);
@@ -668,8 +719,13 @@ async function loadCodexSnapshot(ref, { codexHome, includeTools, includeToolOutp
     let turnNumber = 0;
     let goalObjective = "";
     let tokenUsage = null;
+    let truncated = false;
     for await (const row of readJsonl(filePath)) {
         tokenUsage = extractCodexTokenUsage(row) || tokenUsage;
+        if (turns.length >= MAX_TURNS) {
+            truncated = true;
+            break;
+        }
         if (row.type !== "response_item" || !row.payload) {
             continue;
         }
@@ -736,9 +792,16 @@ async function loadCodexSnapshot(ref, { codexHome, includeTools, includeToolOutp
         includeTools,
         includeToolOutput,
         tokenUsage,
-        notices: [],
+        notices: truncated ? [truncationNotice()] : [],
         risks: [...risks.values()].sort((a, b) => severityRank(b.severity) - severityRank(a.severity)),
         turns,
+    };
+}
+function truncationNotice() {
+    return {
+        severity: "medium",
+        label: "Truncated",
+        text: `This session is very large; only the first ${MAX_TURNS} entries are shown.`,
     };
 }
 function extractCodexTokenUsage(row) {
@@ -991,7 +1054,12 @@ async function buildClaudeTurns(filePath, { includeTools, includeToolOutput, red
     const risks = new Map();
     const turns = [];
     let turnNumber = 0;
+    let truncated = false;
     for await (const row of readJsonl(filePath)) {
+        if (turns.length >= MAX_TURNS) {
+            truncated = true;
+            break;
+        }
         const role = claudeRole(row);
         if (!role) {
             continue;
@@ -1043,7 +1111,7 @@ async function buildClaudeTurns(filePath, { includeTools, includeToolOutput, red
             }
         }
     }
-    return { turns, risks, turnNumber };
+    return { turns, risks, turnNumber, truncated };
 }
 // Parse the Task/Agent subagent transcripts that live under
 // `<dir>/<parentSessionId>/subagents/**/agent-*.jsonl` so they can be shown
@@ -1102,7 +1170,7 @@ async function loadClaudeFileSnapshot(filePath, { claudeHome, includeTools, incl
         mtimeMs: fileInfo.mtimeMs,
         mtime: fileInfo.mtime.toISOString(),
     }, claudeHome);
-    const { turns, risks } = await buildClaudeTurns(filePath, { includeTools, includeToolOutput, redact });
+    const { turns, risks, truncated } = await buildClaudeTurns(filePath, { includeTools, includeToolOutput, redact });
     const subagents = await loadClaudeSubagents(filePath, summary.id, { includeTools, includeToolOutput, redact });
     return {
         ...summary,
@@ -1112,7 +1180,7 @@ async function loadClaudeFileSnapshot(filePath, { claudeHome, includeTools, incl
         redacted: redact,
         includeTools,
         includeToolOutput,
-        notices: [],
+        notices: truncated ? [truncationNotice()] : [],
         risks: [...risks.values()].sort((a, b) => severityRank(b.severity) - severityRank(a.severity)),
         turns,
         subagents,
@@ -1162,6 +1230,7 @@ async function resolveClaudeSessionRef(ref, claudeHome) {
     const maybePath = path.resolve(ref);
     if (ref.endsWith(".jsonl")) {
         assertInsideClaudeHome(maybePath, claudeHome);
+        await assertRealPathInsideHome(maybePath, claudeHome, "Claude Code");
         return { kind: "file", filePath: maybePath };
     }
     const files = await discoverClaudeSessionFiles(claudeHome);
@@ -2369,6 +2438,7 @@ async function resolveTraeSessionRef(ref, traeHome, traeAppHome, traeRecordingsD
     const maybePath = path.resolve(ref);
     if (ref.endsWith(".jsonl")) {
         if (isInsideHome(maybePath, traeRecordingsDir)) {
+            await assertRealPathInsideHome(maybePath, traeRecordingsDir, "Trae");
             const info = await stat(maybePath);
             const summary = await scanTraeRecordedSummary({
                 filePath: maybePath,
@@ -2379,6 +2449,7 @@ async function resolveTraeSessionRef(ref, traeHome, traeAppHome, traeRecordingsD
             return { kind: "recorded", summary };
         }
         assertInsideTraeHome(maybePath, traeHome);
+        await assertRealPathInsideHome(maybePath, traeHome, "Trae");
         const info = await stat(maybePath);
         const summary = await scanTraeMemorySummary([{
                 filePath: maybePath,
@@ -2559,6 +2630,7 @@ async function resolveSessionRef(ref, codexHome) {
     const maybePath = path.resolve(ref);
     if (ref.endsWith(".jsonl")) {
         assertInsideCodexHome(maybePath, codexHome);
+        await assertRealPathInsideHome(maybePath, codexHome, "Codex");
         return maybePath;
     }
     const files = await discoverSessionFiles(codexHome, true);
@@ -2593,6 +2665,32 @@ function assertInsideHome(filePath, home, label) {
         throw new Error(`JSONL paths must live inside the ${label} home directory`);
     }
 }
+// The textual assertInsideHome check can be defeated by a symlink planted inside
+// the home dir that points outside it (e.g. ~/.codex/x.jsonl -> ~/.ssh/id_rsa),
+// because createReadStream follows symlinks. Resolve the real path of both the
+// file and the home root and re-check, so a request can never read a file whose
+// canonical location is outside the home directory.
+async function assertRealPathInsideHome(filePath, home, label) {
+    let realFile;
+    try {
+        realFile = await realpath(filePath);
+    }
+    catch {
+        throw new Error(`${label} session file not found`);
+    }
+    let realHome;
+    try {
+        realHome = await realpath(path.resolve(home));
+    }
+    catch {
+        realHome = path.resolve(home);
+    }
+    const relative = path.relative(realHome, realFile);
+    if (relative.startsWith("..") || path.isAbsolute(relative)) {
+        throw new Error(`JSONL paths must live inside the ${label} home directory`);
+    }
+    return realFile;
+}
 async function* readJsonl(filePath) {
     const stream = createReadStream(filePath, { encoding: "utf8" });
     const reader = createInterface({ input: stream, crlfDelay: Infinity });
@@ -2620,7 +2718,19 @@ function extractMessageText(item) {
 function extractMessageParts(item) {
     const parts = [];
     const images = [];
-    for (const content of item.content || []) {
+    // `content` is normally an array, but a malformed row can carry a string,
+    // object, number, or null. Coerce defensively so one bad line never throws a
+    // TypeError that rejects the whole session listing.
+    const rawContent = item?.content;
+    const contentList = Array.isArray(rawContent)
+        ? rawContent
+        : typeof rawContent === "string"
+            ? [{ text: rawContent }]
+            : [];
+    for (const content of contentList) {
+        if (!content || typeof content !== "object") {
+            continue;
+        }
         if (typeof content.text === "string") {
             const text = stripImageMarkers(content.text);
             if (text) {

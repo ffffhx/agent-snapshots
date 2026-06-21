@@ -7,6 +7,7 @@ import path from "node:path";
 import { createShareStore } from "./share-store.js";
 import { sanitizeSnapshotHtml as sanitizeSnapshotTurnHtml } from "../shared/sanitize.js";
 import { renderTranscriptHtml } from "../renderers/transcript.js";
+import { detectRisks, redactText } from "../core/privacy.js";
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 8787;
 const MAX_BODY_BYTES = 64 * 1024 * 1024;
@@ -125,6 +126,16 @@ async function main() {
                     });
                     return;
                 }
+                if (snapshot.redacted && process.env.SNAPSHOT_SHARE_VERIFY_REDACTION !== "false") {
+                    const leakedCategories = highRiskCategoriesInShare(snapshot.payload);
+                    if (leakedCategories.length) {
+                        sendJson(response, 422, {
+                            error: "Refusing to publish: redaction verification still found high-risk secrets in the snapshot. Re-redact before sharing.",
+                            categories: leakedCategories,
+                        });
+                        return;
+                    }
+                }
                 const now = new Date().toISOString();
                 const record = {
                     id: sanitizeShareId(body.shareId) || createShareId(),
@@ -233,12 +244,17 @@ function normalizeSnapshotPayloadForShare(value) {
         throw new Error("Body must include a snapshot object");
     }
     const payload = removePrivateSnapshotFields(JSON.parse(JSON.stringify(value)));
+    stripRemoteImageSources(payload);
     const turns = Array.isArray(payload.turns) ? payload.turns : [];
-    const title = sanitizeText(payload.title, 180) || "Untitled snapshot";
+    // Defense in depth: the title and goal objective are derived from raw prompt
+    // text. Re-run redaction here so a client that forgot (or skipped) it cannot
+    // publish a secret through these display fields.
+    const title = sanitizeText(redactText(payload.title), 180) || "Untitled snapshot";
+    payload.title = title;
     const engine = sanitizeText(payload.engine, 80) || "codex";
     const engineLabel = sanitizeText(payload.engineLabel, 80) || "Codex";
     const ref = sanitizeText(payload.ref, 240) || undefined;
-    const goalObjective = sanitizeMultilineText(payload.goalObjective, 8000);
+    const goalObjective = sanitizeMultilineText(redactText(payload.goalObjective), 8000);
     if (goalObjective) {
         payload.goalObjective = goalObjective;
     }
@@ -271,12 +287,71 @@ function removePrivateSnapshotFields(value) {
     delete value.filePath;
     delete value.displayFilePath;
     for (const [key, item] of Object.entries(value)) {
-        if (key === "images") {
-            continue;
-        }
         value[key] = removePrivateSnapshotFields(item);
     }
     return value;
+}
+// Only inline data: images may leave the machine. A remote http(s) image src
+// would (a) publish the URL — often an internal host with a token query string —
+// and (b) turn every viewer's browser into a tracking beacon / blind GET SSRF
+// when the <img> loads. Blank those sources and mark them unavailable.
+function stripRemoteImageSources(value) {
+    if (!value || typeof value !== "object") {
+        return;
+    }
+    if (Array.isArray(value)) {
+        for (const item of value) {
+            stripRemoteImageSources(item);
+        }
+        return;
+    }
+    if (typeof value.src === "string" && !isInlineImageSrc(value.src)) {
+        value.src = "";
+        if (!value.unavailableReason) {
+            value.unavailableReason = "Remote image omitted from shared snapshot";
+        }
+    }
+    for (const item of Object.values(value)) {
+        stripRemoteImageSources(item);
+    }
+}
+function isInlineImageSrc(src) {
+    return /^data:image\/(?:png|jpe?g|gif|webp);base64,/i.test(String(src || ""));
+}
+// Server-side trust boundary: the publish endpoint is the one place data leaves
+// the machine, so do not rely solely on the client's `redacted` flag. Re-scan
+// the outgoing text for high-severity secrets (medium signals like home paths
+// are intentionally ignored) and refuse to store anything that still leaks.
+function highRiskCategoriesInShare(payload) {
+    const labels = new Set();
+    const visit = (turns) => {
+        if (!Array.isArray(turns)) {
+            return;
+        }
+        for (const turn of turns) {
+            if (!turn || typeof turn !== "object") {
+                continue;
+            }
+            const text = typeof turn.text === "string" ? turn.text : "";
+            for (const risk of detectRisks(text)) {
+                if (risk.severity === "high") {
+                    labels.add(risk.label);
+                }
+            }
+        }
+    };
+    visit(payload?.turns);
+    for (const risk of detectRisks(typeof payload?.title === "string" ? payload.title : "")) {
+        if (risk.severity === "high") {
+            labels.add(risk.label);
+        }
+    }
+    if (Array.isArray(payload?.subagents)) {
+        for (const subagent of payload.subagents) {
+            visit(subagent?.turns);
+        }
+    }
+    return [...labels];
 }
 function sanitizeTurnHtml(snapshot) {
     sanitizeSnapshotTurnHtml(snapshot);
@@ -1060,10 +1135,20 @@ function sendJson(response, status, data) {
     send(response, status, "application/json; charset=utf-8", `${JSON.stringify(data, null, 2)}\n`);
 }
 function send(response, status, contentType, body) {
-    response.writeHead(status, {
+    const headers = {
         "content-type": contentType,
         "cache-control": "no-store",
-    });
+        "x-content-type-options": "nosniff",
+    };
+    if (contentType.startsWith("text/html")) {
+        // The share page renders untrusted session content and ships no scripts, so
+        // a tight policy is safe and blocks injected scripts and remote image beacons.
+        headers["content-security-policy"] =
+            "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+        headers["x-frame-options"] = "DENY";
+        headers["referrer-policy"] = "no-referrer";
+    }
+    response.writeHead(status, headers);
     response.end(body);
 }
 function escapeHtml(value) {
