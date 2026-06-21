@@ -822,6 +822,9 @@ function prepareSnapshotForCloud(snapshot) {
     delete copy.cwd;
     delete copy.filePath;
     delete copy.displayFilePath;
+    // Subagent transcripts are only rendered in the local viewer; never upload
+    // them with a published share (avoids leaking and bloating cloud payloads).
+    delete copy.subagents;
     copy.cloudShared = true;
     copy.cloudSharedAt = new Date().toISOString();
     return removePrivatePathFields(copy);
@@ -2659,22 +2662,61 @@ function renderTraeRecorderScript({ endpoint, wsEndpoint, recordSensitiveContext
   console.info("[codex-snapshot] Trae recorder installed. Capturing to", ENDPOINT, "pageSession=", recorder.pageSession);
 })();`;
 }
+const SNAPSHOT_TRANSCRIPT_OPTIONS = {
+    emptyHtml: "<div class='meta'>没有找到可分享的用户或助手消息。</div>",
+    includeProcessMessageMeta: true,
+    includeTopLevelToolMeta: true,
+    labels: {
+        processed: "已处理",
+        tool: "Tool",
+        imageUnavailable: "Image unavailable",
+        imageAltPrefix: "Image attachment",
+    },
+};
 function snapshotApiResponse(snapshot) {
     sanitizeSnapshotTurnHtml(snapshot);
+    for (const subagent of snapshot.subagents || []) {
+        sanitizeSnapshotTurnHtml(subagent);
+    }
+    const transcriptHtml = renderTranscriptHtml(snapshot.turns || [], SNAPSHOT_TRANSCRIPT_OPTIONS)
+        + renderSubagentsHtml(snapshot.subagents);
+    // The viewer renders from transcriptHtml only, so drop the (potentially huge)
+    // raw subagent turn arrays from the JSON payload and keep lightweight headers.
+    const subagents = (snapshot.subagents || []).map(({ turns, ...rest }) => ({
+        ...rest,
+        turnCount: Array.isArray(turns) ? turns.length : 0,
+    }));
     return {
         ...snapshot,
-        transcriptHtml: renderTranscriptHtml(snapshot.turns || [], {
-            emptyHtml: "<div class='meta'>没有找到可分享的用户或助手消息。</div>",
-            includeProcessMessageMeta: true,
-            includeTopLevelToolMeta: true,
-            labels: {
-                processed: "已处理",
-                tool: "Tool",
-                imageUnavailable: "Image unavailable",
-                imageAltPrefix: "Image attachment",
-            },
-        }),
+        subagents,
+        transcriptHtml,
     };
+}
+function renderSubagentsHtml(subagents) {
+    const list = Array.isArray(subagents) ? subagents.filter((agent) => agent && (agent.turns || []).length) : [];
+    if (!list.length) {
+        return "";
+    }
+    const blocks = list.map((agent) => {
+        const transcript = renderTranscriptHtml(agent.turns || [], SNAPSHOT_TRANSCRIPT_OPTIONS);
+        const metaBits = [];
+        if (agent.agentType) {
+            metaBits.push("<span class='subagent-type'>" + escapeHtml(agent.agentType) + "</span>");
+        }
+        metaBits.push("<span class='subagent-count'>" + escapeHtml(agent.messageCount || 0) + " 条消息</span>");
+        if (agent.toolCallCount) {
+            metaBits.push("<span class='subagent-count'>" + escapeHtml(agent.toolCallCount) + " 次工具</span>");
+        }
+        return "<details class='subagent' data-tool-use-id='" + escapeHtml(agent.toolUseId || "") + "'>"
+            + "<summary class='subagent-summary'><span class='subagent-label'>↳ " + escapeHtml(agent.label || "子代理") + "</span>"
+            + "<span class='subagent-meta'>" + metaBits.join("") + "</span></summary>"
+            + "<div class='subagent-body'>" + transcript + "</div>"
+            + "</details>";
+    }).join("");
+    return "<section class='subagents'>"
+        + "<div class='subagents-head'>子代理 <span class='subagents-count'>" + escapeHtml(list.length) + "</span></div>"
+        + blocks
+        + "</section>";
 }
 function applySafetyChecksOption(snapshot, enabled) {
     snapshot.safetyChecks = Boolean(enabled);

@@ -665,6 +665,24 @@ button:disabled { cursor: wait; opacity: 0.55; transform: none; box-shadow: none
 }
 .tool-details summary:hover { color: var(--seal-deep); }
 .tool-details[open] summary { margin-bottom: 8px; }
+.subagents { width: min(1000px, 100%); margin-top: 36px; border-top: 2px solid var(--line); padding-top: 18px; display: grid; gap: 10px; }
+.subagents-head { font: 700 12px/1 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+.subagents-count { color: var(--faint); }
+.subagent { border: 1px solid var(--line); border-radius: 10px; background: rgba(33, 27, 16, 0.02); overflow: hidden; }
+.subagent > .subagent-summary {
+  cursor: pointer; user-select: none; list-style: none;
+  display: flex; align-items: baseline; gap: 12px; justify-content: space-between;
+  padding: 12px 16px; color: var(--ink);
+}
+.subagent > .subagent-summary::-webkit-details-marker { display: none; }
+.subagent > .subagent-summary:hover { background: rgba(33, 27, 16, 0.045); }
+.subagent-label { font: 600 14.5px/1.45 var(--serif); min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.subagent-meta { display: flex; gap: 10px; flex: none; align-items: baseline; }
+.subagent-type { font: 700 10.5px/1 var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--amber); }
+.subagent-count { font: 500 11px/1 var(--mono); color: var(--faint); white-space: nowrap; }
+.subagent[open] > .subagent-summary { border-bottom: 1px solid var(--line); }
+.subagent-body { padding: 8px 16px 16px; }
+.subagent-body .turns { gap: 18px; margin-top: 8px; }
 .body {
   min-width: 0;
   max-width: 80ch;

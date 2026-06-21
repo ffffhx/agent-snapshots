@@ -979,14 +979,7 @@ async function loadClaudeSnapshot(ref, { claudeHome, includeTools, includeToolOu
     }
     return loadClaudeFileSnapshot(resolved.filePath, { claudeHome, includeTools, includeToolOutput, redact });
 }
-async function loadClaudeFileSnapshot(filePath, { claudeHome, includeTools, includeToolOutput, redact }) {
-    const fileInfo = await stat(filePath);
-    const summary = await scanClaudeFileSessionSummary(filePath, {
-        filePath,
-        size: fileInfo.size,
-        mtimeMs: fileInfo.mtimeMs,
-        mtime: fileInfo.mtime.toISOString(),
-    }, claudeHome);
+async function buildClaudeTurns(filePath, { includeTools, includeToolOutput, redact }) {
     const risks = new Map();
     const turns = [];
     let turnNumber = 0;
@@ -1015,14 +1008,18 @@ async function loadClaudeFileSnapshot(filePath, { claudeHome, includeTools, incl
         if (includeTools) {
             for (const tool of message.toolCalls) {
                 addRisks(risks, tool.text, turnNumber || 1);
-                turns.push({
+                const toolTurn = {
                     kind: "tool",
                     role: "tool",
                     turn: turnNumber || 1,
                     name: tool.name,
                     text: redact ? redactText(tool.text) : tool.text,
                     timestamp: normalizeClaudeTimestamp(row.timestamp),
-                });
+                };
+                if (tool.id) {
+                    toolTurn.toolUseId = tool.id;
+                }
+                turns.push(toolTurn);
             }
             for (const tool of message.toolResults) {
                 const text = includeToolOutput ? tool.text : "Tool output hidden. Re-run with Output enabled to include it.";
@@ -1038,6 +1035,67 @@ async function loadClaudeFileSnapshot(filePath, { claudeHome, includeTools, incl
             }
         }
     }
+    return { turns, risks, turnNumber };
+}
+// Parse the Task/Agent subagent transcripts that live under
+// `<dir>/<parentSessionId>/subagents/**/agent-*.jsonl` so they can be shown
+// nested under the parent session instead of as standalone sessions. Each one
+// is linked back to the parent's tool_use via the sibling .meta.json toolUseId.
+async function loadClaudeSubagents(parentFilePath, parentSessionId, { includeTools, includeToolOutput, redact }) {
+    if (!parentSessionId) {
+        return [];
+    }
+    const root = path.join(path.dirname(parentFilePath), parentSessionId, "subagents");
+    const files = [];
+    await collectJsonlFiles(root, files, {
+        skipFile: (name) => !/^agent-[0-9a-f]+\.jsonl$/i.test(name),
+    });
+    if (!files.length) {
+        return [];
+    }
+    files.sort((a, b) => a.mtimeMs - b.mtimeMs);
+    const subagents = [];
+    let order = 0;
+    for (const fileInfo of files) {
+        let meta = {};
+        try {
+            meta = JSON.parse(await readFile(fileInfo.filePath.replace(/\.jsonl$/, ".meta.json"), "utf8"));
+        }
+        catch {
+            meta = {};
+        }
+        const { turns } = await buildClaudeTurns(fileInfo.filePath, { includeTools: true, includeToolOutput, redact });
+        if (!turns.length) {
+            continue;
+        }
+        order += 1;
+        const firstUser = turns.find((turn) => turn.kind === "message" && turn.role === "user");
+        const rawDescription = String(meta.description || "").trim() || (firstUser ? truncateForTitle(firstUser.text) : "");
+        const description = redact ? redactText(rawDescription) : rawDescription;
+        subagents.push({
+            order,
+            agentId: path.basename(fileInfo.filePath, ".jsonl").replace(/^agent-/, ""),
+            toolUseId: String(meta.toolUseId || ""),
+            agentType: String(meta.agentType || ""),
+            description,
+            label: description || ("子代理 " + order),
+            messageCount: turns.filter((turn) => turn.kind === "message").length,
+            toolCallCount: turns.filter((turn) => turn.kind === "tool").length,
+            turns,
+        });
+    }
+    return subagents;
+}
+async function loadClaudeFileSnapshot(filePath, { claudeHome, includeTools, includeToolOutput, redact }) {
+    const fileInfo = await stat(filePath);
+    const summary = await scanClaudeFileSessionSummary(filePath, {
+        filePath,
+        size: fileInfo.size,
+        mtimeMs: fileInfo.mtimeMs,
+        mtime: fileInfo.mtime.toISOString(),
+    }, claudeHome);
+    const { turns, risks } = await buildClaudeTurns(filePath, { includeTools, includeToolOutput, redact });
+    const subagents = await loadClaudeSubagents(filePath, summary.id, { includeTools, includeToolOutput, redact });
     return {
         ...summary,
         displayCwd: redact ? redactText(summary.cwd || "") : summary.cwd,
@@ -1049,6 +1107,7 @@ async function loadClaudeFileSnapshot(filePath, { claudeHome, includeTools, incl
         notices: [],
         risks: [...risks.values()].sort((a, b) => severityRank(b.severity) - severityRank(a.severity)),
         turns,
+        subagents,
     };
 }
 async function loadClaudeHistorySnapshot(group, { includeTools, includeToolOutput, redact }) {
@@ -1146,6 +1205,7 @@ function extractClaudeMessageParts(message) {
             if (item?.type === "tool_use") {
                 toolCalls.push({
                     name: item.name || "tool_use",
+                    id: item.id || "",
                     text: renderClaudeToolCall(item),
                 });
                 continue;
