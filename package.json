@@ -57,13 +57,14 @@
     "share:server": "pnpm build:dist && node dist/server/share-api.mjs",
     "prepack": "pnpm build",
     "test:generated": "pnpm build && git diff --exit-code -- site dist",
-    "test:smoke": "pnpm build:dist && node dist/cli/codex-snapshot.mjs --help && node dist/cli/codex-snapshot.mjs daemon --help && node dist/server/share-api.mjs --help && node scripts/serve-site.mjs --help && node --check bin/codex-snapshot.mjs && node --check server/share-api.mjs && node --check dist/cli/codex-snapshot.mjs && node --check dist/server/share-api.mjs && node --check scripts/build-site.mjs && node --check scripts/launch-agent.mjs && node --check scripts/serve-site.mjs && node --check scripts/test-share-api.mjs && node --check scripts/test-static-site.mjs && node --check scripts/write-site-config.mjs && node --check scripts/test-site-config.mjs && node --check deploy/aliyun/doctor.mjs && node --check deploy/aliyun/preflight.mjs && node --check deploy/aliyun/verify-public-share.mjs && bash -n deploy/aliyun/*.sh scripts/test-aliyun-deploy-config.sh",
+    "test:smoke": "pnpm build:dist && node dist/cli/codex-snapshot.mjs --help && node dist/cli/codex-snapshot.mjs daemon --help && node dist/server/share-api.mjs --help && node scripts/serve-site.mjs --help && node --check bin/codex-snapshot.mjs && node --check server/share-api.mjs && node --check dist/cli/codex-snapshot.mjs && node --check dist/server/share-api.mjs && node --check scripts/build-site.mjs && node --check scripts/launch-agent.mjs && node --check scripts/serve-site.mjs && node --check scripts/test-share-api.mjs && node --check scripts/test-local-history.mjs && node --check scripts/test-static-site.mjs && node --check scripts/write-site-config.mjs && node --check scripts/test-site-config.mjs && node --check deploy/aliyun/doctor.mjs && node --check deploy/aliyun/preflight.mjs && node --check deploy/aliyun/verify-public-share.mjs && bash -n deploy/aliyun/*.sh scripts/test-aliyun-deploy-config.sh",
     "test:share-api": "pnpm build:dist && node scripts/test-share-api.mjs",
+    "test:local-history": "pnpm build:dist && node scripts/test-local-history.mjs",
     "test:static-site": "pnpm build:site && node scripts/test-static-site.mjs",
     "test:site-config": "node scripts/test-site-config.mjs",
     "test:deploy-config": "bash scripts/test-aliyun-deploy-config.sh",
     "typecheck": "tsc --noEmit",
-    "test": "pnpm typecheck && pnpm test:smoke && pnpm test:share-api && pnpm test:static-site && pnpm test:site-config && pnpm test:deploy-config"
+    "test": "pnpm typecheck && pnpm test:smoke && pnpm test:local-history && pnpm test:share-api && pnpm test:static-site && pnpm test:site-config && pnpm test:deploy-config"
   },
   "engines": {
     "node": ">=18"
