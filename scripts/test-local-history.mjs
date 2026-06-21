@@ -122,6 +122,7 @@ async function writeParentWithSubagent(home) {
   await mkdir(agentDir, { recursive: true });
   await writeFile(path.join(agentDir, "agent-abcdef123456.jsonl"), jsonl([
     { isSidechain: true, type: "user", message: { role: "user", content: "do the subtask now" } },
+    { isSidechain: true, type: "assistant", message: { role: "assistant", content: [{ type: "tool_use", id: "toolu_inner", name: "Bash", input: { command: "ls" } }] } },
     { isSidechain: true, type: "assistant", message: { role: "assistant", content: "subtask done" } },
   ]), "utf8");
   await writeFile(path.join(agentDir, "agent-abcdef123456.meta.json"), JSON.stringify({ agentType: "general-purpose", description: "Do the subtask", toolUseId: "toolu_sub1" }), "utf8");
@@ -156,6 +157,20 @@ test("loadSnapshot nests the subagent under its parent with metadata", async () 
     assert.equal(sub.toolUseId, "toolu_sub1");
     assert.ok(sub.turns.length >= 2, "subagent turns parsed");
     assert.ok(sub.turns.some((t) => (t.text || "").includes("subtask done")), "subagent content present");
+    assert.ok(sub.turns.some((t) => t.kind === "tool"), "subagent tool turn present when includeTools=true");
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
+test("subagents honor includeTools=false (no tool turns leak)", async () => {
+  const home = await makeClaudeHome();
+  try {
+    const { parentId } = await writeParentWithSubagent(home);
+    const snap = await loadSnapshot(`claude:${parentId}`, { claudeHome: home, includeTools: false, includeToolOutput: false, redact: false });
+    const sub = snap.subagents[0];
+    assert.ok(sub.turns.length >= 1, "subagent message turns still parsed");
+    assert.ok(!sub.turns.some((t) => t.kind === "tool"), "no tool turns when includeTools=false");
   } finally {
     await rm(home, { recursive: true, force: true });
   }

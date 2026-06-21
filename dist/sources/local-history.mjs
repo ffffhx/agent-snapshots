@@ -505,7 +505,15 @@ async function collectJsonlFiles(dir, files, options = {}) {
         if (skipFile && skipFile(entry.name)) {
             return;
         }
-        const info = await stat(entryPath);
+        let info;
+        try {
+            info = await stat(entryPath);
+        }
+        catch {
+            // File vanished or became unreadable between readdir and stat
+            // (TOCTOU); skip it rather than rejecting the whole batch.
+            return;
+        }
         files.push({
             filePath: entryPath,
             size: info.size,
@@ -1064,7 +1072,7 @@ async function loadClaudeSubagents(parentFilePath, parentSessionId, { includeToo
         catch {
             meta = {};
         }
-        const { turns } = await buildClaudeTurns(fileInfo.filePath, { includeTools: true, includeToolOutput, redact });
+        const { turns } = await buildClaudeTurns(fileInfo.filePath, { includeTools, includeToolOutput, redact });
         if (!turns.length) {
             continue;
         }
