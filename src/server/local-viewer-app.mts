@@ -850,7 +850,6 @@ const state = {
 const SOURCE_MODULES = [
   { key: "codex", label: "Codex" },
   { key: "claude", label: "Claude Code" },
-  { key: "trae", label: "Trae" },
 ];
 const SESSION_BATCH_LIMIT = 200;
 const SEARCH_SCAN_LIMIT = 600;
@@ -1088,7 +1087,7 @@ async function selectSearchResult(ref) {
   const result = state.search.results.find((item) => item.ref === ref);
   if (result?.session) {
     appendSessions([result.session]);
-    state.activeSource = sessionEngine(result.session);
+    state.activeSource = visibleSourceKey(sessionEngine(result.session));
   }
   closeSearchDialog();
   await selectSession(ref);
@@ -1192,6 +1191,7 @@ async function loadSessions() {
     const sessions = await fetchSessionPage(0);
     state.sessions = sessions;
     state.hasMoreSessions = sessions.length === SESSION_BATCH_LIMIT;
+    state.activeSource = visibleSourceKey(state.activeSource);
     if (!sourceSessions(state.activeSource).length) {
       const firstSourceWithSessions = SOURCE_MODULES.find((source) => sourceSessions(source.key).length);
       if (firstSourceWithSessions) {
@@ -1263,6 +1263,7 @@ async function loadMoreSessions() {
 function renderSessions() {
   $("sessions").classList.remove("sessions-loading");
   const filter = $("filter").value.trim().toLowerCase();
+  state.activeSource = visibleSourceKey(state.activeSource);
   const source = sourceByKey(state.activeSource);
   const sessions = sourceSessions(source.key);
   const sourceMatches = (source.label + " " + source.key).toLowerCase().includes(filter);
@@ -1303,11 +1304,16 @@ function sourceByKey(key) {
   return SOURCE_MODULES.find((source) => source.key === key) || SOURCE_MODULES[0];
 }
 
+function visibleSourceKey(key) {
+  return sourceByKey(key).key;
+}
+
 function sourceSessions(key) {
   return state.sessions.filter((session) => sessionEngine(session) === key);
 }
 
 async function selectFirstSessionForActiveSource() {
+  state.activeSource = visibleSourceKey(state.activeSource);
   const sessions = sourceSessions(state.activeSource);
   if (!sessions.length) {
     state.selected = "";
