@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      agent-session-core:
+        specifier: file:../agent-session-core
+        version: file:../agent-session-core
       highlight.js:
         specifier: ^11.11.1
         version: 11.11.1
@@ -376,6 +379,11 @@ packages:
         optional: true
       babel-plugin-react-compiler:
         optional: true
+
+  agent-session-core@file:../agent-session-core:
+    resolution: {directory: ../agent-session-core, type: directory}
+    engines: {node: '>=18'}
+    hasBin: true
 
   argparse@2.0.1:
     resolution: {integrity: sha512-8+9WqebbFzpX9OR+Wa6O29asIogeRMzcGtAINdpMHHyAg10f05aSFVBbcEqGf/PXw1EjAZ+q2/bEBg3DvurK3Q==}
@@ -1001,6 +1009,8 @@ snapshots:
     dependencies:
       '@rolldown/pluginutils': 1.0.1
       vite: 8.0.14(@types/node@25.9.1)(jiti@2.7.0)
+
+  agent-session-core@file:../agent-session-core: {}
 
   argparse@2.0.1: {}
 
