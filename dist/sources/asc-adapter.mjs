@@ -176,6 +176,8 @@ function ascSnapshot(session, { includeTools, includeToolOutput, redact }) {
         renderHtml: renderMarkdownHtml,
         redactText,
         detectRisks,
+        // Match local-history's addImageRisk: one "image-attachment" risk per image.
+        imageRiskFinding: { id: "image-attachment", label: "Image attachment", severity: "medium" },
     });
     // Strip any directive prefix that survived into the title/goal (ASC derives
     // them from raw first-message text; toSnapshot already redacted them).
