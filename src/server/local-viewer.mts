@@ -9,6 +9,7 @@ import {
   setSnapshotServerCorsHeaders,
 } from "./local-security.js";
 import { renderServerApp } from "./local-viewer-app.mjs";
+import { renderLauncherApp } from "./launcher-app.mjs";
 import { prewarmSemanticIndex, semanticSearchSessions } from "./semantic-index.mjs";
 import { semanticSearchSnapshot } from "./semantic-search.mjs";
 import { searchIndexed, syncSearchIndexInBackground, searchIndexStats, indexRowCount } from "./search-index.mjs";
@@ -56,6 +57,10 @@ export async function serveLocalViewer({
       const url = new URL(request.url || "/", `http://${request.headers.host || `${host}:${port}`}`);
       if (url.pathname === "/") {
         send(response, 200, "text/html; charset=utf-8", renderServerApp(csrfToken, shareConfig));
+        return;
+      }
+      if (url.pathname === "/launcher") {
+        send(response, 200, "text/html; charset=utf-8", renderLauncherApp(csrfToken));
         return;
       }
       if (url.pathname === "/favicon.svg" || url.pathname === "/favicon.ico") {

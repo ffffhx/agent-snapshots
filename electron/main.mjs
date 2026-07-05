@@ -110,8 +110,11 @@ function stopServer() {
   }
 }
 
-function createWindow(startUrl) {
-  mainWindow = new BrowserWindow({
+const isMac = process.platform === "darwin";
+
+// The full reading view, opened in a larger window from the launcher.
+function viewerWindowOptions() {
+  return {
     width: 1360,
     height: 900,
     minWidth: 960,
@@ -119,7 +122,27 @@ function createWindow(startUrl) {
     backgroundColor: "#231d12",
     icon: APP_ICON,
     title: "Codex Snapshots",
-    titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
+    titleBarStyle: isMac ? "hiddenInset" : "default",
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
+  };
+}
+
+function createWindow(startUrl) {
+  // The app is a search + resume launcher first (Raycast/Spotlight style): a
+  // small, focused window. The full transcript view opens in its own window.
+  mainWindow = new BrowserWindow({
+    width: 800,
+    height: 560,
+    minWidth: 560,
+    minHeight: 380,
+    center: true,
+    resizable: true,
+    backgroundColor: isMac ? "#00000000" : "#1c150e",
+    vibrancy: isMac ? "under-window" : undefined,
+    visualEffectState: "active",
+    icon: APP_ICON,
+    title: "Codex Snapshots",
+    titleBarStyle: isMac ? "hiddenInset" : "default",
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -127,12 +150,13 @@ function createWindow(startUrl) {
     },
   });
 
-  mainWindow.loadURL(startUrl);
+  mainWindow.loadURL(startUrl + "launcher");
 
-  // Open external links (share URLs, docs) in the user's real browser.
+  // Same-origin opens (the full viewer via /?session=…) get a large reading
+  // window; everything else goes to the user's real browser.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith(`http://${HOST}:${serverPort}`)) {
-      return { action: "allow" };
+      return { action: "allow", overrideBrowserWindowOptions: viewerWindowOptions() };
     }
     shell.openExternal(url);
     return { action: "deny" };

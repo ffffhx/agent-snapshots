@@ -3699,7 +3699,13 @@ for (const id of ["redact"]) {
 initAppearance();
 loadStatsRate();
 initSplitter();
-loadSessions().catch((error) => {
+loadSessions().then(() => {
+  // Deep link from the launcher: /?session=<ref> auto-opens that session.
+  const wanted = new URLSearchParams(location.search).get("session");
+  if (wanted) {
+    selectSession(wanted).catch(() => {});
+  }
+}).catch((error) => {
   $("sessions").innerHTML = "<div class='meta'>" + esc(error.message) + "</div>";
   clearViewer(error.message || "Failed to load sessions.");
 });
