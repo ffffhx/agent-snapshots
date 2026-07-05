@@ -23,7 +23,9 @@ const ASC_ENGINES = new Set(["codex", "claude"]);
 const ENGINE_LABELS = { codex: "Codex", claude: "Claude Code" };
 // Head-only line budget for list summaries: enough to capture the session
 // header + first user message (the title) without full-parsing a huge session.
-const SUMMARY_MAX_LINES = 400;
+// ~200 covers the title even after a preamble of injected/system messages;
+// beyond that gives no better title coverage (measured) and only costs time.
+const SUMMARY_MAX_LINES = 200;
 // searchSessions has no ASC equivalent (ASC does not index/score documents); it
 // scans files independently and is shape-decoupled from snapshots, so it is the
 // lowest-risk thing to keep verbatim on the legacy path.
@@ -212,9 +214,8 @@ function ascSnapshot(session, { includeTools, includeToolOutput, redact }) {
     }
     else {
         // GAP: NormalizedSession has no model_provider/originator; the legacy summary
-        // read these from session_meta. Left empty pending a derivation step.
-        snapshot.modelProvider = "";
-        snapshot.source = "";
+        snapshot.modelProvider = session.modelProvider || "";
+        snapshot.source = session.source || "";
         snapshot.projectKind = projectKindForCodexCwd(session.cwd || "");
     }
     return snapshot;
@@ -452,9 +453,8 @@ function projectSummary(session, file) {
         summary.historyOnly = false;
     }
     else {
-        // GAP: model_provider / originator are not on NormalizedSession.
-        summary.modelProvider = "";
-        summary.source = "";
+        summary.modelProvider = session.modelProvider || "";
+        summary.source = session.source || "";
         summary.projectKind = projectKindForCodexCwd(cwd);
     }
     return summary;
