@@ -109,6 +109,7 @@ export function renderServerApp(csrfToken, shareConfig = {}) {
       <div id="statsBody" class="stats-body"></div>
     </section>
   </div>
+  <div id="toast" class="toast" hidden></div>
   <script>window.CODEX_SNAPSHOT_SHARE_CONFIG=${inlineJson(shareConfig || {})}; window.CODEX_SNAPSHOT_CSRF_TOKEN=${inlineJson(csrfToken)};</script>
   <script>${serverJs()}</script>
 </body>
@@ -1148,6 +1149,21 @@ pre {
 .stats-cost-out b { color: var(--seal-deep); font-weight: 700; font-size: 18px; }
 .stats-cost-out span { color: var(--faint); font: 500 11px/1.3 var(--mono); }
 .stats-note { margin: 0; color: var(--faint); font: 500 11px/1.5 var(--mono); }
+.exports .resume-orca { border-color: var(--pine); background: var(--pine); color: #eef5ef; }
+.exports .resume-orca:hover { border-color: var(--pine); background: #26483a; color: #fff; }
+.sr-act-orca { border-color: var(--pine); color: var(--pine); }
+.sr-act-orca:hover { border-color: var(--pine); background: var(--pine); color: #fff; }
+.toast {
+  position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); z-index: 60;
+  max-width: min(560px, 92vw);
+  border: 1px solid var(--line-2); border-left: 3px solid var(--pine);
+  border-radius: 10px; background: var(--panel); color: var(--ink);
+  padding: 12px 16px; font: 600 13px/1.4 var(--sans);
+  box-shadow: var(--shadow-panel);
+  animation: turn-rise 0.2s ease both;
+}
+.toast[hidden] { display: none; }
+.toast.error { border-left-color: var(--seal); }
 .search-bar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: start; }
 .search-bar h2 { font-size: 22px; font-weight: 600; }
 .search-close { min-height: 34px; border-color: var(--line-2); background: transparent; color: var(--muted); }
@@ -2020,6 +2036,7 @@ function renderSearchResult(result, index) {
     "<div class='search-result-actions'>" +
       "<button type='button' class='sr-act' data-sr-action='open' title='打开会话（↵）'>打开</button>" +
       "<button type='button' class='sr-act' data-sr-action='in-session' title='打开并在此会话内搜索'>会话内搜</button>" +
+      (result.engine === "codex" ? "<button type='button' class='sr-act sr-act-orca' data-sr-action='resume-orca' title='在 Orca 中打开终端并恢复此会话'>↗ Orca 继续</button>" : "") +
       "<button type='button' class='sr-act' data-sr-action='export-html' title='导出为 HTML'>导出 HTML</button>" +
       "<button type='button' class='sr-act' data-sr-action='copy-path' title='复制项目路径'>复制路径</button>" +
     "</div>" +
@@ -2171,6 +2188,10 @@ async function runSearchResultAction(action, ref) {
     if (input && !input.disabled) {
       input.focus();
     }
+    return;
+  }
+  if (action === "resume-orca") {
+    resumeInOrca(ref, result.cwd || result.displayCwd || "");
     return;
   }
   if (action === "export-html" || action === "export-md") {
@@ -2986,7 +3007,10 @@ function renderSnapshot(snapshot) {
   }).join("") : "";
   $("risks").innerHTML = snapshot.safetyChecks === false ? "" : notices + risks;
   const options = activeOptions();
-  $("exports").innerHTML = "<a href='/export?" + options.toString() + "&format=html' target='_blank' rel='noopener noreferrer'>导出 HTML</a><a href='/export?" + options.toString() + "&format=md' target='_blank' rel='noopener noreferrer'>导出 Markdown</a><button type='button' data-publish-cloud='1'>发布分享</button><span id='publishStatus' class='publish-status'></span>";
+  const resumeButton = snapshot.engine === "codex"
+    ? "<button type='button' class='resume-orca' data-resume-orca='" + esc(snapshot.ref || "") + "' data-resume-cwd='" + esc(snapshot.cwd || snapshot.displayCwd || "") + "' title='在 Orca 中打开终端并恢复此会话'>↗ 在 Orca 继续</button>"
+    : "";
+  $("exports").innerHTML = resumeButton + "<a href='/export?" + options.toString() + "&format=html' target='_blank' rel='noopener noreferrer'>导出 HTML</a><a href='/export?" + options.toString() + "&format=md' target='_blank' rel='noopener noreferrer'>导出 Markdown</a><button type='button' data-publish-cloud='1'>发布分享</button><span id='publishStatus' class='publish-status'></span>";
   $("turns").innerHTML = snapshot.transcriptHtml || "<div class='meta'>没有找到可分享的用户或助手消息。</div>";
   openContentLinksInNewTabs($("turns"));
   renderSessionSearch();
@@ -3191,6 +3215,44 @@ function copyTextWithSelection(text) {
     return false;
   } finally {
     document.body.removeChild(textarea);
+  }
+}
+
+let toastTimer = 0;
+function showToast(message, isError) {
+  const el = $("toast");
+  if (!el) {
+    return;
+  }
+  el.textContent = message;
+  el.classList.toggle("error", !!isError);
+  el.hidden = false;
+  if (toastTimer) {
+    clearTimeout(toastTimer);
+  }
+  toastTimer = setTimeout(() => { el.hidden = true; }, 4200);
+}
+
+async function resumeInOrca(ref, cwd) {
+  if (!ref || !ref.startsWith("codex:")) {
+    showToast("仅支持在 Orca 中恢复 Codex 会话", true);
+    return;
+  }
+  showToast("正在唤起 Orca...", false);
+  try {
+    const params = new URLSearchParams({ id: ref, cwd: cwd || "" });
+    const response = await fetch("/api/resume-in-orca?" + params.toString(), {
+      method: "POST",
+      headers: { "${MUTATION_CSRF_HEADER}": csrfToken },
+    });
+    const data = await response.json();
+    if (response.ok && data.ok) {
+      showToast(data.message || "已在 Orca 中恢复会话", false);
+    } else {
+      showToast(data.error || "在 Orca 中恢复失败", true);
+    }
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : String(error), true);
   }
 }
 
@@ -3470,6 +3532,11 @@ document.addEventListener("keydown", (event) => {
 $("exports").addEventListener("click", (event) => {
   if (event.target.closest("[data-publish-cloud]")) {
     publishSelectedSession();
+    return;
+  }
+  const resumeBtn = event.target.closest("[data-resume-orca]");
+  if (resumeBtn) {
+    resumeInOrca(resumeBtn.dataset.resumeOrca, resumeBtn.dataset.resumeCwd);
   }
 });
 $("turns").addEventListener("click", (event) => {

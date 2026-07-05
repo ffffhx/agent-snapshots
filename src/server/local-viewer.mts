@@ -12,6 +12,7 @@ import { renderServerApp } from "./local-viewer-app.mjs";
 import { prewarmSemanticIndex, semanticSearchSessions } from "./semantic-index.mjs";
 import { semanticSearchSnapshot } from "./semantic-search.mjs";
 import { searchIndexed, syncSearchIndexInBackground, searchIndexStats, indexRowCount } from "./search-index.mjs";
+import { resumeSessionInOrca } from "./orca-bridge.mjs";
 
 export async function serveLocalViewer({
   codexHome,
@@ -152,6 +153,20 @@ export async function serveLocalViewer({
           pricePerMTokOut: Number(url.searchParams.get("priceOut") || "0") || 0,
         });
         sendJson(response, stats);
+        return;
+      }
+      if (url.pathname === "/api/resume-in-orca") {
+        if (!allowMutationRequest(request, response, csrfToken)) {
+          return;
+        }
+        const id = url.searchParams.get("id") || "";
+        const cwd = url.searchParams.get("cwd") || "";
+        if (!id.startsWith("codex:")) {
+          sendJson(response, { ok: false, error: "仅支持在 Orca 中恢复 Codex 会话" }, 400);
+          return;
+        }
+        const result = await resumeSessionInOrca({ sessionId: id.slice("codex:".length), cwd });
+        sendJson(response, result, result.ok ? 200 : 400);
         return;
       }
       if (url.pathname === "/api/semantic-search") {
