@@ -27,11 +27,24 @@ function configureMarkdownLinks(renderer) {
     const defaultRender = renderer.renderer.rules.link_open || ((tokens, index, options, env, self) => {
         return self.renderToken(tokens, index, options);
     });
+    const defaultCloseRender = renderer.renderer.rules.link_close || ((tokens, index, options, env, self) => {
+        return self.renderToken(tokens, index, options);
+    });
     renderer.renderer.rules.link_open = (tokens, index, options, env, self) => {
         const token = tokens[index];
+        if (isLocalCodePathLink(tokens, index)) {
+            token.meta = { ...(token.meta || {}), renderAsCodePath: true };
+            return "<code>";
+        }
         setMarkdownTokenAttr(token, "target", "_blank");
         setMarkdownTokenAttr(token, "rel", mergeLinkRel(token.attrGet("rel")));
         return defaultRender(tokens, index, options, env, self);
+    };
+    renderer.renderer.rules.link_close = (tokens, index, options, env, self) => {
+        if (isClosingLocalCodePathLink(tokens, index)) {
+            return "</code>";
+        }
+        return defaultCloseRender(tokens, index, options, env, self);
     };
 }
 function setMarkdownTokenAttr(token, name, value) {
@@ -41,6 +54,110 @@ function setMarkdownTokenAttr(token, name, value) {
         return;
     }
     token.attrs[index][1] = value;
+}
+function isLocalCodePathLink(tokens, index) {
+    const token = tokens[index];
+    const href = token.attrGet("href") || "";
+    if (!isLocalPathHref(href)) {
+        return false;
+    }
+    const label = collectLinkText(tokens, index);
+    return looksLikeCodePath(label) || looksLikeLocalFilesystemPath(href);
+}
+function isClosingLocalCodePathLink(tokens, index) {
+    const level = tokens[index].level;
+    for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
+        const token = tokens[cursor];
+        if (token.level !== level) {
+            continue;
+        }
+        if (token.type === "link_open") {
+            return Boolean(token.meta?.renderAsCodePath);
+        }
+        if (token.type === "link_close") {
+            return false;
+        }
+    }
+    return false;
+}
+function collectLinkText(tokens, index) {
+    const level = tokens[index].level;
+    const parts = [];
+    for (let cursor = index + 1; cursor < tokens.length; cursor += 1) {
+        const token = tokens[cursor];
+        if (token.type === "link_close" && token.level === level) {
+            break;
+        }
+        if (typeof token.content === "string") {
+            parts.push(token.content);
+        }
+    }
+    return parts.join("");
+}
+function isLocalPathHref(href) {
+    const value = decodePathCandidate(href);
+    if (!value || value.startsWith("#") || value.startsWith("//")) {
+        return false;
+    }
+    if (/^file:/i.test(value)) {
+        return true;
+    }
+    return !/^[a-z][a-z0-9+.-]*:/i.test(value);
+}
+function looksLikeCodePath(value) {
+    const candidate = normalizePathCandidate(value);
+    if (!candidate || (looksLikeWebDomain(candidate) && !hasKnownFileExtension(candidate))) {
+        return false;
+    }
+    if (/^file:/i.test(candidate)) {
+        return true;
+    }
+    if (/^(?:~[\\/]|\.{1,2}[\\/]|[A-Za-z]:[\\/])/.test(candidate)) {
+        return true;
+    }
+    if (/^\/(?:Users|home|private|tmp|var|opt|Volumes|workspace)\b/.test(candidate)) {
+        return true;
+    }
+    if (/^(?:src|dist|lib|app|apps|packages|scripts|server|client|components|docs|test|tests|bin|deploy)[\\/]/i.test(candidate)) {
+        return true;
+    }
+    if (candidate.startsWith("/")) {
+        return false;
+    }
+    return hasKnownFileExtension(candidate);
+}
+function looksLikeLocalFilesystemPath(value) {
+    const candidate = normalizePathCandidate(value);
+    if (!candidate || looksLikeWebDomain(candidate)) {
+        return false;
+    }
+    return /^file:/i.test(candidate)
+        || /^(?:~[\\/]|\.{1,2}[\\/]|[A-Za-z]:[\\/])/.test(candidate)
+        || /^\/(?:Users|home|private|tmp|var|opt|Volumes|workspace)\b/.test(candidate)
+        || /^(?:src|dist|lib|app|apps|packages|scripts|server|client|components|docs|test|tests|bin|deploy)[\\/]/i.test(candidate);
+}
+function normalizePathCandidate(value) {
+    return decodePathCandidate(value)
+        .trim()
+        .replace(/^file:\/\/+/i, "/")
+        .replace(/[?#].*$/, "")
+        .replace(/(?::\d+(?::\d+)?)$/, "")
+        .replace(/#L\d+(?:-L\d+)?$/i, "")
+        .replace(/^<|>$/g, "");
+}
+function decodePathCandidate(value) {
+    try {
+        return decodeURI(String(value || ""));
+    }
+    catch {
+        return String(value || "");
+    }
+}
+function looksLikeWebDomain(value) {
+    return !/[\\/]/.test(value) && /^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/.test(value);
+}
+function hasKnownFileExtension(value) {
+    return /\.(?:[cm]?[jt]sx?|[cm]?[jt]s|json|jsonl|md|mdx|css|scss|sass|less|html?|vue|svelte|py|go|rs|java|kt|kts|swift|php|rb|sh|bash|zsh|fish|ya?ml|toml|lock|svg|png|jpe?g|gif|webp|sql|proto|graphql|gql|xml|txt|tsx?)$/i.test(value);
 }
 function renderHighlightedCode(source, rawLanguage) {
     const language = normalizeMarkdownLanguage(rawLanguage);

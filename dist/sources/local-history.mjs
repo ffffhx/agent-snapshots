@@ -126,7 +126,7 @@ export async function searchSessions({ codexHome, claudeHome, traeHome, traeAppH
 function filterSessionCompleteness(sessions, completeOnly) {
     return completeOnly ? sessions.filter((summary) => isCompleteSessionSummary(summary)) : sessions;
 }
-async function readSearchDocument(summary, options) {
+export async function readSearchDocument(summary, options) {
     const segments = await readSearchSegments(summary, options);
     return {
         summary,
@@ -325,7 +325,7 @@ function trimSearchSegment(text) {
     }
     return clean.length > MAX_SEARCH_SEGMENT_CHARS ? clean.slice(0, MAX_SEARCH_SEGMENT_CHARS) : clean;
 }
-function matchSearchDocument(document, rawQuery, normalizedQuery, terms) {
+export function matchSearchDocument(document, rawQuery, normalizedQuery, terms) {
     const summary = document.summary;
     const fieldText = document.fields.join("\n");
     const searchableText = foldSearchText([fieldText, ...document.segments.map((segment) => segment.text)].join("\n"));
@@ -429,10 +429,10 @@ function makeSearchSnippet(text, rawQuery, terms) {
     const end = Math.min(clean.length, start + SEARCH_SNIPPET_CHARS);
     return `${start > 0 ? "..." : ""}${clean.slice(start, end)}${end < clean.length ? "..." : ""}`;
 }
-function foldSearchText(value) {
+export function foldSearchText(value) {
     return String(value || "").toLocaleLowerCase().replace(/\s+/g, " ").trim();
 }
-function searchTerms(query) {
+export function searchTerms(query) {
     const normalized = foldSearchText(query);
     if (!normalized) {
         return [];
@@ -832,6 +832,50 @@ function extractCodexTokenUsage(row) {
 function tokenNumber(value) {
     const number = Number(value);
     return Number.isFinite(number) && number > 0 ? Math.round(number) : 0;
+}
+// Best-effort per-session token totals for the aggregate stats dashboard.
+// Codex logs a cumulative token_count event; Claude logs per-message usage.
+export async function extractSessionTokenUsage(summary) {
+    const engine = summary.engine || "codex";
+    try {
+        if (engine === "codex" && summary.filePath) {
+            let usage = null;
+            for await (const row of readJsonl(summary.filePath)) {
+                usage = extractCodexTokenUsage(row) || usage;
+            }
+            if (!usage) {
+                return null;
+            }
+            const input = usage.inputTokens || 0;
+            const output = usage.outputTokens || 0;
+            return { engine, input, output, total: usage.totalTokens || input + output, model: "" };
+        }
+        if (engine === "claude" && summary.filePath) {
+            let input = 0;
+            let output = 0;
+            let model = "";
+            for await (const row of readJsonl(summary.filePath)) {
+                const message = row.message || row;
+                const usage = message?.usage;
+                if (usage) {
+                    input += tokenNumber(usage.input_tokens);
+                    output += tokenNumber(usage.output_tokens);
+                }
+                if (message?.model && typeof message.model === "string") {
+                    model = message.model;
+                }
+            }
+            const total = input + output;
+            if (!total) {
+                return null;
+            }
+            return { engine, input, output, total, model };
+        }
+    }
+    catch {
+        return null;
+    }
+    return null;
 }
 function splitSnapshotRef(ref) {
     if (ref.startsWith("claude:")) {

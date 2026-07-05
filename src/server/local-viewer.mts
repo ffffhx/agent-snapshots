@@ -9,6 +9,9 @@ import {
   setSnapshotServerCorsHeaders,
 } from "./local-security.js";
 import { renderServerApp } from "./local-viewer-app.mjs";
+import { prewarmSemanticIndex, semanticSearchSessions } from "./semantic-index.mjs";
+import { semanticSearchSnapshot } from "./semantic-search.mjs";
+import { searchIndexed, syncSearchIndexInBackground, searchIndexStats, indexRowCount } from "./search-index.mjs";
 
 export async function serveLocalViewer({
   codexHome,
@@ -83,21 +86,125 @@ export async function serveLocalViewer({
         const query = url.searchParams.get("q") || url.searchParams.get("query") || "";
         const limit = readPositiveInteger(url.searchParams.get("limit") || "20", "limit");
         const scanLimit = readPositiveInteger(url.searchParams.get("scanLimit") || "600", "scanLimit");
-        const result = await searchSessions({
+        const cwd = url.searchParams.get("cwd") || "";
+        const includeArchived = url.searchParams.get("liveOnly") !== "1";
+        const source = url.searchParams.get("source") || "all";
+        const completeOnly = url.searchParams.get("completeOnly") !== "0";
+        const includeTools = url.searchParams.get("includeTools") === "1" || url.searchParams.get("includeToolOutput") === "1";
+        const includeToolOutput = url.searchParams.get("includeToolOutput") === "1";
+        // Keep the persistent index fresh in the background for future searches.
+        // One overlap-guarded full pass warms the whole corpus (~30s) so later
+        // searches are instant; the live fallback below covers the cold window.
+        syncSearchIndexInBackground({
           codexHome,
           claudeHome,
           traeHome,
           traeAppHome,
           traeRecordingsDir,
+          source: "all",
+          includeArchived,
+          completeOnly,
+          scanLimit: 20000,
+          updateLimit: 20000,
+          includeTools: true,
+          includeToolOutput,
+        });
+        let result;
+        // Serve from the fast index once it holds anything; otherwise do a live
+        // disk scan for this query while the index warms up in the background.
+        const indexReady = url.searchParams.get("noIndex") !== "1" && (await indexRowCount()) > 0;
+        if (indexReady) {
+          result = await searchIndexed({ query, source, cwd, limit });
+        } else {
+          result = await searchSessions({
+            codexHome,
+            claudeHome,
+            traeHome,
+            traeAppHome,
+            traeRecordingsDir,
+            query,
+            limit,
+            scanLimit,
+            cwd,
+            includeArchived,
+            source,
+            completeOnly,
+            includeTools,
+            includeToolOutput,
+          });
+        }
+        sendJson(response, result);
+        return;
+      }
+      if (url.pathname === "/api/search-stats") {
+        syncSearchIndexInBackground({
+          codexHome,
+          claudeHome,
+          traeHome,
+          traeAppHome,
+          traeRecordingsDir,
+          source: "all",
+          scanLimit: 20000,
+          updateLimit: 20000,
+        });
+        const stats = await searchIndexStats({
+          pricePerMTokIn: Number(url.searchParams.get("priceIn") || "0") || 0,
+          pricePerMTokOut: Number(url.searchParams.get("priceOut") || "0") || 0,
+        });
+        sendJson(response, stats);
+        return;
+      }
+      if (url.pathname === "/api/semantic-search") {
+        const query = url.searchParams.get("q") || url.searchParams.get("query") || "";
+        const limit = readPositiveInteger(url.searchParams.get("limit") || "20", "limit");
+        const scanLimit = readPositiveInteger(url.searchParams.get("scanLimit") || "600", "scanLimit");
+        const updateLimit = readNonNegativeInteger(url.searchParams.get("updateLimit") || "24", "updateLimit");
+        const result = await semanticSearchSessions({
+          codexHome,
+          claudeHome,
+          traeHome,
+          traeAppHome,
+          traeRecordingsDir,
+          listSessions,
+          loadSnapshot,
           query,
           limit,
           scanLimit,
+          updateLimit,
           cwd: url.searchParams.get("cwd") || "",
           includeArchived: url.searchParams.get("liveOnly") !== "1",
           source: url.searchParams.get("source") || "all",
           completeOnly: url.searchParams.get("completeOnly") !== "0",
           includeTools: url.searchParams.get("includeTools") === "1" || url.searchParams.get("includeToolOutput") === "1",
           includeToolOutput: url.searchParams.get("includeToolOutput") === "1",
+          model: url.searchParams.get("model") || undefined,
+        });
+        sendJson(response, result);
+        return;
+      }
+      if (url.pathname === "/api/semantic-index/prewarm") {
+        if (!allowMutationRequest(request, response, csrfToken)) {
+          return;
+        }
+        const scanLimit = readPositiveInteger(url.searchParams.get("scanLimit") || "1200", "scanLimit");
+        const updateLimit = readNonNegativeInteger(url.searchParams.get("updateLimit") || "120", "updateLimit");
+        const result = await prewarmSemanticIndex({
+          codexHome,
+          claudeHome,
+          traeHome,
+          traeAppHome,
+          traeRecordingsDir,
+          listSessions,
+          loadSnapshot,
+          scanLimit,
+          updateLimit,
+          cwd: url.searchParams.get("cwd") || "",
+          includeArchived: url.searchParams.get("liveOnly") !== "1",
+          source: url.searchParams.get("source") || "all",
+          completeOnly: url.searchParams.get("completeOnly") !== "0",
+          includeTools: url.searchParams.get("includeTools") === "1" || url.searchParams.get("includeToolOutput") === "1",
+          includeToolOutput: url.searchParams.get("includeToolOutput") === "1",
+          model: url.searchParams.get("model") || undefined,
         });
         sendJson(response, result);
         return;
@@ -120,6 +227,31 @@ export async function serveLocalViewer({
         });
         applySafetyChecksOption(snapshot, url.searchParams.get("safety") !== "0");
         sendJson(response, snapshotApiResponse(snapshot));
+        return;
+      }
+      if (url.pathname === "/api/session-search") {
+        const id = url.searchParams.get("id");
+        if (!id) {
+          sendJson(response, { error: "missing id" }, 400);
+          return;
+        }
+        const query = url.searchParams.get("q") || url.searchParams.get("query") || "";
+        const snapshot = await loadSnapshot(id, {
+          codexHome,
+          claudeHome,
+          traeHome,
+          traeAppHome,
+          traeRecordingsDir,
+          includeTools: url.searchParams.get("includeTools") === "1" || url.searchParams.get("includeToolOutput") === "1",
+          includeToolOutput: url.searchParams.get("includeToolOutput") === "1",
+          redact: url.searchParams.get("redact") !== "0",
+        });
+        const result = await semanticSearchSnapshot(snapshot, {
+          query,
+          limit: readPositiveInteger(url.searchParams.get("limit") || "8", "limit"),
+          model: url.searchParams.get("model") || undefined,
+        });
+        sendJson(response, result);
         return;
       }
       if (url.pathname === "/api/publish-all") {

@@ -11,6 +11,8 @@ import { fileURLToPath } from "node:url";
 
 const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const { listSessions, loadSnapshot } = await import(path.join(ROOT_DIR, "dist/sources/local-history.mjs"));
+const { renderMarkdownHtml } = await import(path.join(ROOT_DIR, "dist/renderers/markdown.mjs"));
+const { prewarmSemanticIndex, semanticSearchSessions } = await import(path.join(ROOT_DIR, "dist/server/semantic-index.mjs"));
 
 const tests = [];
 function test(name, fn) {
@@ -19,6 +21,23 @@ function test(name, fn) {
 
 function jsonl(rows) {
   return rows.map((row) => JSON.stringify(row)).join("\n") + "\n";
+}
+
+function fakeSemanticEmbed(texts) {
+  return Promise.resolve(texts.map((text) => {
+    const value = String(text || "").toLowerCase();
+    const vector = [
+      countMatches(value, /hide|hidden|source|trae|隐藏|来源|列表/g),
+      countMatches(value, /deploy|release|发布|部署/g),
+      countMatches(value, /price|cost|价格|费用/g),
+    ];
+    const magnitude = Math.sqrt(vector.reduce((total, item) => total + item * item, 0)) || 1;
+    return vector.map((item) => item / magnitude);
+  }));
+}
+
+function countMatches(value, pattern) {
+  return [...value.matchAll(pattern)].length;
 }
 
 // Write a Claude transcript at projects/<encoded-cwd>/<id>.jsonl
@@ -39,6 +58,162 @@ function assistantRow(id, content) {
 async function makeClaudeHome() {
   return mkdtemp(path.join(os.tmpdir(), "cs-claude-test-"));
 }
+
+// --- Markdown rendering -----------------------------------------------------
+
+test("local code path markdown links render as inline code instead of anchors", () => {
+  const html = renderMarkdownHtml(
+    "改动在 [src/server/local-viewer-app.mts](/Users/bytedance/Code/codex-snapshots/src/server/local-viewer-app.mts)，" +
+      "并同步生成 [dist/server/local-viewer-app.mjs](dist/server/local-viewer-app.mjs)。",
+  );
+  assert.ok(html.includes("<code>src/server/local-viewer-app.mts</code>"), html);
+  assert.ok(html.includes("<code>dist/server/local-viewer-app.mjs</code>"), html);
+  assert.ok(!html.includes('href="/Users/bytedance/Code/codex-snapshots/src/server/local-viewer-app.mts"'), html);
+  assert.ok(!html.includes('href="dist/server/local-viewer-app.mjs"'), html);
+});
+
+test("web markdown links stay clickable", () => {
+  const html = renderMarkdownHtml(
+    "验证 [本地查看器](http://127.0.0.1:4321/)、[官网](https://example.com) 和 [分享页](/share/index.html)。",
+  );
+  assert.ok(html.includes('<a href="http://127.0.0.1:4321/"'), html);
+  assert.ok(html.includes('<a href="https://example.com"'), html);
+  assert.ok(html.includes('<a href="/share/index.html"'), html);
+  assert.ok(html.includes('target="_blank"'), html);
+  assert.ok(html.includes('rel="noopener noreferrer"'), html);
+});
+
+// --- Persistent semantic index ---------------------------------------------
+
+test("semantic session search persists and reuses indexed embeddings", async () => {
+  const home = await mkdtemp(path.join(os.tmpdir(), "cs-semantic-index-"));
+  try {
+    const indexPath = path.join(home, "semantic-index.json");
+    const sessions = [
+      {
+        id: "a",
+        ref: "codex:a",
+        title: "Hide Trae source",
+        engine: "codex",
+        engineLabel: "Codex",
+        cwd: "/tmp/proj",
+        displayCwd: "proj",
+        mtime: "2026-06-01T00:00:00.000Z",
+      },
+      {
+        id: "b",
+        ref: "codex:b",
+        title: "Deploy notes",
+        engine: "codex",
+        engineLabel: "Codex",
+        cwd: "/tmp/proj",
+        displayCwd: "proj",
+        mtime: "2026-06-01T00:01:00.000Z",
+      },
+    ];
+    const snapshots = {
+      "codex:a": { id: "a", ref: "codex:a", turns: [{ role: "user", turn: 1, text: "隐藏某个来源的会话列表，把 Trae source hide 掉。" }] },
+      "codex:b": { id: "b", ref: "codex:b", turns: [{ role: "user", turn: 1, text: "Prepare deploy release checklist." }] },
+    };
+    let loadCount = 0;
+    const options = {
+      query: "隐藏来源列表",
+      indexPath,
+      listSessions: async ({ limit }) => sessions.slice(0, Number.isFinite(limit) ? limit : sessions.length),
+      loadSnapshot: async (ref) => {
+        loadCount += 1;
+        return snapshots[ref];
+      },
+      embedder: fakeSemanticEmbed,
+      model: "fake-embedding",
+      scanLimit: 10,
+    };
+
+    const first = await semanticSearchSessions(options);
+    assert.equal(first.updated, 2);
+    assert.equal(first.results[0].ref, "codex:a");
+    assert.equal(loadCount, 2);
+    const persisted = JSON.parse(await readFile(indexPath, "utf8"));
+    assert.equal(Object.keys(persisted.entries).length, 2);
+
+    const second = await semanticSearchSessions(options);
+    assert.equal(second.updated, 0);
+    assert.equal(second.results[0].ref, "codex:a");
+    assert.equal(loadCount, 2, "unchanged sessions should reuse the persisted index");
+
+    sessions[0].mtime = "2026-06-01T00:02:00.000Z";
+    const third = await semanticSearchSessions(options);
+    assert.equal(third.updated, 1);
+    assert.equal(third.results[0].ref, "codex:a");
+    assert.equal(loadCount, 3, "only the changed session should be reloaded");
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
+test("semantic index prewarm fills stale entries without a query", async () => {
+  const home = await mkdtemp(path.join(os.tmpdir(), "cs-semantic-prewarm-"));
+  try {
+    const indexPath = path.join(home, "semantic-index.json");
+    const sessions = [
+      {
+        id: "a",
+        ref: "codex:a",
+        title: "Hide Trae source",
+        engine: "codex",
+        engineLabel: "Codex",
+        cwd: "/tmp/proj",
+        displayCwd: "proj",
+        mtime: "2026-06-01T00:00:00.000Z",
+      },
+      {
+        id: "b",
+        ref: "codex:b",
+        title: "Price notes",
+        engine: "codex",
+        engineLabel: "Codex",
+        cwd: "/tmp/proj",
+        displayCwd: "proj",
+        mtime: "2026-06-01T00:01:00.000Z",
+      },
+    ];
+    const snapshots = {
+      "codex:a": { id: "a", ref: "codex:a", turns: [{ role: "user", turn: 1, text: "隐藏某个来源的会话列表，把 Trae source hide 掉。" }] },
+      "codex:b": { id: "b", ref: "codex:b", turns: [{ role: "user", turn: 1, text: "Compare model price and cost." }] },
+    };
+    let loadCount = 0;
+    const options = {
+      indexPath,
+      listSessions: async ({ limit }) => sessions.slice(0, Number.isFinite(limit) ? limit : sessions.length),
+      loadSnapshot: async (ref) => {
+        loadCount += 1;
+        return snapshots[ref];
+      },
+      embedder: fakeSemanticEmbed,
+      model: "fake-embedding",
+      scanLimit: 10,
+      updateLimit: 1,
+    };
+
+    const first = await prewarmSemanticIndex(options);
+    assert.equal(first.updated, 1);
+    assert.equal(first.pending, 1);
+    assert.equal(first.complete, false);
+
+    const second = await prewarmSemanticIndex(options);
+    assert.equal(second.updated, 1);
+    assert.equal(second.pending, 0);
+    assert.equal(second.complete, true);
+
+    const third = await prewarmSemanticIndex(options);
+    assert.equal(third.updated, 0);
+    assert.equal(third.pending, 0);
+    assert.equal(third.complete, true);
+    assert.equal(loadCount, 2, "prewarm should reuse unchanged indexed sessions");
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
+});
 
 // --- Title resolution -------------------------------------------------------
 

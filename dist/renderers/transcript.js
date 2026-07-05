@@ -136,7 +136,7 @@ function renderTurnHtml(turn, options) {
     const meta = options.includeTopLevelToolMeta && role === "tool"
         ? `<div class="turn-meta">${escapeHtml(turnLabel(role, turn, options))}</div>`
         : "";
-    return `<article class="${escapeHtml(turnClassName(role, options))}"><div class="message-card">${meta}${renderBodyContainerHtml(turn, options)}</div></article>`;
+    return `<article class="${escapeHtml(turnClassName(role, options))}"${turnAnchorAttrs(turn)}><div class="message-card">${meta}${renderBodyContainerHtml(turn, options)}</div></article>`;
 }
 function renderInterruptionNoticeHtml(options) {
     return `<article class="${escapeHtml(turnClassName("interrupt", options))}"><div class="turn-notice"><span aria-hidden="true">⏹</span><span>${escapeHtml(options.labels.interrupted)}</span></div></article>`;
@@ -153,7 +153,15 @@ function renderProcessEntryHtml(turn, options) {
     const meta = options.includeProcessMessageMeta && role !== "tool"
         ? `<div class="turn-meta">${escapeHtml(turnLabel(role, turn, options))}</div>`
         : "";
-    return `<section class="process-entry process-${escapeHtml(role)}">${meta}${renderBodyContainerHtml(turn, options)}</section>`;
+    return `<section class="process-entry process-${escapeHtml(role)}"${turnAnchorAttrs(turn)}>${meta}${renderBodyContainerHtml(turn, options)}</section>`;
+}
+function turnAnchorAttrs(turn) {
+    const turnNumber = Number(turn.turn || 0);
+    if (!Number.isFinite(turnNumber) || turnNumber <= 0) {
+        return "";
+    }
+    const value = String(Math.round(turnNumber));
+    return ` data-turn-number="${escapeHtml(value)}"`;
 }
 function turnRole(turn) {
     if (turn.kind === "tool") {

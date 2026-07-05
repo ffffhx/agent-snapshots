@@ -19,8 +19,11 @@ export function renderServerApp(csrfToken, shareConfig = {}) {
           <div class="brand-wm"><b>Codex Snapshots</b><span>Read-only archive</span></div>
         </div>
         <div class="toolbar">
-          <input id="filter" type="search" placeholder="搜索来源、项目或对话">
-          <button id="openSearch" class="search-open" type="button" title="搜索会话正文">⌘K</button>
+          <button id="openSearch" class="search-entry" type="button" title="搜索会话正文">
+            <span>搜索会话正文</span>
+            <kbd>⌘K</kbd>
+          </button>
+          <button id="openStats" type="button" title="使用与 token 统计">统计</button>
           <button id="reload" type="button" title="刷新会话列表">刷新</button>
         </div>
       </div>
@@ -32,13 +35,31 @@ export function renderServerApp(csrfToken, shareConfig = {}) {
         <div class="mh-row">
           <h2 id="title">选择一个会话</h2>
           <div class="switches">
-            <label title="显示工具调用"><input id="includeTools" type="checkbox"> 工具</label>
-            <label title="显示工具输出"><input id="includeToolOutput" type="checkbox"> 输出</label>
             <label title="自动脱敏常见敏感内容"><input id="redact" type="checkbox" checked> 脱敏</label>
+          </div>
+          <div class="appearance" role="group" aria-label="外观设置">
+            <div class="appx-seg" role="group" aria-label="主题">
+              <button class="appx" type="button" data-theme-set="light" title="纸（浅色）">纸</button>
+              <button class="appx" type="button" data-theme-set="sepia" title="褐（护眼）">褐</button>
+              <button class="appx" type="button" data-theme-set="dark" title="暗（深色）">暗</button>
+            </div>
+            <div class="appx-seg" role="group" aria-label="正文字号">
+              <button class="appx" type="button" data-font-step="-1" title="缩小正文字号">A－</button>
+              <button class="appx" type="button" data-font-step="1" title="放大正文字号">A＋</button>
+            </div>
+            <button class="appx" type="button" data-density-toggle title="切换阅读密度（宽松/紧凑）">密</button>
           </div>
           <div id="exports" class="exports"></div>
         </div>
         <div id="meta" class="meta empty">还没有选择会话。</div>
+        <div id="sessionSearch" class="session-search">
+          <div class="session-search-bar">
+            <input id="sessionSearchInput" type="search" placeholder="在当前 Session 里搜大意" disabled>
+            <button id="sessionSearchRun" type="button" disabled>语义搜索</button>
+            <span id="sessionSearchStatus" class="session-search-status"></span>
+          </div>
+          <div id="sessionSearchResults" class="session-search-results"></div>
+        </div>
       </div>
       <div id="goal" class="goal"></div>
       <div id="risks" class="risks"></div>
@@ -54,13 +75,37 @@ export function renderServerApp(csrfToken, shareConfig = {}) {
         </div>
         <button id="closeSearch" class="search-close" type="button" title="关闭搜索">关闭</button>
       </div>
-      <input id="globalSearch" class="global-search-input" type="search" placeholder="输入关键词、报错、文件名或决策">
+      <input id="globalSearch" class="global-search-input" type="search" placeholder="关键词，可加 source: role: project: before: after: -排除" title="支持过滤语法：source:codex/claude、role:user/assistant、project:名称、before:2026-01-01、after:2026-01-01、-排除词" role="combobox" aria-expanded="true" aria-autocomplete="list" aria-controls="searchResults" autocomplete="off" spellcheck="false">
       <div class="search-controls" role="group" aria-label="搜索范围">
-        <button class="search-scope active" type="button" data-search-scope="all">全部</button>
-        <button class="search-scope" type="button" data-search-scope="project">当前项目</button>
+        <button class="search-mode active" type="button" data-search-mode="keyword">关键词</button>
+        <button class="search-mode" type="button" data-search-mode="semantic">语义</button>
+        <button class="search-flag" type="button" data-search-flag="caseSensitive" aria-pressed="false" title="区分大小写">Aa</button>
+        <button class="search-flag" type="button" data-search-flag="wholeWord" aria-pressed="false" title="整词匹配">词</button>
+        <span id="searchScopeLabel" class="search-scope-label">全部历史</span>
+        <button id="prewarmIndex" class="search-prewarm" type="button" title="提前生成语义索引">预热索引</button>
         <span id="searchStatus" class="search-status"></span>
       </div>
-      <div id="searchResults" class="search-results"></div>
+      <div id="searchFacets" class="search-facets" aria-label="按来源和项目筛选"></div>
+      <div id="searchResults" class="search-results" role="listbox" aria-label="搜索结果"></div>
+      <div class="search-foot">
+        <span class="search-hints"><kbd>↑</kbd><kbd>↓</kbd> 导航 · <kbd>↵</kbd> 打开 · <kbd>Tab</kbd> 切换关键词/语义 · <kbd>esc</kbd> 关闭</span>
+        <span id="searchCount" class="search-count"></span>
+      </div>
+    </section>
+  </div>
+  <div id="statsOverlay" class="stats-overlay" hidden>
+    <section class="stats-dialog" role="dialog" aria-modal="true" aria-labelledby="statsTitle">
+      <div class="stats-bar">
+        <div>
+          <p class="eyebrow">Usage &amp; tokens</p>
+          <h2 id="statsTitle">使用统计</h2>
+        </div>
+        <div class="stats-bar-actions">
+          <button id="statsRefresh" class="stats-refresh" type="button" title="刷新统计">刷新</button>
+          <button id="closeStats" class="search-close" type="button" title="关闭">关闭</button>
+        </div>
+      </div>
+      <div id="statsBody" class="stats-body"></div>
     </section>
   </div>
   <script>window.CODEX_SNAPSHOT_SHARE_CONFIG=${inlineJson(shareConfig || {})}; window.CODEX_SNAPSHOT_CSRF_TOKEN=${inlineJson(csrfToken)};</script>
@@ -119,6 +164,76 @@ function serverCss() {
   --sans: -apple-system, BlinkMacSystemFont, "Avenir Next", "Segoe UI", "PingFang SC", "Hiragino Sans GB", system-ui, sans-serif;
   --shadow-soft: 0 18px 44px -38px rgba(64, 44, 14, 0.5);
   --shadow-panel: 0 28px 70px -50px rgba(64, 44, 14, 0.6);
+  /* Themeable surfaces (retrofitted so dark/sepia stay coherent). */
+  --masthead-bg: linear-gradient(180deg, var(--paper) 82%, rgba(243, 238, 225, 0.88));
+  --field-bg: rgba(251, 247, 236, 0.72);
+  --field-bg-hover: rgba(253, 247, 234, 0.94);
+  --result-active-bg: #fdf7ea;
+  --user-card-bg: linear-gradient(180deg, #fbf4e2, #f6edd7);
+  --user-card-border: rgba(160, 112, 30, 0.26);
+  --tool-card-bg: rgba(250, 243, 224, 0.5);
+  --read-scale: 1;
+  color-scheme: light;
+}
+html[data-theme="sepia"] {
+  --ink: #3a2f1d;
+  --ink-soft: #574833;
+  --muted: #8a795d;
+  --soft: #a3906f;
+  --faint: #a3906f;
+  --paper: #efe2c8;
+  --paper-deep: #e6d6b6;
+  --panel: #f6ebd4;
+  --panel-2: #f0e3c8;
+  --panel-wash: rgba(246, 235, 212, 0.88);
+  --line: rgba(58, 47, 29, 0.12);
+  --line-2: rgba(58, 47, 29, 0.2);
+  --hairline: rgba(58, 47, 29, 0.14);
+  --masthead-bg: linear-gradient(180deg, var(--paper) 82%, rgba(230, 214, 182, 0.9));
+  --field-bg: rgba(246, 235, 212, 0.75);
+  --field-bg-hover: rgba(249, 240, 220, 0.96);
+  --result-active-bg: #f6ecd2;
+  --user-card-bg: linear-gradient(180deg, #f4e7c6, #eeddb8);
+  --tool-card-bg: rgba(240, 227, 200, 0.55);
+  color-scheme: light;
+}
+html[data-theme="dark"] {
+  --ink: #ece3d0;
+  --ink-soft: #cebf9f;
+  --muted: #9c8f74;
+  --soft: #837657;
+  --faint: #837657;
+  --paper: #17130c;
+  --paper-deep: #100d08;
+  --panel: #221b11;
+  --panel-2: #1c160d;
+  --panel-wash: rgba(34, 27, 17, 0.86);
+  --line: rgba(233, 220, 196, 0.11);
+  --line-2: rgba(233, 220, 196, 0.19);
+  --hairline: rgba(233, 220, 196, 0.14);
+  --seal: #d24c37;
+  --seal-deep: #b23a2b;
+  --seal-soft: rgba(210, 76, 55, 0.16);
+  --pine: #5aa383;
+  --pine-soft: rgba(90, 163, 131, 0.14);
+  --amber: #c79242;
+  --amber-soft: rgba(199, 146, 66, 0.16);
+  --red: #d24c37;
+  --focus: #d24c37;
+  --code-bg: #100d07;
+  --code-line: #2c2417;
+  --code-ink: #efe7d4;
+  --masthead-bg: linear-gradient(180deg, var(--paper) 82%, rgba(16, 13, 8, 0.9));
+  --field-bg: rgba(233, 220, 196, 0.05);
+  --field-bg-hover: rgba(233, 220, 196, 0.09);
+  --result-active-bg: rgba(210, 76, 55, 0.12);
+  --user-card-bg: linear-gradient(180deg, #2a2114, #241b10);
+  --user-card-border: rgba(199, 146, 66, 0.28);
+  --tool-card-bg: rgba(233, 220, 196, 0.04);
+  --tool-card-border: rgba(199, 146, 66, 0.34);
+  --shadow-soft: 0 18px 44px -38px rgba(0, 0, 0, 0.7);
+  --shadow-panel: 0 28px 70px -50px rgba(0, 0, 0, 0.8);
+  color-scheme: dark;
 }
 * { box-sizing: border-box; }
 html { height: 100%; overflow: hidden; }
@@ -211,7 +326,7 @@ body::before {
   text-transform: uppercase;
 }
 h1, h2 { margin: 0; letter-spacing: 0; font-family: var(--serif); }
-.toolbar { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; }
+.toolbar { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; }
 input[type="search"] {
   min-width: 0;
   height: 38px;
@@ -228,16 +343,42 @@ input[type="search"]:focus {
   border-color: var(--seal);
   box-shadow: 0 0 0 3px rgba(177, 56, 42, 0.13);
 }
-.search-open {
-  min-width: 50px;
+.search-entry {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   border: 1px solid var(--line-2);
   border-radius: 9px;
   background: var(--panel);
   color: var(--muted);
-  padding: 0 10px;
-  letter-spacing: 0.04em;
+  padding: 0 10px 0 13px;
+  font-family: var(--sans);
+  letter-spacing: 0;
+  text-align: left;
 }
-.search-open:hover { border-color: var(--seal); color: var(--seal); background: var(--panel); }
+.search-entry span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--faint);
+  font: 500 13px/1 var(--sans);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.search-entry kbd {
+  flex: 0 0 auto;
+  min-width: 36px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: rgba(33, 27, 16, 0.035);
+  color: var(--muted);
+  padding: 5px 7px;
+  font: 700 11px/1 var(--mono);
+  text-align: center;
+}
+.search-entry:hover { border-color: var(--seal); background: var(--panel); color: var(--seal); transform: none; }
+.search-entry:hover span, .search-entry:hover kbd { color: var(--seal); }
 button, .exports a {
   min-height: 38px;
   border: 1px solid var(--ink);
@@ -259,7 +400,8 @@ button:hover, .exports a:hover {
 }
 button:focus-visible, .exports a:focus-visible, .source-tab:focus-visible,
 .session:focus-visible, .project-more:focus-visible, .sessions-load-more:focus-visible,
-.search-result:focus-visible, .search-scope:focus-visible, .project-header:focus-visible {
+.search-result:focus-visible, .search-mode:focus-visible, .search-prewarm:focus-visible, .project-header:focus-visible, .project-search:focus-visible,
+.session-search-result:focus-visible {
   outline: 2px solid rgba(177, 56, 42, 0.55);
   outline-offset: 2px;
 }
@@ -333,6 +475,12 @@ button:disabled { cursor: wait; opacity: 0.55; transform: none; box-shadow: none
 .source-tab.active b { color: #e6b9ad; }
 .source-empty { margin-left: 28px; color: var(--faint); font: 500 12px/1.4 var(--mono); padding: 4px 0; }
 .project-group { display: grid; gap: 2px; margin-top: 8px; }
+.project-headline {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px;
+  align-items: center;
+}
 .project-header {
   display: grid;
   grid-template-columns: 18px minmax(0, 1fr) auto;
@@ -352,6 +500,23 @@ button:disabled { cursor: wait; opacity: 0.55; transform: none; box-shadow: none
 }
 .project-header:hover { background: rgba(33, 27, 16, 0.045); color: var(--ink); transform: none; }
 .project-group.collapsed .project-header { color: var(--muted); }
+.project-search {
+  min-width: 48px;
+  min-height: 28px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--field-bg);
+  color: var(--faint);
+  padding: 0 8px;
+  font: 700 11px/1 var(--mono);
+  letter-spacing: 0;
+}
+.project-search:hover {
+  border-color: var(--line-2);
+  background: rgba(33, 27, 16, 0.055);
+  color: var(--seal);
+  transform: none;
+}
 .project-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .project-count { color: var(--faint); font: 600 11px/1 var(--mono); }
 .project-icon {
@@ -477,7 +642,7 @@ button:disabled { cursor: wait; opacity: 0.55; transform: none; box-shadow: none
   z-index: 5;
   flex: 0 0 auto;
   padding: 11px clamp(20px, 2.2vw, 40px) 10px;
-  background: linear-gradient(180deg, var(--paper) 82%, rgba(243, 238, 225, 0.88));
+  background: var(--masthead-bg);
   backdrop-filter: blur(4px);
   border-bottom: 1px solid var(--line);
 }
@@ -519,6 +684,18 @@ button:disabled { cursor: wait; opacity: 0.55; transform: none; box-shadow: none
 .switches label:hover { color: var(--ink); }
 .switches input { position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none; }
 .switches label:has(input:checked) { background: var(--seal); color: #fdf3ec; }
+.appearance { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 6px; padding: 3px; border: 1px solid var(--line-2); border-radius: 9px; background: var(--panel); }
+.appx-seg { display: inline-flex; gap: 2px; }
+.appx {
+  min-height: 28px; min-width: 28px;
+  border: 0; border-radius: 6px;
+  background: transparent; color: var(--muted);
+  padding: 0 8px;
+  font: 700 11px/1 var(--mono); letter-spacing: 0.02em;
+}
+.appx:hover { background: rgba(127, 110, 80, 0.16); color: var(--ink); transform: none; }
+.appx.active { background: var(--ink); color: var(--paper); }
+.appx:focus-visible { outline: 2px solid rgba(177, 56, 42, 0.55); outline-offset: 2px; }
 .exports { display: inline-flex; flex: 0 0 auto; flex-wrap: wrap; gap: 8px; align-items: center; }
 .exports a, .exports button {
   display: inline-flex; min-height: 34px; align-items: center;
@@ -554,6 +731,116 @@ button:disabled { cursor: wait; opacity: 0.55; transform: none; box-shadow: none
 .dossier .ro { color: var(--seal); font: 700 9.5px/1 var(--mono); letter-spacing: 0.14em; text-transform: uppercase; }
 .dossier .tag { display: inline-flex; align-items: center; gap: 5px; color: var(--pine); }
 .dossier .tag .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--pine); }
+
+.session-search {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+.session-search-bar {
+  display: grid;
+  grid-template-columns: minmax(180px, 420px) auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+.session-search input {
+  width: 100%;
+  min-width: 0;
+  min-height: 34px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  background: var(--field-bg);
+  color: var(--ink);
+  padding: 0 12px;
+  font: 500 13px/1.2 var(--sans);
+}
+.session-search input:focus {
+  outline: 2px solid rgba(177, 56, 42, 0.24);
+  border-color: rgba(177, 56, 42, 0.48);
+  background: var(--panel);
+}
+.session-search input:disabled {
+  border-color: var(--line);
+  background: rgba(33, 27, 16, 0.03);
+  color: var(--faint);
+}
+.session-search button {
+  min-height: 34px;
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--paper);
+  padding: 0 12px;
+  font-size: 11.5px;
+}
+.session-search button:hover { border-color: var(--seal-deep); background: var(--seal-deep); color: #fdf3ec; }
+.session-search button:disabled { border-color: var(--line); background: rgba(33, 27, 16, 0.05); color: var(--faint); }
+.session-search-status {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--faint);
+  font: 600 11px/1.35 var(--mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.session-search-results {
+  display: grid;
+  gap: 7px;
+  align-content: start;
+  max-width: 820px;
+}
+.session-search-results:empty { display: none; }
+.session-search-result {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 5px 12px;
+  width: 100%;
+  min-height: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--field-bg);
+  color: inherit;
+  padding: 10px 12px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 130ms ease, border-color 130ms ease;
+}
+.session-search-result:hover {
+  border-color: rgba(177, 56, 42, 0.42);
+  background: var(--field-bg-hover);
+  transform: none;
+}
+.session-search-result b {
+  min-width: 0;
+  color: var(--ink);
+  font: 700 11px/1.2 var(--mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.session-search-result em {
+  color: var(--seal);
+  font: 700 11px/1.2 var(--mono);
+  font-style: normal;
+}
+.session-search-result span {
+  display: -webkit-box;
+  grid-column: 1 / -1;
+  overflow: hidden;
+  color: var(--ink-soft);
+  font: 400 13px/1.5 var(--sans);
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.semantic-hit-current .message-card,
+.semantic-hit-current.process-entry {
+  outline: 2px solid rgba(177, 56, 42, 0.42);
+  outline-offset: 5px;
+  border-radius: 10px;
+}
+@media (max-width: 760px) {
+  .session-search-bar { grid-template-columns: 1fr; }
+  .session-search-status { white-space: normal; }
+}
 
 /* 目标 callout */
 .goal:empty { display: none; }
@@ -603,7 +890,12 @@ button:disabled { cursor: wait; opacity: 0.55; transform: none; box-shadow: none
   width: min(1260px, 100%);
   margin: 0 auto;
   padding: 18px clamp(20px, 2.2vw, 38px) 80px;
+  zoom: var(--read-scale, 1);
 }
+html[data-density="compact"] .turns { gap: 18px; }
+html[data-density="compact"] .user .message-card { padding: 10px 15px; }
+html[data-density="compact"] .tool .message-card { padding: 10px 14px; }
+html[data-density="compact"] .sessions { gap: 1px; }
 .turn { display: flex; min-width: 0; animation: turn-rise 0.45s cubic-bezier(0.2, 0.7, 0.3, 1) both; }
 .turns > :nth-child(1) { animation-delay: 30ms; }
 .turns > :nth-child(2) { animation-delay: 70ms; }
@@ -619,16 +911,16 @@ button:disabled { cursor: wait; opacity: 0.55; transform: none; box-shadow: none
   max-width: min(1180px, 74%);
   padding: 14px 19px;
   border-radius: 14px 14px 4px 14px;
-  border: 1px solid rgba(160, 112, 30, 0.26);
-  background: linear-gradient(180deg, #fbf4e2, #f6edd7);
+  border: 1px solid var(--user-card-border);
+  background: var(--user-card-bg);
   box-shadow: 0 18px 40px -34px rgba(120, 80, 20, 0.55);
 }
 .assistant .message-card { max-width: min(1000px, 100%); }
 .tool .message-card {
   max-width: min(1080px, 100%);
-  border: 1px dashed rgba(160, 112, 30, 0.5);
+  border: 1px dashed var(--tool-card-border, rgba(160, 112, 30, 0.5));
   border-radius: 10px;
-  background: rgba(250, 243, 224, 0.5);
+  background: var(--tool-card-bg);
   padding: 14px 18px;
 }
 .turn-meta { margin-bottom: 9px; color: var(--faint); font: 700 9.5px/1.3 var(--mono); letter-spacing: 0.16em; text-transform: uppercase; }
@@ -767,32 +1059,124 @@ pre {
 /* ---------- 搜索浮层 ---------- */
 .search-overlay {
   position: fixed; inset: 0; z-index: 40;
-  display: grid; place-items: start center;
-  background: rgba(38, 28, 12, 0.36);
-  padding: clamp(18px, 8dvh, 72px) 18px 18px;
-  backdrop-filter: blur(7px) saturate(0.9);
+  display: grid; justify-items: start; align-items: start;
+  background: rgba(38, 28, 12, 0.16);
+  padding: clamp(14px, 4dvh, 44px) 16px;
+  backdrop-filter: blur(2px) saturate(0.96);
 }
 .search-overlay[hidden] { display: none; }
 .search-dialog {
-  display: grid; gap: 12px; width: min(860px, 100%);
-  max-height: min(760px, calc(100dvh - 36px));
+  display: flex; flex-direction: column; gap: 12px; width: min(560px, 94vw);
+  max-height: calc(100dvh - 2 * clamp(14px, 4dvh, 44px));
   border: 1px solid var(--line-2); border-top: 3px solid var(--seal);
   border-radius: 12px; background: linear-gradient(180deg, var(--panel), var(--panel-2));
   padding: 18px; box-shadow: 0 42px 100px -44px rgba(38, 24, 8, 0.85);
   animation: turn-rise 0.28s cubic-bezier(0.2, 0.7, 0.3, 1) both;
 }
+.search-results { flex: 1 1 auto; }
+.search-flag {
+  min-height: 32px; border: 1px solid var(--line-2); border-radius: 8px;
+  background: transparent; color: var(--muted);
+  padding: 0 10px; font: 700 11px/1 var(--mono); letter-spacing: 0.02em;
+}
+.search-flag:hover { border-color: var(--line-2); background: rgba(127, 110, 80, 0.1); color: var(--ink); transform: none; }
+.search-flag[aria-pressed="true"] { border-color: var(--seal); background: var(--seal-soft); color: var(--seal-deep); }
+.search-facets { display: flex; flex-wrap: wrap; gap: 6px; }
+.search-facets:empty { display: none; }
+.facet-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  min-height: 26px; border: 1px solid var(--line-2); border-radius: 999px;
+  background: transparent; color: var(--ink-soft);
+  padding: 0 10px; font: 600 10.5px/1 var(--mono); letter-spacing: 0.02em;
+  cursor: pointer;
+}
+.facet-chip:hover { border-color: var(--seal); color: var(--seal-deep); background: transparent; transform: none; }
+.facet-chip.active { border-color: var(--seal); background: var(--seal-soft); color: var(--seal-deep); }
+.facet-chip b { color: var(--faint); font-weight: 700; }
+.facet-chip.active b { color: var(--seal-deep); }
+.search-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 2px; }
+.search-hints { min-width: 0; overflow: hidden; color: var(--faint); font: 600 11px/1.5 var(--mono); text-overflow: ellipsis; white-space: nowrap; }
+.search-hints kbd { display: inline-block; min-width: 15px; margin: 0 1px; border: 1px solid var(--line-2); border-radius: 5px; background: rgba(127, 110, 80, 0.1); color: var(--muted); padding: 1px 5px; font: 700 10px/1.4 var(--mono); }
+.search-count { flex: 0 0 auto; color: var(--muted); font: 700 11px/1.4 var(--mono); }
+.search-result-actions { grid-column: 1 / -1; display: none; gap: 6px; margin-top: 4px; }
+.search-result.active .search-result-actions { display: flex; flex-wrap: wrap; }
+.sr-act {
+  min-height: 26px; border: 1px solid var(--line-2); border-radius: 7px;
+  background: transparent; color: var(--ink-soft);
+  padding: 0 9px; font: 600 10.5px/1 var(--mono); letter-spacing: 0.02em;
+}
+.sr-act:hover { border-color: var(--seal); background: transparent; color: var(--seal-deep); transform: none; }
+.stats-overlay {
+  position: fixed; inset: 0; z-index: 45;
+  display: grid; place-items: start center;
+  background: rgba(38, 28, 12, 0.36);
+  padding: clamp(18px, 7dvh, 64px) 18px 18px;
+  backdrop-filter: blur(6px) saturate(0.9);
+}
+.stats-overlay[hidden] { display: none; }
+.stats-dialog {
+  display: flex; flex-direction: column; gap: 16px; width: min(720px, 96vw);
+  max-height: calc(100dvh - 40px); overflow: auto;
+  border: 1px solid var(--line-2); border-top: 3px solid var(--seal);
+  border-radius: 12px; background: linear-gradient(180deg, var(--panel), var(--panel-2));
+  padding: 20px; box-shadow: 0 42px 100px -44px rgba(38, 24, 8, 0.85);
+  animation: turn-rise 0.28s cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+.stats-bar { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.stats-bar h2 { font-size: 22px; font-weight: 600; }
+.stats-bar-actions { display: inline-flex; gap: 8px; }
+.stats-refresh { min-height: 34px; border-color: var(--line-2); background: transparent; color: var(--muted); }
+.stats-refresh:hover { border-color: var(--seal); background: transparent; color: var(--seal); }
+.stats-body { display: flex; flex-direction: column; gap: 18px; }
+.stat-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+.stat-tile { display: flex; flex-direction: column; gap: 3px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-wash); padding: 12px 14px; }
+.stat-tile-k { color: var(--faint); font: 700 10.5px/1.2 var(--mono); letter-spacing: 0.05em; text-transform: uppercase; }
+.stat-tile-v { color: var(--ink); font: 700 24px/1.1 var(--serif); }
+.stat-tile-sub { color: var(--muted); font: 600 11px/1.3 var(--mono); }
+.stats-section h3 { margin: 0 0 8px; color: var(--ink-soft); font: 600 13px/1.2 var(--sans); }
+.stat-rows { display: flex; flex-direction: column; gap: 6px; }
+.stat-row { display: grid; grid-template-columns: minmax(80px, 150px) 1fr auto; gap: 10px; align-items: center; }
+.stat-row-name { overflow: hidden; color: var(--ink-soft); font: 600 12px/1.3 var(--sans); text-overflow: ellipsis; white-space: nowrap; }
+.stat-row-track { height: 8px; border-radius: 999px; background: rgba(127, 110, 80, 0.14); overflow: hidden; }
+.stat-row-fill { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--seal), var(--amber)); }
+.stat-row-val { color: var(--ink); font: 700 11.5px/1.2 var(--mono); white-space: nowrap; }
+.stat-row-val b { color: var(--faint); font-weight: 600; }
+.stats-muted { color: var(--faint); font: 600 12px/1.4 var(--mono); }
+.stats-cost-inputs { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 8px; }
+.stats-cost-inputs label { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font: 600 12px/1 var(--mono); }
+.stats-cost-inputs input { width: 82px; height: 32px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--field-bg); color: var(--ink); padding: 0 8px; font: 600 12px/1 var(--mono); }
+.stats-cost-out { color: var(--ink-soft); font: 600 14px/1.4 var(--sans); }
+.stats-cost-out b { color: var(--seal-deep); font-weight: 700; font-size: 18px; }
+.stats-cost-out span { color: var(--faint); font: 500 11px/1.3 var(--mono); }
+.stats-note { margin: 0; color: var(--faint); font: 500 11px/1.5 var(--mono); }
 .search-bar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: start; }
 .search-bar h2 { font-size: 22px; font-weight: 600; }
 .search-close { min-height: 34px; border-color: var(--line-2); background: transparent; color: var(--muted); }
 .search-close:hover { border-color: var(--seal); background: transparent; color: var(--seal); }
 .global-search-input { width: 100%; height: 46px; font-size: 15px; }
 .search-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.search-scope { min-height: 32px; border-color: var(--line-2); background: transparent; color: var(--muted); padding: 0 11px; }
-.search-scope:hover { border-color: var(--line-2); background: rgba(33, 27, 16, 0.06); color: var(--ink); transform: none; }
-.search-scope.active { border-color: var(--ink); background: var(--ink); color: var(--paper); }
-.search-scope:disabled { border-color: var(--line); background: rgba(33, 27, 16, 0.04); color: var(--faint); }
+.search-mode, .search-prewarm { min-height: 32px; border-color: var(--line-2); background: transparent; color: var(--muted); padding: 0 11px; }
+.search-mode:hover, .search-prewarm:hover { border-color: var(--line-2); background: rgba(33, 27, 16, 0.06); color: var(--ink); transform: none; }
+.search-mode.active { border-color: var(--ink); background: var(--ink); color: var(--paper); }
+.search-mode:disabled, .search-prewarm:disabled { border-color: var(--line); background: rgba(33, 27, 16, 0.04); color: var(--faint); }
+.search-prewarm[aria-busy="true"] { border-color: rgba(47, 93, 73, 0.45); background: rgba(47, 93, 73, 0.08); color: var(--pine); }
+.search-scope-label {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  max-width: min(320px, 100%);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: rgba(33, 27, 16, 0.035);
+  color: var(--muted);
+  padding: 0 11px;
+  font: 700 11px/1 var(--mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .search-status { min-width: 0; color: var(--faint); font: 600 11.5px/1.35 var(--mono); }
-.search-results { display: grid; gap: 8px; min-height: 120px; max-height: min(540px, calc(100dvh - 290px)); overflow: auto; padding-right: 4px; }
+.search-results { display: grid; grid-auto-rows: max-content; gap: 8px; align-content: start; min-height: 0; overflow: auto; padding-right: 4px; }
 .search-empty {
   display: grid; min-height: 112px; place-items: center;
   border: 1px dashed var(--line-2); border-radius: 10px;
@@ -803,16 +1187,29 @@ pre {
   border: 1px solid var(--line); border-radius: 10px;
   background: var(--panel-wash); color: var(--ink);
   padding: 12px; text-align: left; font-family: var(--sans);
+  cursor: pointer;
+  transition: background 130ms ease, border-color 130ms ease, box-shadow 130ms ease;
 }
-.search-result:hover, .search-result.active { border-color: rgba(177, 56, 42, 0.5); background: #fdf7ea; transform: none; box-shadow: 0 14px 30px -26px rgba(140, 43, 31, 0.6); }
+.search-result:hover, .search-result.active { border-color: rgba(177, 56, 42, 0.5); background: var(--result-active-bg); transform: none; box-shadow: 0 14px 30px -26px rgba(140, 43, 31, 0.6); }
 .search-result strong, .search-result span, .search-result p { min-width: 0; }
 .search-result-title { overflow: hidden; font: 600 15px/1.3 var(--sans); text-overflow: ellipsis; white-space: nowrap; }
 .search-result-source { color: var(--faint); font: 700 10.5px/1 var(--mono); letter-spacing: 0.05em; white-space: nowrap; }
 .search-result-path { grid-column: 1 / -1; overflow: hidden; color: var(--faint); font: 500 11px/1.35 var(--mono); text-overflow: ellipsis; white-space: nowrap; }
-.search-result-snippet { grid-column: 1 / -1; margin: 0; color: var(--ink-soft); font: 400 13.5px/1.55 var(--sans); overflow-wrap: anywhere; }
+.search-result-snippet {
+  display: -webkit-box;
+  grid-column: 1 / -1;
+  margin: 0;
+  overflow: hidden;
+  color: var(--ink-soft);
+  font: 400 13.5px/1.55 var(--sans);
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
 .search-result-snippet mark { border-radius: 2px; background: linear-gradient(180deg, rgba(234, 197, 110, 0.2), rgba(234, 197, 110, 0.72)); color: inherit; padding: 0 2px; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
 .search-result-meta { grid-column: 1 / -1; color: var(--faint); font: 600 10.5px/1.3 var(--mono); letter-spacing: 0.05em; text-transform: uppercase; }
 
+.project-group.no-project .project-headline { grid-template-columns: minmax(0, 1fr); }
 .project-group.no-project .project-header { grid-template-columns: minmax(0, 1fr) auto; }
 .project-group.no-project .project-icon { display: none; }
 
@@ -840,12 +1237,19 @@ const state = {
   selected: "",
   activeSource: "codex",
   requestToken: 0,
+  currentSnapshot: null,
   expandedProjects: new Set(),
   collapsedProjects: new Set(),
   hasMoreSessions: false,
   loadingMoreSessions: false,
   sessionListError: "",
-  search: { open: false, query: "", scope: "all", loading: false, results: [], terms: [], matched: 0, scanned: 0, failed: 0, error: "", requestToken: 0 },
+  search: { open: false, query: "", scope: "all", cwd: "", scopeLabel: "全部历史", mode: "keyword", loading: false, results: [], rawResults: [], terms: [], matched: 0, scanned: 0, indexed: 0, indexedChunks: 0, updated: 0, pending: 0, failed: 0, model: "", error: "", requestToken: 0, active: 0, previewRef: "", restoreSelection: "", flags: { caseSensitive: false, wholeWord: false }, filters: null },
+  semanticWarmup: { running: false, requestedStop: false, rounds: 0, scanned: 0, indexed: 0, indexedChunks: 0, updated: 0, totalUpdated: 0, pending: 0, failed: 0, model: "", error: "", complete: false },
+  sessionSearch: { query: "", loading: false, results: [], chunkCount: 0, model: "", error: "", requestToken: 0 },
+  snapshotCache: new Map(),
+  previewToken: 0,
+  stats: null,
+  statsRate: { in: 0, out: 0 },
 };
 const SOURCE_MODULES = [
   { key: "codex", label: "Codex" },
@@ -853,10 +1257,21 @@ const SOURCE_MODULES = [
 ];
 const SESSION_BATCH_LIMIT = 200;
 const SEARCH_SCAN_LIMIT = 600;
+const SEMANTIC_SEARCH_SCAN_LIMIT = 600;
+const SEMANTIC_SEARCH_UPDATE_LIMIT = 24;
+const SEMANTIC_PREWARM_SCAN_LIMIT = 1200;
+const SEMANTIC_PREWARM_UPDATE_LIMIT = 120;
 const SAFETY_CHECKS_ENABLED = false;
 const SIDEBAR_WIDTH_KEY = "codex-snapshot.sidebar-width.v2";
 const SIDEBAR_MIN = 240;
 const SIDEBAR_MAX = 460;
+const THEME_KEY = "codex-snapshot.theme.v1";
+const DENSITY_KEY = "codex-snapshot.density.v1";
+const READ_SCALE_KEY = "codex-snapshot.read-scale.v1";
+const THEMES = ["light", "sepia", "dark"];
+const READ_SCALE_MIN = 0.85;
+const READ_SCALE_MAX = 1.4;
+const READ_SCALE_STEP = 0.05;
 const $ = (id) => document.getElementById(id);
 const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
 const shareConfig = window.CODEX_SNAPSHOT_SHARE_CONFIG || {};
@@ -870,6 +1285,9 @@ function renderLoading(message) {
 }
 
 function showViewerLoading(message) {
+  state.currentSnapshot = null;
+  resetSessionSearchState(false);
+  renderSessionSearch();
   $("title").textContent = "正在加载会话";
   $("meta").classList.add("empty");
   $("meta").classList.remove("loading");
@@ -883,13 +1301,10 @@ function showViewerLoading(message) {
 }
 
 function activeOptions() {
-  if ($("includeToolOutput").checked) {
-    $("includeTools").checked = true;
-  }
   return new URLSearchParams({
     id: state.selected,
-    includeTools: $("includeTools").checked ? "1" : "0",
-    includeToolOutput: $("includeToolOutput").checked ? "1" : "0",
+    includeTools: "1",
+    includeToolOutput: "0",
     redact: $("redact").checked ? "1" : "0",
     safety: SAFETY_CHECKS_ENABLED ? "1" : "0",
   });
@@ -899,36 +1314,313 @@ function selectedSession() {
   return state.sessions.find((session) => sessionRef(session) === state.selected) || null;
 }
 
-function currentProjectCwd() {
-  const selected = selectedSession();
-  if (!selected || isNoProjectSession(selected)) {
-    return "";
-  }
-  return projectPath(selected);
+function searchScopeCwd() {
+  return state.search.scope === "project" ? String(state.search.cwd || "").trim() : "";
 }
 
-function openSearchDialog() {
+function setSearchContext(context = {}) {
+  const cwd = String(context.cwd || "").trim();
+  const label = String(context.label || "").trim();
+  const nextScope = cwd ? "project" : "all";
+  const nextLabel = cwd ? "项目：" + (label || "当前项目") : "全部历史";
+  const scopeChanged = state.search.scope !== nextScope || state.search.cwd !== cwd;
+  state.search.scope = nextScope;
+  state.search.cwd = cwd;
+  state.search.scopeLabel = nextLabel;
+  if (scopeChanged && !state.semanticWarmup.running) {
+    resetSemanticWarmupState(false);
+  }
+  if (scopeChanged) {
+    resetSearchResultsState();
+  }
+}
+
+function openSearchDialog(context = {}) {
+  setSearchContext(context);
   state.search.open = true;
+  state.search.active = 0;
+  state.search.previewRef = "";
+  state.search.restoreSelection = state.selected;
   $("searchOverlay").hidden = false;
+  document.body.classList.add("search-open");
   renderSearch();
+  if ($("globalSearch").value.trim()) {
+    scheduleSearch(0);
+  }
   setTimeout(() => {
     $("globalSearch").focus();
     $("globalSearch").select();
   }, 0);
 }
 
-function closeSearchDialog() {
+function closeSearchDialog(commit = false) {
   state.search.open = false;
   $("searchOverlay").hidden = true;
+  document.body.classList.remove("search-open");
+  if (previewTimer) {
+    clearTimeout(previewTimer);
+    previewTimer = 0;
+  }
+  if (!commit && state.search.previewRef) {
+    // The live preview swapped the reader; restore what the user was looking at.
+    const restore = state.search.restoreSelection;
+    if (restore && restore !== state.selected) {
+      previewSession(restore);
+    } else if (!restore) {
+      clearViewer();
+    }
+  }
+  state.search.previewRef = "";
 }
 
-function setSearchScope(scope) {
-  state.search.scope = scope === "project" ? "project" : "all";
+function isKeyboardActivation(event) {
+  return event.key === "Enter" || event.key === " ";
+}
+
+const STATS_RATE_KEY = "codex-snapshot.stats-rate.v1";
+
+function loadStatsRate() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(STATS_RATE_KEY) || "null");
+    if (saved && typeof saved === "object") {
+      state.statsRate = { in: Number(saved.in) || 0, out: Number(saved.out) || 0 };
+    }
+  } catch (_error) {
+    // Ignore malformed persisted rate.
+  }
+}
+
+async function openStats() {
+  $("statsOverlay").hidden = false;
+  document.body.classList.add("stats-open");
+  await loadStats();
+}
+
+function closeStats() {
+  $("statsOverlay").hidden = true;
+  document.body.classList.remove("stats-open");
+}
+
+async function loadStats() {
+  $("statsBody").innerHTML = renderLoading("正在统计本机会话（首次会在后台建索引）...");
+  try {
+    const response = await fetch("/api/search-stats");
+    const stats = await response.json();
+    if (!response.ok) {
+      throw new Error(stats.error || "统计失败");
+    }
+    state.stats = stats;
+    renderStats();
+  } catch (error) {
+    $("statsBody").innerHTML = "<div class='search-empty'>" + esc(error instanceof Error ? error.message : String(error)) + "</div>";
+  }
+}
+
+const STATS_ENGINE_LABELS = { codex: "Codex", claude: "Claude Code", trae: "Trae" };
+
+function statsTile(label, value, sub) {
+  return "<div class='stat-tile'><span class='stat-tile-k'>" + esc(label) + "</span>" +
+    "<b class='stat-tile-v'>" + esc(value) + "</b>" +
+    (sub ? "<span class='stat-tile-sub'>" + esc(sub) + "</span>" : "") +
+    "</div>";
+}
+
+function statsBar(label, count, total, max, sub) {
+  const pct = max > 0 ? Math.max(2, Math.round((total / max) * 100)) : 0;
+  return "<div class='stat-row'>" +
+    "<span class='stat-row-name' title='" + esc(label) + "'>" + esc(label) + "</span>" +
+    "<span class='stat-row-track'><span class='stat-row-fill' style='width:" + pct + "%'></span></span>" +
+    "<span class='stat-row-val'>" + esc(formatTokenShort(total)) + "<b>" + esc(sub || "") + "</b></span>" +
+  "</div>";
+}
+
+function renderStats() {
+  const stats = state.stats;
+  if (!stats) {
+    return;
+  }
+  const rate = state.statsRate;
+  const cost = (Number(stats.inputTokens || 0) / 1000000) * (rate.in || 0) + (Number(stats.outputTokens || 0) / 1000000) * (rate.out || 0);
+  const tiles = [
+    statsTile("已索引会话", formatTokenCount(stats.indexedSessions), (stats.sessionsWithTokens || 0) + " 条有 token 数据"),
+    statsTile("总 token", formatTokenShort(stats.totalTokens), formatTokenCount(stats.totalTokens)),
+    statsTile("输入 token", formatTokenShort(stats.inputTokens), ""),
+    statsTile("输出 token", formatTokenShort(stats.outputTokens), ""),
+  ].join("");
+
+  const engineMax = Math.max(1, ...(stats.byEngine || []).map((entry) => Number(entry.total || 0)));
+  const engineRows = (stats.byEngine || []).filter((entry) => entry.sessions).map((entry) =>
+    statsBar(STATS_ENGINE_LABELS[entry.key] || entry.key, entry.sessions, Number(entry.total || 0), engineMax, " · " + entry.sessions + " 会话")
+  ).join("") || "<div class='stats-muted'>暂无数据</div>";
+
+  const projectMax = Math.max(1, ...(stats.byProject || []).map((entry) => Number(entry.total || 0)));
+  const projectRows = (stats.byProject || []).map((entry) =>
+    statsBar(entry.name, entry.sessions, Number(entry.total || 0), projectMax, " · " + entry.sessions + " 会话")
+  ).join("") || "<div class='stats-muted'>暂无数据</div>";
+
+  const costLine = (rate.in || rate.out)
+    ? "<div class='stats-cost-out'>≈ <b>" + esc(cost >= 1 ? cost.toFixed(2) : cost.toFixed(4)) + "</b> <span>（按 输入 " + esc(rate.in || 0) + " / 输出 " + esc(rate.out || 0) + " 每百万 token，粗略上限，含各轮重复上下文）</span></div>"
+    : "<div class='stats-cost-out stats-muted'>填入单价即可估算成本（token 计数为准）</div>";
+
+  $("statsBody").innerHTML =
+    "<div class='stat-tiles'>" + tiles + "</div>" +
+    "<div class='stats-section'><h3>按来源</h3><div class='stat-rows'>" + engineRows + "</div></div>" +
+    "<div class='stats-section'><h3>按项目 · Top " + (stats.byProject || []).length + "</h3><div class='stat-rows'>" + projectRows + "</div></div>" +
+    "<div class='stats-section'><h3>成本估算</h3>" +
+      "<div class='stats-cost-inputs'>" +
+        "<label>输入 <input id='statsPriceIn' type='number' min='0' step='0.1' value='" + esc(rate.in || "") + "' placeholder='0'> /1M</label>" +
+        "<label>输出 <input id='statsPriceOut' type='number' min='0' step='0.1' value='" + esc(rate.out || "") + "' placeholder='0'> /1M</label>" +
+      "</div>" + costLine +
+    "</div>" +
+    "<p class='stats-note'>索引在后台增量构建；数据来自本机日志，Codex 的 token 为各轮累计（含缓存/重复上下文），仅供参考。</p>";
+
+  const priceIn = $("statsPriceIn");
+  const priceOut = $("statsPriceOut");
+  const onRate = () => {
+    state.statsRate = { in: Number(priceIn.value) || 0, out: Number(priceOut.value) || 0 };
+    localStorage.setItem(STATS_RATE_KEY, JSON.stringify(state.statsRate));
+    renderStats();
+  };
+  if (priceIn) priceIn.addEventListener("change", onRate);
+  if (priceOut) priceOut.addEventListener("change", onRate);
+}
+
+function resetSearchResultsState() {
+  state.search.loading = false;
+  state.search.results = [];
+  state.search.terms = [];
+  state.search.matched = 0;
+  state.search.scanned = 0;
+  state.search.indexed = 0;
+  state.search.indexedChunks = 0;
+  state.search.updated = 0;
+  state.search.pending = 0;
+  state.search.failed = 0;
+  state.search.model = "";
+  state.search.error = "";
+  state.search.requestToken += 1;
+}
+
+function setSearchMode(mode) {
+  state.search.mode = mode === "semantic" ? "semantic" : "keyword";
+  resetSearchResultsState();
   renderSearch();
   scheduleSearch(0);
 }
 
+let semanticWarmupAbort = null;
+function resetSemanticWarmupState(keepComplete = false) {
+  state.semanticWarmup = {
+    running: false,
+    requestedStop: false,
+    rounds: 0,
+    scanned: keepComplete ? state.semanticWarmup.scanned : 0,
+    indexed: keepComplete ? state.semanticWarmup.indexed : 0,
+    indexedChunks: keepComplete ? state.semanticWarmup.indexedChunks : 0,
+    updated: 0,
+    totalUpdated: keepComplete ? state.semanticWarmup.totalUpdated : 0,
+    pending: keepComplete ? state.semanticWarmup.pending : 0,
+    failed: keepComplete ? state.semanticWarmup.failed : 0,
+    model: keepComplete ? state.semanticWarmup.model : "",
+    error: "",
+    complete: keepComplete ? state.semanticWarmup.complete : false,
+  };
+}
+
+function updateSemanticWarmupState(payload) {
+  const updated = Number(payload.updated || 0);
+  state.semanticWarmup.scanned = Number(payload.scanned || 0);
+  state.semanticWarmup.indexed = Number(payload.indexed || 0);
+  state.semanticWarmup.indexedChunks = Number(payload.indexedChunks || 0);
+  state.semanticWarmup.updated = updated;
+  state.semanticWarmup.totalUpdated += updated;
+  state.semanticWarmup.pending = Number(payload.pending || 0);
+  state.semanticWarmup.failed = Number(payload.failed || 0);
+  state.semanticWarmup.model = String(payload.model || "");
+  state.semanticWarmup.complete = payload.complete === true || state.semanticWarmup.pending === 0;
+}
+
+function semanticWarmupStatus(prefix) {
+  const warmup = state.semanticWarmup;
+  const updated = warmup.totalUpdated ? "，已更新 " + warmup.totalUpdated + " 条" : "";
+  const pending = warmup.pending ? "，待补 " + warmup.pending + " 条" : "";
+  const failed = warmup.failed ? "，跳过 " + warmup.failed + " 条" : "";
+  const model = warmup.model ? " · " + warmup.model : "";
+  return prefix + "：索引 " + warmup.indexed + " / 扫描 " + warmup.scanned + updated + pending + failed + model;
+}
+
+function semanticWarmupParams() {
+  const params = new URLSearchParams({
+    source: "all",
+    scanLimit: String(SEMANTIC_PREWARM_SCAN_LIMIT),
+    updateLimit: String(SEMANTIC_PREWARM_UPDATE_LIMIT),
+    completeOnly: "1",
+    includeTools: "1",
+    includeToolOutput: "0",
+  });
+  const cwd = searchScopeCwd();
+  if (cwd) {
+    params.set("cwd", cwd);
+  }
+  return params;
+}
+
+async function toggleSemanticPrewarm() {
+  if (state.semanticWarmup.running) {
+    state.semanticWarmup.requestedStop = true;
+    if (semanticWarmupAbort) {
+      semanticWarmupAbort.abort();
+    }
+    renderSearch();
+    return;
+  }
+  await runSemanticPrewarm();
+}
+
+async function runSemanticPrewarm() {
+  if (state.semanticWarmup.running) {
+    return;
+  }
+  state.search.mode = "semantic";
+  resetSemanticWarmupState(false);
+  state.semanticWarmup.running = true;
+  renderSearch();
+
+  try {
+    while (!state.semanticWarmup.requestedStop) {
+      state.semanticWarmup.rounds += 1;
+      semanticWarmupAbort = new AbortController();
+      const response = await fetch("/api/semantic-index/prewarm?" + semanticWarmupParams().toString(), {
+        method: "POST",
+        headers: { "${MUTATION_CSRF_HEADER}": csrfToken },
+        signal: semanticWarmupAbort.signal,
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.error || "预热索引失败");
+      }
+      updateSemanticWarmupState(payload);
+      renderSearch();
+      if (state.semanticWarmup.pending <= 0 || Number(payload.updated || 0) <= 0) {
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 120));
+    }
+  } catch (error) {
+    if (!state.semanticWarmup.requestedStop || error?.name !== "AbortError") {
+      state.semanticWarmup.error = error instanceof Error ? error.message : String(error);
+    }
+  } finally {
+    semanticWarmupAbort = null;
+    state.semanticWarmup.running = false;
+    state.semanticWarmup.requestedStop = false;
+    state.semanticWarmup.complete = state.semanticWarmup.pending === 0 && !state.semanticWarmup.error;
+    renderSearch();
+  }
+}
+
 let searchTimer = 0;
+let previewTimer = 0;
 function scheduleSearch(delay = 220) {
   if (searchTimer) {
     clearTimeout(searchTimer);
@@ -939,17 +1631,209 @@ function scheduleSearch(delay = 220) {
   }, delay);
 }
 
+const FILTER_KEYS = ["source", "role", "project", "before", "after"];
+
+function parseSearchQuery(raw) {
+  const filters = { source: "", roles: [], projects: [], before: 0, after: 0, excludes: [] };
+  const textParts = [];
+  const tokens = String(raw || "").match(/[^\\s"]*"[^"]*"[^\\s"]*|[^\\s]+/g) || [];
+  for (const token of tokens) {
+    const match = /^([a-zA-Z]+):(.*)$/.exec(token);
+    if (match && FILTER_KEYS.includes(match[1].toLowerCase())) {
+      const key = match[1].toLowerCase();
+      const value = match[2].replace(/^"|"$/g, "").trim();
+      if (!value) {
+        continue;
+      }
+      if (key === "source") {
+        const s = value.toLowerCase();
+        filters.source = (s === "claude" || s === "claude-code" || s === "claudecode") ? "claude" : (s === "codex" ? "codex" : "");
+      } else if (key === "role") {
+        filters.roles.push(value.toLowerCase());
+      } else if (key === "project") {
+        filters.projects.push(value.toLowerCase());
+      } else if (key === "before" || key === "after") {
+        const time = Date.parse(value);
+        if (Number.isFinite(time)) {
+          filters[key] = time;
+        }
+      }
+      continue;
+    }
+    if (token.length > 1 && token[0] === "-" && token[1] !== ":") {
+      filters.excludes.push(token.slice(1).replace(/^"|"$/g, "").toLowerCase());
+      continue;
+    }
+    textParts.push(token.replace(/"/g, ""));
+  }
+  return { text: textParts.join(" ").trim(), filters };
+}
+
+function normalizeMs(value) {
+  const num = Number(value || 0);
+  if (!Number.isFinite(num) || num <= 0) {
+    return 0;
+  }
+  return num < 1e12 ? num * 1000 : num;
+}
+
+function isWordChar(ch) {
+  return !!ch && /[A-Za-z0-9_]/.test(ch);
+}
+
+function includesWholeWord(hay, term, caseSensitive) {
+  const haystack = caseSensitive ? hay : hay.toLowerCase();
+  const needle = caseSensitive ? term : term.toLowerCase();
+  if (!needle) {
+    return true;
+  }
+  let from = 0;
+  while (from <= haystack.length) {
+    const idx = haystack.indexOf(needle, from);
+    if (idx < 0) {
+      return false;
+    }
+    const before = idx === 0 ? "" : haystack[idx - 1];
+    const after = idx + needle.length >= haystack.length ? "" : haystack[idx + needle.length];
+    if (!isWordChar(before) && !isWordChar(after)) {
+      return true;
+    }
+    from = idx + 1;
+  }
+  return false;
+}
+
+function resultMatchesFlags(result, terms, flags) {
+  if (!terms.length || (!flags.caseSensitive && !flags.wholeWord)) {
+    return true;
+  }
+  const hay = String(result.title || "") + " " + String(result.snippet || "");
+  return terms.every((term) => {
+    const needle = String(term || "");
+    if (!needle) {
+      return true;
+    }
+    if (flags.wholeWord) {
+      return includesWholeWord(hay, needle, flags.caseSensitive);
+    }
+    return hay.indexOf(needle) >= 0;
+  });
+}
+
+function computeFilteredResults() {
+  const filters = state.search.filters || { source: "", roles: [], projects: [], before: 0, after: 0, excludes: [] };
+  const flags = state.search.flags;
+  const terms = state.search.mode === "semantic" ? [] : (state.search.terms || []);
+  return (state.search.rawResults || []).filter((result) => {
+    const cwd = String(result.displayCwd || result.cwd || "").toLowerCase();
+    const role = String(result.role || result.label || "").toLowerCase();
+    const hay = (String(result.title || "") + " " + String(result.snippet || "")).toLowerCase();
+    if (filters.projects.length && !filters.projects.some((project) => cwd.includes(project))) {
+      return false;
+    }
+    if (filters.roles.length && !filters.roles.some((wanted) => role.includes(wanted))) {
+      return false;
+    }
+    const mtime = normalizeMs(result.mtime);
+    if (filters.before && mtime && mtime >= filters.before) {
+      return false;
+    }
+    if (filters.after && mtime && mtime <= filters.after) {
+      return false;
+    }
+    if (filters.excludes.length && filters.excludes.some((word) => hay.includes(word))) {
+      return false;
+    }
+    if (!resultMatchesFlags(result, terms, flags)) {
+      return false;
+    }
+    return true;
+  });
+}
+
+function reapplyClientFilters() {
+  state.search.results = computeFilteredResults();
+  state.search.active = 0;
+  renderSearch();
+}
+
+function renderFacets() {
+  const el = $("searchFacets");
+  if (!el) {
+    return;
+  }
+  const raw = state.search.rawResults || [];
+  if (!state.search.query || !raw.length) {
+    el.innerHTML = "";
+    return;
+  }
+  const filters = state.search.filters || { source: "", projects: [] };
+  const sources = new Map();
+  const projects = new Map();
+  for (const result of raw) {
+    const label = result.engineLabel || "Codex";
+    const key = /claude/i.test(label) ? "claude" : "codex";
+    const entry = sources.get(key) || { key, label, count: 0 };
+    entry.count += 1;
+    sources.set(key, entry);
+    const path = String(result.displayCwd || result.cwd || "").trim();
+    if (path) {
+      const name = path.split("/").filter(Boolean).pop() || path;
+      projects.set(name, (projects.get(name) || 0) + 1);
+    }
+  }
+  const chips = [];
+  for (const entry of sources.values()) {
+    const active = filters.source === entry.key;
+    chips.push("<button type='button' class='facet-chip" + (active ? " active" : "") + "' data-facet-key='source' data-facet-value='" + esc(entry.key) + "'>" + esc(entry.label) + " <b>" + entry.count + "</b></button>");
+  }
+  const topProjects = Array.from(projects.entries()).sort((a, b) => b[1] - a[1]).slice(0, 6);
+  for (const [name, count] of topProjects) {
+    const active = filters.projects.includes(name.toLowerCase());
+    chips.push("<button type='button' class='facet-chip" + (active ? " active" : "") + "' data-facet-key='project' data-facet-value='" + esc(name) + "'>" + esc(name) + " <b>" + count + "</b></button>");
+  }
+  el.innerHTML = chips.join("");
+}
+
+function toggleQueryToken(key, value, single) {
+  const input = $("globalSearch");
+  const quoted = value.indexOf(" ") >= 0 ? '"' + value + '"' : value;
+  const tokenRe = new RegExp("(?:^| )" + key + ":\\\"?" + escapeRegExp(value) + "\\\"?(?= |$)", "i");
+  let next;
+  if (tokenRe.test(input.value)) {
+    next = input.value.replace(tokenRe, " ").replace(/ +/g, " ").trim();
+  } else {
+    let base = input.value;
+    if (single) {
+      base = base.replace(new RegExp("(?:^| )" + key + ":[^ ]+", "gi"), " ").replace(/ +/g, " ").trim();
+    }
+    next = (base + " " + key + ":" + quoted).replace(/ +/g, " ").trim();
+  }
+  input.value = next;
+  input.focus();
+  scheduleSearch(0);
+}
+
 async function runSearch() {
   const query = $("globalSearch").value.trim();
   state.search.query = query;
   state.search.error = "";
-  if (!query) {
+  const parsed = parseSearchQuery(query);
+  state.search.filters = parsed.filters;
+  state.search.textEmpty = !parsed.text;
+  if (!parsed.text) {
     state.search.loading = false;
     state.search.results = [];
+    state.search.rawResults = [];
     state.search.terms = [];
     state.search.matched = 0;
     state.search.scanned = 0;
+    state.search.indexed = 0;
+    state.search.indexedChunks = 0;
+    state.search.updated = 0;
+    state.search.pending = 0;
     state.search.failed = 0;
+    state.search.model = "";
     renderSearch();
     return;
   }
@@ -959,20 +1843,26 @@ async function runSearch() {
   state.search.loading = true;
   renderSearch();
 
+  const semanticMode = state.search.mode === "semantic";
   const params = new URLSearchParams({
-    q: query,
-    source: "all",
+    q: parsed.text,
+    source: parsed.filters.source || "all",
     limit: "24",
-    scanLimit: String(SEARCH_SCAN_LIMIT),
+    scanLimit: String(semanticMode ? SEMANTIC_SEARCH_SCAN_LIMIT : SEARCH_SCAN_LIMIT),
     completeOnly: "1",
+    includeTools: "1",
+    includeToolOutput: "0",
   });
-  const cwd = state.search.scope === "project" ? currentProjectCwd() : "";
+  const cwd = searchScopeCwd();
   if (cwd) {
     params.set("cwd", cwd);
   }
+  if (semanticMode) {
+    params.set("updateLimit", String(SEMANTIC_SEARCH_UPDATE_LIMIT));
+  }
 
   try {
-    const response = await fetch("/api/search?" + params.toString());
+    const response = await fetch((semanticMode ? "/api/semantic-search?" : "/api/search?") + params.toString());
     const payload = await response.json();
     if (requestToken !== state.search.requestToken) {
       return;
@@ -980,18 +1870,31 @@ async function runSearch() {
     if (!response.ok) {
       throw new Error(payload.error || "Search failed");
     }
-    state.search.results = Array.isArray(payload.results) ? payload.results : [];
+    state.search.rawResults = Array.isArray(payload.results) ? payload.results : [];
     state.search.terms = Array.isArray(payload.terms) ? payload.terms : [];
-    state.search.matched = Number(payload.matched || state.search.results.length);
+    state.search.results = computeFilteredResults();
+    state.search.active = 0;
+    state.search.matched = Number(payload.matched || state.search.rawResults.length);
     state.search.scanned = Number(payload.scanned || 0);
+    state.search.indexed = Number(payload.indexed || 0);
+    state.search.indexedChunks = Number(payload.indexedChunks || 0);
+    state.search.updated = Number(payload.updated || 0);
+    state.search.pending = Number(payload.pending || 0);
     state.search.failed = Number(payload.failed || 0);
+    state.search.model = String(payload.model || "");
   } catch (error) {
     if (requestToken !== state.search.requestToken) {
       return;
     }
     state.search.results = [];
+    state.search.rawResults = [];
     state.search.terms = [];
     state.search.matched = 0;
+    state.search.indexed = 0;
+    state.search.indexedChunks = 0;
+    state.search.updated = 0;
+    state.search.pending = 0;
+    state.search.model = "";
     state.search.error = error instanceof Error ? error.message : String(error);
   } finally {
     if (requestToken === state.search.requestToken) {
@@ -1002,62 +1905,444 @@ async function runSearch() {
 }
 
 function renderSearch() {
-  const projectCwd = currentProjectCwd();
-  if (state.search.scope === "project" && !projectCwd) {
-    state.search.scope = "all";
+  const scopeLabel = $("searchScopeLabel");
+  if (scopeLabel) {
+    scopeLabel.textContent = state.search.scopeLabel || "全部历史";
+    scopeLabel.title = state.search.scope === "project" && state.search.cwd ? state.search.cwd : "全部历史";
   }
-  for (const button of document.querySelectorAll("[data-search-scope]")) {
-    const scope = button.dataset.searchScope;
-    const active = scope === state.search.scope;
+  for (const button of document.querySelectorAll("[data-search-mode]")) {
+    const mode = button.dataset.searchMode;
+    const active = mode === state.search.mode;
     button.classList.toggle("active", active);
     button.setAttribute("aria-pressed", active ? "true" : "false");
-    button.disabled = scope === "project" && !projectCwd;
+  }
+  const semantic = state.search.mode === "semantic";
+  for (const button of document.querySelectorAll("[data-search-flag]")) {
+    const on = !!state.search.flags[button.dataset.searchFlag];
+    button.setAttribute("aria-pressed", on ? "true" : "false");
+    button.disabled = semantic;
+  }
+  const prewarmButton = $("prewarmIndex");
+  if (prewarmButton) {
+    const semanticMode = state.search.mode === "semantic";
+    prewarmButton.hidden = !semanticMode;
+    prewarmButton.disabled = !semanticMode || (state.search.loading && !state.semanticWarmup.running);
+    prewarmButton.textContent = state.semanticWarmup.running ? "停止预热" : state.semanticWarmup.complete ? "已预热" : "预热索引";
+    if (state.semanticWarmup.running) {
+      prewarmButton.setAttribute("aria-busy", "true");
+    } else {
+      prewarmButton.removeAttribute("aria-busy");
+    }
   }
 
   const status = $("searchStatus");
-  if (state.search.loading) {
-    status.textContent = "正在搜索...";
+  if (state.search.mode === "semantic" && state.semanticWarmup.running) {
+    status.textContent = semanticWarmupStatus("预热中");
+  } else if (state.search.mode === "semantic" && state.semanticWarmup.error && !state.search.query) {
+    status.textContent = state.semanticWarmup.error;
+  } else if (state.search.mode === "semantic" && state.semanticWarmup.complete && !state.search.query) {
+    status.textContent = semanticWarmupStatus("预热完成");
+  } else if (state.search.loading) {
+    status.textContent = state.search.mode === "semantic" ? "正在更新本机语义索引..." : "正在搜索...";
   } else if (state.search.error) {
     status.textContent = state.search.error;
   } else if (state.search.query) {
     const failed = state.search.failed ? "，跳过 " + state.search.failed + " 条" : "";
-    status.textContent = "命中 " + state.search.matched + " / 扫描 " + state.search.scanned + failed;
+    if (state.search.mode === "semantic") {
+      const updated = state.search.updated ? "，更新 " + state.search.updated + " 条" : "";
+      const pending = state.search.pending ? "，待补 " + state.search.pending + " 条" : "";
+      const model = state.search.model ? " · " + state.search.model : "";
+      status.textContent = "命中 " + state.search.matched + " / 索引 " + state.search.indexed + " / 扫描 " + state.search.scanned + updated + pending + failed + model;
+    } else {
+      status.textContent = "命中 " + state.search.matched + " / 扫描 " + state.search.scanned + failed;
+    }
   } else {
     status.textContent = "";
   }
 
+  renderFacets();
+
+  const globalInput = $("globalSearch");
   if (state.search.loading) {
+    globalInput.removeAttribute("aria-activedescendant");
     $("searchResults").innerHTML = renderLoading("正在搜索会话...");
     return;
   }
   if (!state.search.query) {
-    $("searchResults").innerHTML = "<div class='search-empty'>输入关键词开始搜索</div>";
+    globalInput.removeAttribute("aria-activedescendant");
+    $("searchResults").innerHTML = "<div class='search-empty'>" + (state.search.mode === "semantic" ? "输入大意开始语义搜索" : "输入关键词开始搜索") + "</div>";
+    return;
+  }
+  if (state.search.textEmpty) {
+    globalInput.removeAttribute("aria-activedescendant");
+    $("searchResults").innerHTML = "<div class='search-empty'>请输入关键词（可搭配 source: / project: 等过滤）</div>";
+    updateSearchCount();
     return;
   }
   if (state.search.error) {
+    globalInput.removeAttribute("aria-activedescendant");
     $("searchResults").innerHTML = "<div class='search-empty'>" + esc(state.search.error) + "</div>";
     return;
   }
   if (!state.search.results.length) {
-    $("searchResults").innerHTML = "<div class='search-empty'>没有匹配的会话</div>";
+    const hint = (state.search.rawResults && state.search.rawResults.length)
+      ? "过滤后没有会话，试着放宽筛选条件"
+      : "没有匹配的会话";
+    $("searchResults").innerHTML = "<div class='search-empty'>" + hint + "</div>";
+    updateSearchCount();
     return;
   }
+  if (state.search.active >= state.search.results.length || state.search.active < 0) {
+    state.search.active = 0;
+  }
   $("searchResults").innerHTML = state.search.results.map(renderSearchResult).join("");
+  updateSearchActive({ preview: false, scroll: false });
+  updateSearchCount();
 }
 
-function renderSearchResult(result) {
+function renderSearchResult(result, index) {
   const ref = result.ref || "";
   const title = result.title || ref || "Untitled session";
   const path = result.displayCwd || result.cwd || "普通会话";
   const source = [result.engineLabel || "Codex", relativeTime(result.mtime)].filter(Boolean).join(" · ");
-  const label = [result.label || result.role || "Match", result.turn ? "#" + result.turn : ""].filter(Boolean).join(" ");
-  return "<button class='search-result' type='button' data-search-result='" + esc(ref) + "'>" +
+  const score = state.search.mode === "semantic" ? Math.round(Number(result.score || 0) * 100) + "%" : "";
+  const label = [result.label || result.role || "Match", result.turn ? "#" + result.turn : "", score].filter(Boolean).join(" ");
+  const snippet = state.search.mode === "semantic"
+    ? esc(result.snippet || "")
+    : highlightSearchSnippet(result.snippet || "", result.terms || state.search.terms);
+  const active = index === state.search.active;
+  return "<div class='search-result" + (active ? " active" : "") + "' role='option' id='search-result-" + index + "' aria-selected='" + (active ? "true" : "false") + "' data-search-index='" + index + "' data-search-result='" + esc(ref) + "'>" +
     "<strong class='search-result-title'>" + esc(title) + "</strong>" +
     "<span class='search-result-source'>" + esc(source) + "</span>" +
     "<span class='search-result-path'>" + esc(path) + "</span>" +
-    "<p class='search-result-snippet'>" + highlightSearchSnippet(result.snippet || "", result.terms || state.search.terms) + "</p>" +
+    "<p class='search-result-snippet'>" + snippet + "</p>" +
     "<span class='search-result-meta'>" + esc(label) + "</span>" +
-  "</button>";
+    "<div class='search-result-actions'>" +
+      "<button type='button' class='sr-act' data-sr-action='open' title='打开会话（↵）'>打开</button>" +
+      "<button type='button' class='sr-act' data-sr-action='in-session' title='打开并在此会话内搜索'>会话内搜</button>" +
+      "<button type='button' class='sr-act' data-sr-action='export-html' title='导出为 HTML'>导出 HTML</button>" +
+      "<button type='button' class='sr-act' data-sr-action='copy-path' title='复制项目路径'>复制路径</button>" +
+    "</div>" +
+  "</div>";
+}
+
+function updateSearchActive(options = {}) {
+  const nodes = Array.from(document.querySelectorAll("[data-search-index]"));
+  const input = $("globalSearch");
+  nodes.forEach((node) => {
+    const index = Number(node.dataset.searchIndex);
+    const active = index === state.search.active;
+    node.classList.toggle("active", active);
+    node.setAttribute("aria-selected", active ? "true" : "false");
+    if (active) {
+      if (input) {
+        input.setAttribute("aria-activedescendant", node.id);
+      }
+      if (options.scroll !== false) {
+        node.scrollIntoView({ block: "nearest" });
+      }
+    }
+  });
+  if (options.preview) {
+    schedulePreview();
+  }
+}
+
+function moveSearchActive(delta) {
+  if (!state.search.results.length) {
+    return;
+  }
+  const count = state.search.results.length;
+  state.search.active = (state.search.active + delta + count) % count;
+  updateSearchActive({ preview: true, scroll: true });
+}
+
+function updateSearchCount() {
+  const el = $("searchCount");
+  if (!el) {
+    return;
+  }
+  if (!state.search.query || state.search.loading || state.search.error) {
+    el.textContent = "";
+    return;
+  }
+  const shown = state.search.results.length;
+  if (!shown) {
+    el.textContent = "";
+    return;
+  }
+  const raw = (state.search.rawResults || []).length;
+  if (raw && shown < raw) {
+    el.textContent = shown + " / 候选 " + raw + " 个会话";
+    return;
+  }
+  const matched = Math.max(shown, state.search.matched || shown);
+  el.textContent = matched > shown
+    ? "显示前 " + shown + " / 命中 " + matched + " 个会话"
+    : shown + " 个会话";
+}
+
+function schedulePreview(delay = 200) {
+  if (previewTimer) {
+    clearTimeout(previewTimer);
+  }
+  previewTimer = setTimeout(() => {
+    previewTimer = 0;
+    previewActiveResult();
+  }, delay);
+}
+
+async function previewActiveResult() {
+  const result = state.search.results[state.search.active];
+  if (!result || !result.ref) {
+    return;
+  }
+  if (result.session) {
+    appendSessions([result.session]);
+    state.activeSource = visibleSourceKey(sessionEngine(result.session));
+  }
+  state.search.previewRef = result.ref;
+  await previewSession(result.ref, result.turn);
+}
+
+async function previewSession(id, turn) {
+  if (!id) {
+    return;
+  }
+  const cached = state.snapshotCache.get(id);
+  if (cached) {
+    state.selected = id;
+    renderSessions();
+    renderSnapshot(cached);
+    if (turn) {
+      focusTurn(turn);
+    }
+    return;
+  }
+  const token = state.previewToken + 1;
+  state.previewToken = token;
+  state.requestToken += 1;
+  state.selected = id;
+  renderSessions();
+  showViewerLoading("正在预览会话...");
+  try {
+    const params = new URLSearchParams({
+      id,
+      includeTools: "1",
+      includeToolOutput: "0",
+      redact: $("redact").checked ? "1" : "0",
+      safety: SAFETY_CHECKS_ENABLED ? "1" : "0",
+    });
+    const response = await fetch("/api/snapshot?" + params.toString());
+    const snapshot = await response.json();
+    if (token !== state.previewToken || state.selected !== id) {
+      return;
+    }
+    if (snapshot.error) {
+      $("title").textContent = "会话加载失败";
+      $("meta").textContent = "会话内容加载失败。";
+      $("turns").innerHTML = "<div class='meta'>" + esc(snapshot.error) + "</div>";
+      return;
+    }
+    state.snapshotCache.set(id, snapshot);
+    renderSnapshot(snapshot);
+    if (turn) {
+      focusTurn(turn);
+    }
+  } catch (error) {
+    if (token === state.previewToken) {
+      $("turns").innerHTML = "<div class='meta'>" + esc(error instanceof Error ? error.message : String(error)) + "</div>";
+    }
+  }
+}
+
+async function runSearchResultAction(action, ref) {
+  const result = state.search.results.find((item) => item.ref === ref);
+  if (!result) {
+    return;
+  }
+  if (action === "open") {
+    await selectSearchResult(ref);
+    return;
+  }
+  if (action === "in-session") {
+    await selectSearchResult(ref);
+    const input = $("sessionSearchInput");
+    if (input && !input.disabled) {
+      input.focus();
+    }
+    return;
+  }
+  if (action === "export-html" || action === "export-md") {
+    const params = new URLSearchParams({
+      id: ref,
+      includeTools: "1",
+      includeToolOutput: "0",
+      redact: $("redact").checked ? "1" : "0",
+      safety: SAFETY_CHECKS_ENABLED ? "1" : "0",
+      format: action === "export-md" ? "md" : "html",
+    });
+    window.open("/export?" + params.toString(), "_blank", "noopener,noreferrer");
+    return;
+  }
+  if (action === "copy-path") {
+    const path = String(result.displayCwd || result.cwd || "").trim();
+    if (path && navigator.clipboard) {
+      navigator.clipboard.writeText(path).catch(() => {});
+    }
+  }
+}
+
+function resetSessionSearchState(keepQuery) {
+  const query = keepQuery ? state.sessionSearch.query : "";
+  state.sessionSearch = { query, loading: false, results: [], chunkCount: 0, model: "", error: "", requestToken: state.sessionSearch.requestToken + 1 };
+  const input = $("sessionSearchInput");
+  if (input && !keepQuery) {
+    input.value = "";
+  }
+}
+
+let sessionSearchTimer = 0;
+function scheduleSessionSearch(delay = 260) {
+  if (sessionSearchTimer) {
+    clearTimeout(sessionSearchTimer);
+  }
+  sessionSearchTimer = setTimeout(() => {
+    sessionSearchTimer = 0;
+    runSessionSearch();
+  }, delay);
+}
+
+async function runSessionSearch() {
+  const input = $("sessionSearchInput");
+  const query = input.value.trim();
+  state.sessionSearch.query = query;
+  state.sessionSearch.error = "";
+  if (!state.selected || !state.currentSnapshot) {
+    state.sessionSearch.loading = false;
+    state.sessionSearch.results = [];
+    state.sessionSearch.error = "先选择一个会话。";
+    renderSessionSearch();
+    return;
+  }
+  if (!query) {
+    resetSessionSearchState(true);
+    renderSessionSearch();
+    return;
+  }
+
+  const requestToken = state.sessionSearch.requestToken + 1;
+  state.sessionSearch.requestToken = requestToken;
+  state.sessionSearch.loading = true;
+  state.sessionSearch.results = [];
+  renderSessionSearch();
+
+  const params = activeOptions();
+  params.set("q", query);
+  params.set("limit", "8");
+
+  try {
+    const response = await fetch("/api/session-search?" + params.toString());
+    const payload = await response.json();
+    if (requestToken !== state.sessionSearch.requestToken) {
+      return;
+    }
+    if (!response.ok) {
+      throw new Error(payload.error || "Semantic search failed");
+    }
+    state.sessionSearch.results = Array.isArray(payload.results) ? payload.results : [];
+    state.sessionSearch.chunkCount = Number(payload.chunkCount || 0);
+    state.sessionSearch.model = String(payload.model || "");
+  } catch (error) {
+    if (requestToken !== state.sessionSearch.requestToken) {
+      return;
+    }
+    state.sessionSearch.results = [];
+    state.sessionSearch.chunkCount = 0;
+    state.sessionSearch.model = "";
+    state.sessionSearch.error = error instanceof Error ? error.message : String(error);
+  } finally {
+    if (requestToken === state.sessionSearch.requestToken) {
+      state.sessionSearch.loading = false;
+      renderSessionSearch();
+    }
+  }
+}
+
+function renderSessionSearch() {
+  const input = $("sessionSearchInput");
+  const button = $("sessionSearchRun");
+  const status = $("sessionSearchStatus");
+  const results = $("sessionSearchResults");
+  if (!input || !button || !status || !results) {
+    return;
+  }
+
+  const hasSnapshot = Boolean(state.selected && state.currentSnapshot);
+  input.disabled = !hasSnapshot;
+  button.disabled = !hasSnapshot || state.sessionSearch.loading;
+  if (!hasSnapshot) {
+    status.textContent = "选择会话后可用";
+    results.innerHTML = "";
+    return;
+  }
+  if (state.sessionSearch.loading) {
+    status.textContent = "正在调用本机 embedding...";
+  } else if (state.sessionSearch.error) {
+    status.textContent = state.sessionSearch.error;
+  } else if (state.sessionSearch.query) {
+    const count = state.sessionSearch.results.length;
+    const model = state.sessionSearch.model ? " · " + state.sessionSearch.model : "";
+    status.textContent = "命中 " + count + " / " + state.sessionSearch.chunkCount + model;
+  } else {
+    status.textContent = "本机 Ollama / qwen3-embedding:0.6b";
+  }
+
+  if (state.sessionSearch.loading) {
+    results.innerHTML = renderLoading("正在语义搜索当前会话...");
+    return;
+  }
+  if (!state.sessionSearch.query || state.sessionSearch.error) {
+    results.innerHTML = "";
+    return;
+  }
+  if (!state.sessionSearch.results.length) {
+    results.innerHTML = "<div class='search-empty'>没有匹配片段</div>";
+    return;
+  }
+  results.innerHTML = state.sessionSearch.results.map(renderSessionSearchResult).join("");
+}
+
+function renderSessionSearchResult(result) {
+  const turn = Number(result.turn || 0);
+  const score = Math.round(Number(result.score || 0) * 100);
+  const label = [
+    result.sourceLabel && result.sourceLabel !== "Session" ? result.sourceLabel : "",
+    result.label || result.role || "Message",
+    turn ? "#" + turn : "",
+  ].filter(Boolean).join(" · ");
+  return "<div class='session-search-result' role='button' tabindex='0' data-session-search-turn='" + esc(turn || "") + "'>" +
+    "<b>" + esc(label || "Match") + "</b>" +
+    "<em>" + esc(score) + "%</em>" +
+    "<span>" + esc(result.snippet || result.text || "") + "</span>" +
+  "</div>";
+}
+
+function focusTurn(turnNumber) {
+  const target = Array.from(document.querySelectorAll("[data-turn-number]"))
+    .find((item) => item.getAttribute("data-turn-number") === String(turnNumber));
+  if (!target) {
+    return false;
+  }
+  const details = target.closest("details");
+  if (details) {
+    details.open = true;
+  }
+  document.querySelectorAll(".semantic-hit-current").forEach((item) => item.classList.remove("semantic-hit-current"));
+  target.classList.add("semantic-hit-current");
+  target.scrollIntoView({ behavior: "smooth", block: "center" });
+  window.setTimeout(() => target.classList.remove("semantic-hit-current"), 2400);
+  return true;
 }
 
 function highlightSearchSnippet(text, terms) {
@@ -1089,7 +2374,17 @@ async function selectSearchResult(ref) {
     appendSessions([result.session]);
     state.activeSource = visibleSourceKey(sessionEngine(result.session));
   }
-  closeSearchDialog();
+  // Commit: the live preview may already show this session — reuse it if cached.
+  closeSearchDialog(true);
+  if (state.snapshotCache.has(ref)) {
+    state.selected = ref;
+    renderSessions();
+    renderSnapshot(state.snapshotCache.get(ref));
+    if (result?.turn) {
+      focusTurn(result.turn);
+    }
+    return;
+  }
   await selectSession(ref);
 }
 
@@ -1119,6 +2414,71 @@ function setSidebarWidth(value, persist) {
   }
   if (persist) {
     localStorage.setItem(SIDEBAR_WIDTH_KEY, String(width));
+  }
+}
+
+function currentTheme() {
+  const stored = localStorage.getItem(THEME_KEY);
+  return THEMES.includes(stored) ? stored : "light";
+}
+
+function applyTheme(theme) {
+  const value = THEMES.includes(theme) ? theme : "light";
+  document.documentElement.setAttribute("data-theme", value);
+  localStorage.setItem(THEME_KEY, value);
+  for (const button of document.querySelectorAll("[data-theme-set]")) {
+    button.classList.toggle("active", button.dataset.themeSet === value);
+  }
+}
+
+function currentDensity() {
+  return localStorage.getItem(DENSITY_KEY) === "compact" ? "compact" : "comfortable";
+}
+
+function applyDensity(density) {
+  const value = density === "compact" ? "compact" : "comfortable";
+  document.documentElement.setAttribute("data-density", value);
+  localStorage.setItem(DENSITY_KEY, value);
+  const toggle = document.querySelector("[data-density-toggle]");
+  if (toggle) {
+    toggle.classList.toggle("active", value === "compact");
+    toggle.textContent = value === "compact" ? "疏" : "密";
+    toggle.title = value === "compact" ? "当前紧凑，点击切换为宽松" : "当前宽松，点击切换为紧凑";
+  }
+}
+
+function currentReadScale() {
+  const stored = Number(localStorage.getItem(READ_SCALE_KEY));
+  if (!Number.isFinite(stored) || stored <= 0) {
+    return 1;
+  }
+  return clampNumber(stored, READ_SCALE_MIN, READ_SCALE_MAX);
+}
+
+function applyReadScale(scale) {
+  const value = clampNumber(Number(scale) || 1, READ_SCALE_MIN, READ_SCALE_MAX);
+  const rounded = Math.round(value * 100) / 100;
+  document.documentElement.style.setProperty("--read-scale", String(rounded));
+  localStorage.setItem(READ_SCALE_KEY, String(rounded));
+}
+
+function stepReadScale(direction) {
+  applyReadScale(currentReadScale() + (direction < 0 ? -READ_SCALE_STEP : READ_SCALE_STEP));
+}
+
+function initAppearance() {
+  applyTheme(currentTheme());
+  applyDensity(currentDensity());
+  applyReadScale(currentReadScale());
+  for (const button of document.querySelectorAll("[data-theme-set]")) {
+    button.addEventListener("click", () => applyTheme(button.dataset.themeSet));
+  }
+  for (const button of document.querySelectorAll("[data-font-step]")) {
+    button.addEventListener("click", () => stepReadScale(Number(button.dataset.fontStep) || 1));
+  }
+  const density = document.querySelector("[data-density-toggle]");
+  if (density) {
+    density.addEventListener("click", () => applyDensity(currentDensity() === "compact" ? "comfortable" : "compact"));
   }
 }
 
@@ -1262,15 +2622,13 @@ async function loadMoreSessions() {
 
 function renderSessions() {
   $("sessions").classList.remove("sessions-loading");
-  const filter = $("filter").value.trim().toLowerCase();
   state.activeSource = visibleSourceKey(state.activeSource);
   const source = sourceByKey(state.activeSource);
   const sessions = sourceSessions(source.key);
-  const sourceMatches = (source.label + " " + source.key).toLowerCase().includes(filter);
-  const groups = groupSessions(sessions, sourceMatches ? "" : filter);
+  const groups = groupSessions(sessions);
   const body = groups.length
     ? groups.map(renderProjectGroup).join("")
-    : "<div class='source-empty'>" + (filter ? "没有匹配的会话" : "暂无会话") + "</div>";
+    : "<div class='source-empty'>暂无会话</div>";
   $("sessions").innerHTML = renderSourceSwitcher() + body + renderLoadMore();
 }
 
@@ -1332,6 +2690,9 @@ function setViewerLoading(message) {
 
 function clearViewer(message) {
   state.requestToken += 1;
+  state.currentSnapshot = null;
+  resetSessionSearchState(false);
+  renderSessionSearch();
   $("title").textContent = "选择一个会话";
   $("meta").textContent = message || "还没有选择会话。";
   $("meta").classList.add("empty");
@@ -1358,10 +2719,12 @@ function groupSessions(sessions, filter) {
     const isNoProject = isNoProjectSession(session);
     if (!groupMap.has(key)) {
       const ephemeral = isNoProject ? null : ephemeralAgentInfo(session);
+      const searchCwd = isNoProject || ephemeral ? "" : projectPath(session);
       groupMap.set(key, {
         key,
         label: ephemeral ? ephemeral.prefix : projectLabel(session),
         displayPath: ephemeral ? "临时 agent 运行 · " + ephemeral.prefix + "-*" : projectDisplayPath(session),
+        searchCwd,
         isNoProject,
         isEphemeral: Boolean(ephemeral),
         newestMs: 0,
@@ -1531,12 +2894,18 @@ function renderProjectGroup(group) {
     : "";
   const sessionList = collapsed ? "" : "<div class='session-list'>" + visible.map(renderSessionRow).join("") + "</div>";
   const sectionClass = "project-group" + (group.isNoProject ? " no-project" : "") + (collapsed ? " collapsed" : "");
+  const projectSearch = group.searchCwd
+    ? "<button class='project-search' type='button' data-project-search='" + esc(group.key) + "' data-project-cwd='" + esc(group.searchCwd) + "' data-project-label='" + esc(group.label) + "' title='搜索 " + esc(group.displayPath) + "' aria-label='搜索 " + esc(group.label) + "'>搜索</button>"
+    : "";
   return "<section class='" + sectionClass + "'>" +
-    "<button class='project-header' type='button' data-project-collapse='" + esc(group.key) + "' aria-expanded='" + (collapsed ? "false" : "true") + "' title='" + esc(group.displayPath) + "'>" +
-      "<span class='project-icon' aria-hidden='true'></span>" +
-      "<span class='project-title'>" + esc(group.label) + "</span>" +
-      "<span class='project-count'>" + esc(group.sessions.length) + "</span>" +
-    "</button>" +
+    "<div class='project-headline'>" +
+      "<button class='project-header' type='button' data-project-collapse='" + esc(group.key) + "' aria-expanded='" + (collapsed ? "false" : "true") + "' title='" + esc(group.displayPath) + "'>" +
+        "<span class='project-icon' aria-hidden='true'></span>" +
+        "<span class='project-title'>" + esc(group.label) + "</span>" +
+        "<span class='project-count'>" + esc(group.sessions.length) + "</span>" +
+      "</button>" +
+      projectSearch +
+    "</div>" +
     sessionList +
     note +
     toggle +
@@ -1602,6 +2971,8 @@ async function selectSession(id) {
 }
 
 function renderSnapshot(snapshot) {
+  state.currentSnapshot = snapshot;
+  resetSessionSearchState(false);
   $("title").textContent = snapshot.title;
   $("meta").classList.remove("empty", "loading");
   $("meta").removeAttribute("aria-busy");
@@ -1618,6 +2989,7 @@ function renderSnapshot(snapshot) {
   $("exports").innerHTML = "<a href='/export?" + options.toString() + "&format=html' target='_blank' rel='noopener noreferrer'>导出 HTML</a><a href='/export?" + options.toString() + "&format=md' target='_blank' rel='noopener noreferrer'>导出 Markdown</a><button type='button' data-publish-cloud='1'>发布分享</button><span id='publishStatus' class='publish-status'></span>";
   $("turns").innerHTML = snapshot.transcriptHtml || "<div class='meta'>没有找到可分享的用户或助手消息。</div>";
   openContentLinksInNewTabs($("turns"));
+  renderSessionSearch();
   postSnapshotState(snapshot);
 }
 
@@ -1657,6 +3029,7 @@ function renderSnapshotGoal(snapshot) {
 function formatTokenShort(value) {
   const n = tokenUsageNumber(value);
   if (!n) return "0";
+  if (n >= 1000000000) return (n / 1000000000).toFixed(1).replace(/\\.0$/, "") + "B";
   if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\\.0$/, "") + "M";
   if (n >= 1000) return (n / 1000).toFixed(1).replace(/\\.0$/, "") + "k";
   return String(n);
@@ -1931,6 +3304,16 @@ $("sessions").addEventListener("click", async (event) => {
     renderSessions();
     return;
   }
+  const projectSearch = event.target.closest("[data-project-search]");
+  if (projectSearch) {
+    event.preventDefault();
+    event.stopPropagation();
+    openSearchDialog({
+      cwd: projectSearch.dataset.projectCwd || "",
+      label: projectSearch.dataset.projectLabel || "当前项目",
+    });
+    return;
+  }
   const projectHeader = event.target.closest("[data-project-collapse]");
   if (projectHeader) {
     const key = projectHeader.dataset.projectCollapse;
@@ -1945,38 +3328,129 @@ $("sessions").addEventListener("click", async (event) => {
   const button = event.target.closest("[data-id]");
   if (button) selectSession(button.dataset.id);
 });
-$("filter").addEventListener("input", renderSessions);
 $("reload").addEventListener("click", loadSessions);
-$("openSearch").addEventListener("click", openSearchDialog);
-$("closeSearch").addEventListener("click", closeSearchDialog);
+$("openSearch").addEventListener("click", () => openSearchDialog());
+$("openStats").addEventListener("click", openStats);
+$("closeStats").addEventListener("click", closeStats);
+$("statsRefresh").addEventListener("click", loadStats);
+$("statsOverlay").addEventListener("click", (event) => {
+  if (event.target === $("statsOverlay")) {
+    closeStats();
+  }
+});
+$("closeSearch").addEventListener("click", () => closeSearchDialog(false));
+$("prewarmIndex").addEventListener("click", toggleSemanticPrewarm);
 $("globalSearch").addEventListener("input", () => scheduleSearch());
 $("globalSearch").addEventListener("keydown", async (event) => {
-  if (event.key === "Enter") {
-    const first = state.search.results[0];
-    if (first?.ref) {
-      event.preventDefault();
-      await selectSearchResult(first.ref);
+  if (event.key === "ArrowDown") {
+    event.preventDefault();
+    moveSearchActive(1);
+    return;
+  }
+  if (event.key === "ArrowUp") {
+    event.preventDefault();
+    moveSearchActive(-1);
+    return;
+  }
+  if (event.key === "Tab" && !event.shiftKey) {
+    event.preventDefault();
+    setSearchMode(state.search.mode === "semantic" ? "keyword" : "semantic");
+    if ($("globalSearch").value.trim()) {
+      scheduleSearch(0);
     }
+    return;
+  }
+  if (event.key === "Enter") {
+    const result = state.search.results[state.search.active];
+    if (result?.ref) {
+      event.preventDefault();
+      await selectSearchResult(result.ref);
+    }
+    return;
   }
   if (event.key === "Escape") {
     event.preventDefault();
-    closeSearchDialog();
+    closeSearchDialog(false);
   }
 });
 $("searchOverlay").addEventListener("click", (event) => {
   if (event.target === $("searchOverlay")) {
-    closeSearchDialog();
+    closeSearchDialog(false);
   }
 });
 $("searchResults").addEventListener("click", async (event) => {
+  const actionButton = event.target.closest("[data-sr-action]");
+  if (actionButton) {
+    const holder = actionButton.closest("[data-search-result]");
+    if (holder) {
+      event.preventDefault();
+      event.stopPropagation();
+      await runSearchResultAction(actionButton.dataset.srAction, holder.dataset.searchResult);
+    }
+    return;
+  }
   const button = event.target.closest("[data-search-result]");
   if (button) {
     await selectSearchResult(button.dataset.searchResult);
   }
 });
-for (const button of document.querySelectorAll("[data-search-scope]")) {
-  button.addEventListener("click", () => setSearchScope(button.dataset.searchScope));
+$("searchResults").addEventListener("mousemove", (event) => {
+  const button = event.target.closest("[data-search-index]");
+  if (button) {
+    const index = Number(button.dataset.searchIndex);
+    if (Number.isFinite(index) && index !== state.search.active) {
+      state.search.active = index;
+      updateSearchActive({ preview: true, scroll: false });
+    }
+  }
+});
+$("sessionSearchInput").addEventListener("input", () => scheduleSessionSearch());
+$("sessionSearchInput").addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    runSessionSearch();
+  }
+});
+$("sessionSearchRun").addEventListener("click", runSessionSearch);
+$("sessionSearchResults").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-session-search-turn]");
+  if (button) {
+    focusTurn(button.dataset.sessionSearchTurn);
+  }
+});
+$("sessionSearchResults").addEventListener("keydown", (event) => {
+  if (!isKeyboardActivation(event)) {
+    return;
+  }
+  const button = event.target.closest("[data-session-search-turn]");
+  if (button) {
+    event.preventDefault();
+    focusTurn(button.dataset.sessionSearchTurn);
+  }
+});
+for (const button of document.querySelectorAll("[data-search-mode]")) {
+  button.addEventListener("click", () => {
+    setSearchMode(button.dataset.searchMode);
+    if ($("globalSearch").value.trim()) {
+      scheduleSearch(0);
+    }
+  });
 }
+for (const button of document.querySelectorAll("[data-search-flag]")) {
+  button.addEventListener("click", () => {
+    const key = button.dataset.searchFlag;
+    state.search.flags[key] = !state.search.flags[key];
+    button.setAttribute("aria-pressed", state.search.flags[key] ? "true" : "false");
+    reapplyClientFilters();
+  });
+}
+$("searchFacets").addEventListener("click", (event) => {
+  const chip = event.target.closest("[data-facet-key]");
+  if (!chip) {
+    return;
+  }
+  toggleQueryToken(chip.dataset.facetKey, chip.dataset.facetValue, chip.dataset.facetKey === "source");
+});
 document.addEventListener("keydown", (event) => {
   const key = String(event.key || "").toLowerCase();
   if ((event.metaKey || event.ctrlKey) && key === "k") {
@@ -1986,7 +3460,11 @@ document.addEventListener("keydown", (event) => {
   }
   if (event.key === "Escape" && state.search.open) {
     event.preventDefault();
-    closeSearchDialog();
+    closeSearchDialog(false);
+  }
+  if (event.key === "Escape" && !$("statsOverlay").hidden) {
+    event.preventDefault();
+    closeStats();
   }
 });
 $("exports").addEventListener("click", (event) => {
@@ -2002,9 +3480,16 @@ $("turns").addEventListener("click", (event) => {
   event.preventDefault();
   openInNewTab(link.href);
 });
-for (const id of ["includeTools", "includeToolOutput", "redact"]) {
-  $(id).addEventListener("change", () => state.selected && selectSession(state.selected));
+for (const id of ["redact"]) {
+  $(id).addEventListener("change", () => {
+    state.snapshotCache.clear();
+    if (state.selected) {
+      selectSession(state.selected);
+    }
+  });
 }
+initAppearance();
+loadStatsRate();
 initSplitter();
 loadSessions().catch((error) => {
   $("sessions").innerHTML = "<div class='meta'>" + esc(error.message) + "</div>";
