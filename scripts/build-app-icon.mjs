@@ -40,6 +40,7 @@ const LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024
       <stop offset="1" stop-color="#a02c1a"/>
     </linearGradient>
   </defs>
+  <g transform="translate(100 100) scale(0.8047)">
   <rect width="1024" height="1024" rx="230" fill="#7f2013"/>
   <rect width="1024" height="1024" rx="230" fill="url(#bg)"/>
   <rect width="1024" height="1024" rx="230" fill="url(#sheen)"/>
@@ -60,6 +61,7 @@ const LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024
     <ellipse cx="612" cy="652" rx="26" ry="16" fill="#ffffff" opacity="0.18"/>
   </g>
   <rect x="16" y="16" width="992" height="992" rx="222" fill="none" stroke="#ffffff" stroke-width="3" stroke-opacity="0.12"/>
+  </g>
 </svg>`;
 
 async function exists(p) {
