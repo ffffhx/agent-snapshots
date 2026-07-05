@@ -374,7 +374,9 @@ function projectSummary(session, file) {
 
   const cwd = session.cwd || "";
   const filePath = session.filePath || file.path;
-  const title = stripCodexAppDirectives(session.title || "") || session.id;
+  // Redact the list title too (the snapshot title is already redacted), so a
+  // path/secret in a first message doesn't leak into the sidebar.
+  const title = redactText(stripCodexAppDirectives(session.title || "")) || session.id;
 
   const summary = {
     id: session.id,
