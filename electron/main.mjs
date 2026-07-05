@@ -6,7 +6,7 @@
 // free localhost port, then point a native BrowserWindow at it. This keeps
 // 100% of the web app's behaviour while giving it a real desktop window.
 
-import { app, BrowserWindow, Menu, shell, dialog } from "electron";
+import { app, BrowserWindow, Menu, shell, dialog, nativeImage } from "electron";
 import { spawn } from "node:child_process";
 import net from "node:net";
 import http from "node:http";
@@ -20,6 +20,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // correct in both cases, unlike app.getAppPath() which varies by launch mode.
 const APP_ROOT = path.resolve(__dirname, "..");
 const HOST = "127.0.0.1";
+// The app logo, so the dev-mode window/dock shows our mark instead of the
+// default Electron atom (the packaged .app already embeds build/icon.icns).
+const APP_ICON = nativeImage.createFromPath(path.join(APP_ROOT, "build", "icon.png"));
 
 let serverProcess = null;
 let serverPort = 0;
@@ -114,6 +117,7 @@ function createWindow(startUrl) {
     minWidth: 960,
     minHeight: 600,
     backgroundColor: "#231d12",
+    icon: APP_ICON,
     title: "Codex Snapshots",
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
     webPreferences: {
@@ -182,6 +186,11 @@ function buildMenu(getStartUrl) {
 }
 
 async function bootstrap() {
+  // macOS shows the dock icon from the .app bundle; in dev there is none, so
+  // set it explicitly (also covers `electron .` runs).
+  if (process.platform === "darwin" && app.dock && !APP_ICON.isEmpty()) {
+    app.dock.setIcon(APP_ICON);
+  }
   let startUrl;
   try {
     startUrl = await startServer();
