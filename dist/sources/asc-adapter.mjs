@@ -2,16 +2,15 @@
 //
 // Thin adapter over agent-session-core (ASC).
 //
-// STEP 1 of the migration: this file is NOT wired into any production call site
-// yet. `src/sources/index.mts` still re-exports the legacy parser. This module
-// exists so the parity script (scripts/parity-asc.mjs) can drive
-// "legacy vs ASC+adapter" side by side on the real ~/.codex + ~/.claude logs
-// before we flip the barrel.
+// This is the PRODUCTION parser: `src/sources/index.mts` re-exports these three
+// functions. codex/claude sessions are parsed + projected by ASC (which we feed
+// our own privacy redaction, markdown renderer, and risk detector), and ASC's
+// snapshot semantics are the source of truth. The legacy `local-history` parser
+// still owns what ASC has no equivalent for: trae, Claude history-only sessions
+// (no transcript file), and searchSessions (document indexing/scoring).
 //
 // Contract: the three exported functions keep the exact same signatures and
-// output shapes as `local-history.mjs`. codex/claude flow through ASC; trae,
-// the "all" merge tail, Claude history-only fallback, and searchSessions still
-// delegate to the legacy implementation (ASC has no equivalent yet).
+// output shapes as `local-history.mjs`, so the CLI/server/site are unchanged.
 import { realpath, stat } from "node:fs/promises";
 import path from "node:path";
 import { discoverSessionFiles, parseSessionFile, toSnapshot } from "agent-session-core";
@@ -226,15 +225,15 @@ export async function listSessions(opts) {
         return legacyListSessions(opts);
     }
     if (source === "codex" || source === "claude") {
-        const summaries = ascListEngine(source, { codexHome, claudeHome, cwd });
+        const summaries = ascListEngine(source, { codexHome, claudeHome, cwd }, { limit, completeOnly });
         const filtered = applyListFilters(summaries, { completeOnly, limit });
         return filtered;
     }
     if (source === "all") {
         // codex + claude via ASC; trae still via legacy. Merge by mtime desc and
         // dedupe by ref (engine-prefixed id), mirroring the legacy "all" semantics.
-        const codex = ascListEngine("codex", { codexHome, claudeHome, cwd });
-        const claude = ascListEngine("claude", { codexHome, claudeHome, cwd });
+        const codex = ascListEngine("codex", { codexHome, claudeHome, cwd }, { limit, completeOnly });
+        const claude = ascListEngine("claude", { codexHome, claudeHome, cwd }, { limit, completeOnly });
         let trae = [];
         try {
             trae = await legacyListSessions({ ...opts, source: "trae", completeOnly: false, limit: Infinity });
@@ -272,9 +271,17 @@ function applyListFilters(summaries, { completeOnly, limit }) {
 function isCompleteSessionSummary(summary) {
     return Number(summary?.messageCount) > 0;
 }
-function ascListEngine(engine, { codexHome, claudeHome, cwd }) {
+function ascListEngine(engine, { codexHome, claudeHome, cwd }, { limit, completeOnly } = {}) {
     const cwdFilter = cwd ? path.resolve(cwd) : "";
-    const files = discoverFor(engine, codexHome, claudeHome);
+    // Newest-first so we can stop once we have enough: the legacy lister reads
+    // only headers, so full-parsing the whole corpus per list call is a big
+    // regression. Discovery already carries mtimeMs (a cheap stat).
+    const files = discoverFor(engine, codexHome, claudeHome)
+        .slice()
+        .sort((a, b) => b.mtimeMs - a.mtimeMs);
+    // Only safe to early-stop when the caller wants a bounded, unfiltered-by-cwd
+    // page (the common sidebar load). cwd scope / "all history" parse everything.
+    const canEarlyStop = Number.isFinite(limit) && !cwdFilter;
     const summaries = [];
     for (const file of files) {
         const session = parseSessionFile(file);
@@ -285,7 +292,13 @@ function ascListEngine(engine, { codexHome, claudeHome, cwd }) {
         if (cwdFilter && summary.cwd && !path.resolve(summary.cwd).startsWith(cwdFilter)) {
             continue;
         }
+        if (completeOnly && !isCompleteSessionSummary(summary)) {
+            continue;
+        }
         summaries.push(summary);
+        if (canEarlyStop && summaries.length >= limit) {
+            break;
+        }
     }
     return summaries;
 }
