@@ -13,6 +13,7 @@
 // output shapes as `local-history.mjs`, so the CLI/server/site are unchanged.
 
 import { realpath, stat } from "node:fs/promises";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { discoverSessionFiles, parseSessionFile, toSnapshot } from "agent-session-core";
 import { detectRisks, redactText } from "../core/privacy.js";
@@ -228,10 +229,9 @@ function ascSnapshot(session, { includeTools, includeToolOutput, redact }) {
     snapshot.source = "claude-code";
     snapshot.sourceKind = "transcript";
     snapshot.historyOnly = false;
-    // GAP: ASC's NormalizedSession has no subagents. Claude subagent transcripts
-    // (loadClaudeSubagents) are not reconstructed here yet — kept empty for now;
-    // a later step re-attaches them. Downstream treats this as optional.
-    snapshot.subagents = [];
+    // Reconstruct the Task/Agent subagent transcripts nested under the parent
+    // session (parsed + projected through ASC, same as the parent).
+    snapshot.subagents = loadAscClaudeSubagents(session.filePath, session.id, { includeTools, includeToolOutput, redact });
   } else {
     // GAP: NormalizedSession has no model_provider/originator; the legacy summary
     // read these from session_meta. Left empty pending a derivation step.
@@ -241,6 +241,91 @@ function ascSnapshot(session, { includeTools, includeToolOutput, redact }) {
   }
 
   return snapshot;
+}
+
+// Claude Code writes Task/Agent subagent transcripts under
+// `<dir>/<parentSessionId>/subagents/**/agent-*.jsonl`, each with a sibling
+// `.meta.json` (toolUseId / agentType / description). We reconstruct them so
+// they render nested under the parent, parsing each through ASC like the parent.
+function collectAgentFiles(dir, out) {
+  let entries;
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      collectAgentFiles(full, out);
+    } else if (/^agent-[0-9a-f]+\.jsonl$/i.test(entry.name)) {
+      try {
+        const info = statSync(full);
+        out.push({ path: full, engine: "claude", mtimeMs: info.mtimeMs, sizeBytes: info.size });
+      } catch {
+        // Skip a file that vanished between readdir and stat.
+      }
+    }
+  }
+}
+
+function loadAscClaudeSubagents(parentFilePath, parentSessionId, { includeTools, includeToolOutput, redact }) {
+  if (!parentSessionId || !parentFilePath) {
+    return [];
+  }
+  const root = path.join(path.dirname(parentFilePath), parentSessionId, "subagents");
+  const files = [];
+  collectAgentFiles(root, files);
+  if (!files.length) {
+    return [];
+  }
+  files.sort((a, b) => a.mtimeMs - b.mtimeMs);
+
+  const subagents = [];
+  let order = 0;
+  for (const file of files) {
+    const session = parseSessionFile(file);
+    if (!session) {
+      continue;
+    }
+    stripSessionDirectives(session);
+    const snap = toSnapshot(session, {
+      includeTools,
+      includeToolOutput,
+      redact,
+      generatedAt: new Date().toISOString(),
+      renderHtml: renderMarkdownHtml,
+      redactText,
+      detectRisks,
+      imageRiskFinding: { id: "image-attachment", label: "Image attachment", severity: "medium" },
+    });
+    const turns = Array.isArray(snap.turns) ? snap.turns : [];
+    if (!turns.length) {
+      continue;
+    }
+    let meta = {};
+    try {
+      meta = JSON.parse(readFileSync(file.path.replace(/\.jsonl$/, ".meta.json"), "utf8"));
+    } catch {
+      meta = {};
+    }
+    order += 1;
+    const firstUser = turns.find((turn) => turn.kind === "message" && turn.role === "user");
+    const rawDescription = String(meta.description || "").trim() || (firstUser ? String(firstUser.text || "").replace(/\s+/g, " ").trim().slice(0, 80) : "");
+    const description = redact ? redactText(rawDescription) : rawDescription;
+    subagents.push({
+      order,
+      agentId: path.basename(file.path, ".jsonl").replace(/^agent-/, ""),
+      toolUseId: String(meta.toolUseId || ""),
+      agentType: String(meta.agentType || ""),
+      description,
+      label: description || ("子代理 " + order),
+      messageCount: turns.filter((turn) => turn.kind === "message").length,
+      toolCallCount: turns.filter((turn) => turn.kind === "tool").length,
+      turns,
+    });
+  }
+  return subagents;
 }
 
 // ---------------------------------------------------------------------------
