@@ -20,6 +20,9 @@ import { stripAppDirectives as stripCodexAppDirectives } from "../shared/sanitiz
 import { listSessions as legacyListSessions, loadSnapshot as legacyLoadSnapshot, searchSessions as legacySearchSessions, } from "./local-history.mjs";
 const ASC_ENGINES = new Set(["codex", "claude"]);
 const ENGINE_LABELS = { codex: "Codex", claude: "Claude Code" };
+// Head-only line budget for list summaries: enough to capture the session
+// header + first user message (the title) without full-parsing a huge session.
+const SUMMARY_MAX_LINES = 400;
 // searchSessions has no ASC equivalent (ASC does not index/score documents); it
 // scans files independently and is shape-decoupled from snapshots, so it is the
 // lowest-risk thing to keep verbatim on the legacy path.
@@ -284,7 +287,9 @@ function ascListEngine(engine, { codexHome, claudeHome, cwd }, { limit, complete
     const canEarlyStop = Number.isFinite(limit) && !cwdFilter;
     const summaries = [];
     for (const file of files) {
-        const session = parseSessionFile(file);
+        // Head-only parse: listing only needs the header + title + a has-messages
+        // signal, so we cap lines instead of full-parsing every session file.
+        const session = parseSessionFile(file, { maxLines: SUMMARY_MAX_LINES });
         if (!session) {
             continue;
         }
