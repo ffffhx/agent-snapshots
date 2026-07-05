@@ -17,8 +17,50 @@ const ROOT = path.resolve(__dirname, "..");
 const BUILD_DIR = path.join(ROOT, "build");
 
 // Kept in sync with SNAPSHOT_LOGO_SVG in src/cli/codex-snapshot.mts.
-// A solid background is added so the icon fills its rounded macOS mask.
-const LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" fill="#231d12"/><circle cx="32" cy="32" r="20" fill="none" stroke="#4f4533" stroke-width="1.6"/><g transform="translate(32,32)"><path d="M -12.71 -14.12 A 19 19 0 0 1 12.71 -14.12 L 5.48 -2.44 A 6 6 0 0 0 -1.85 -5.71 Z" fill="#c9bd9f"/><path d="M 5.87 -18.07 A 19 19 0 0 1 18.58 3.95 L 4.85 3.53 A 6 6 0 0 0 4.01 -4.46 Z" fill="#e7dcc4"/><path d="M 18.58 -3.95 A 19 19 0 0 1 5.87 18.07 L -0.63 5.97 A 6 6 0 0 0 5.87 1.25 Z" fill="#c9bd9f"/><path d="M 12.71 14.12 A 19 19 0 0 1 -12.71 14.12 L -5.48 2.44 A 6 6 0 0 0 1.85 5.71 Z" fill="#e7dcc4"/><path d="M -5.87 18.07 A 19 19 0 0 1 -18.58 -3.95 L -4.85 -3.53 A 6 6 0 0 0 -4.01 4.46 Z" fill="#c9bd9f"/><path d="M -18.58 3.95 A 19 19 0 0 1 -5.87 -18.07 L 0.63 -5.97 A 6 6 0 0 0 -5.87 -1.25 Z" fill="#e7dcc4"/></g><circle cx="32" cy="32" r="3.4" fill="#b23a2b"/></svg>`;
+// Full-bleed vermillion squircle (the 朱红印章 identity) holding a cream archived
+// "session page" with a red wax seal — exactly what Codex Snapshots is: read-only
+// snapshots of sessions, stamped. Bold, high-contrast, and unmistakably not a disc.
+const LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0.15" y1="0" x2="0.85" y2="1">
+      <stop offset="0" stop-color="#e2593d"/>
+      <stop offset="0.55" stop-color="#c33f28"/>
+      <stop offset="1" stop-color="#9d2a1a"/>
+    </linearGradient>
+    <radialGradient id="sheen" cx="0.32" cy="0.2" r="0.95">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.26"/>
+      <stop offset="0.55" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="page" x1="0.1" y1="0" x2="0.4" y2="1">
+      <stop offset="0" stop-color="#fffaf0"/>
+      <stop offset="1" stop-color="#efe0c2"/>
+    </linearGradient>
+    <linearGradient id="seal" x1="0" y1="0" x2="0.3" y2="1">
+      <stop offset="0" stop-color="#d8452e"/>
+      <stop offset="1" stop-color="#a02c1a"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="230" fill="#7f2013"/>
+  <rect width="1024" height="1024" rx="230" fill="url(#bg)"/>
+  <rect width="1024" height="1024" rx="230" fill="url(#sheen)"/>
+  <g transform="rotate(-5 512 512)">
+    <rect x="300" y="266" width="424" height="516" rx="34" fill="#5c160c" opacity="0.26"/>
+    <rect x="300" y="252" width="424" height="516" rx="34" fill="url(#page)"/>
+    <g fill="#c9bb98">
+      <rect x="352" y="330" width="320" height="26" rx="13"/>
+      <rect x="352" y="392" width="292" height="26" rx="13"/>
+      <rect x="352" y="454" width="320" height="26" rx="13"/>
+      <rect x="352" y="516" width="228" height="26" rx="13"/>
+    </g>
+    <circle cx="648" cy="688" r="88" fill="#7f2013" opacity="0.2"/>
+    <circle cx="640" cy="680" r="84" fill="url(#seal)"/>
+    <circle cx="640" cy="680" r="84" fill="none" stroke="#fff3df" stroke-width="7" stroke-opacity="0.85"/>
+    <circle cx="640" cy="680" r="60" fill="none" stroke="#fff3df" stroke-width="4" stroke-opacity="0.55"/>
+    <circle cx="640" cy="680" r="15" fill="#fff3df" fill-opacity="0.85"/>
+    <ellipse cx="612" cy="652" rx="26" ry="16" fill="#ffffff" opacity="0.18"/>
+  </g>
+  <rect x="16" y="16" width="992" height="992" rx="222" fill="none" stroke="#ffffff" stroke-width="3" stroke-opacity="0.12"/>
+</svg>`;
 
 async function exists(p) {
   try {
