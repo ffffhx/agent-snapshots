@@ -65,7 +65,50 @@
     "test:site-config": "node scripts/test-site-config.mjs",
     "test:deploy-config": "bash scripts/test-aliyun-deploy-config.sh",
     "typecheck": "tsc --noEmit",
-    "test": "pnpm typecheck && pnpm test:smoke && pnpm test:local-history && pnpm test:privacy && pnpm test:share-api && pnpm test:static-site && pnpm test:site-config && pnpm test:deploy-config"
+    "test": "pnpm typecheck && pnpm test:smoke && pnpm test:local-history && pnpm test:privacy && pnpm test:share-api && pnpm test:static-site && pnpm test:site-config && pnpm test:deploy-config",
+    "app:dev": "pnpm build:dist && electron electron/main.mjs",
+    "app:icon": "node scripts/build-app-icon.mjs",
+    "app:build": "pnpm build:dist && pnpm app:icon && electron-builder",
+    "app:build:mac": "pnpm build:dist && pnpm app:icon && electron-builder --mac",
+    "app:build:dir": "pnpm build:dist && pnpm app:icon && electron-builder --dir"
+  },
+  "build": {
+    "appId": "com.ffffhx.codex-snapshots",
+    "productName": "Codex Snapshots",
+    "asar": false,
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "extraMetadata": {
+      "main": "electron/main.mjs"
+    },
+    "files": [
+      "electron/**/*",
+      "dist/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "icon": "build/icon.icns"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "build/icon.png"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Development",
+      "icon": "build/icon.png"
+    }
   },
   "engines": {
     "node": ">=18"
@@ -86,6 +129,8 @@
     "@types/react-dom": "^19.2.3",
     "@types/sanitize-html": "^2.16.1",
     "@vitejs/plugin-react": "^6.0.2",
+    "electron": "^43.0.0",
+    "electron-builder": "^25.1.8",
     "jsdom": "^29.1.1",
     "tailwindcss": "^4.3.0",
     "typescript": "^6.0.3",

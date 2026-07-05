@@ -9,3 +9,7 @@ deploy/aliyun/deploy.env
 snapshot.html
 snapshot.md
 *.log
+
+# Electron desktop app build output
+release/
+build/icon.iconset/
