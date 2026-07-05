@@ -5,8 +5,9 @@
 // is available and skips the .icns step.
 
 import { execFile } from "node:child_process";
-import { mkdir, writeFile, rm, copyFile, access } from "node:fs/promises";
+import { mkdir, writeFile, rm, access } from "node:fs/promises";
 import { promisify } from "node:util";
+import { createRequire } from "node:module";
 import path from "node:path";
 import os from "node:os";
 import { fileURLToPath } from "node:url";
@@ -73,16 +74,18 @@ async function exists(p) {
   }
 }
 
-async function rasterizeWithQuicklook(svgPath, outPng, size) {
-  // qlmanage writes "<basename>.png" into the -o directory.
-  const outDir = path.dirname(outPng);
-  await execFileAsync("qlmanage", ["-t", "-s", String(size), "-o", outDir, svgPath]);
-  const produced = path.join(outDir, `${path.basename(svgPath)}.png`);
-  if (!(await exists(produced))) {
-    throw new Error(`qlmanage did not produce ${produced}`);
+async function rasterizeWithElectron(svgPath, outPng, size) {
+  // Render via Electron/Chromium so SVG transparency is preserved (qlmanage
+  // flattens onto a white background, which showed as a white margin box).
+  const require = createRequire(import.meta.url);
+  const electronBin = require("electron"); // path to the electron executable
+  const renderScript = path.join(__dirname, "render-icon.mjs");
+  await execFileAsync(electronBin, [renderScript, svgPath, outPng, String(size)], {
+    env: { ...process.env, ELECTRON_DISABLE_SECURITY_WARNINGS: "1" },
+  });
+  if (!(await exists(outPng))) {
+    throw new Error(`Electron did not produce ${outPng}`);
   }
-  await copyFile(produced, outPng);
-  await rm(produced, { force: true });
 }
 
 async function buildIcns(basePng) {
@@ -117,15 +120,12 @@ async function main() {
   await writeFile(svgPath, LOGO_SVG, "utf8");
 
   const pngPath = path.join(BUILD_DIR, "icon.png");
+  await rasterizeWithElectron(svgPath, pngPath, 1024);
   if (process.platform === "darwin") {
-    await rasterizeWithQuicklook(svgPath, pngPath, 1024);
     await buildIcns(pngPath);
     console.log("Generated build/icon.png and build/icon.icns");
   } else {
-    console.warn(
-      "Icon generation currently requires macOS tooling (qlmanage/sips/iconutil).\n" +
-        "Skipping icon generation; place build/icon.png (1024x1024) and build/icon.icns manually if needed.",
-    );
+    console.log("Generated build/icon.png (skipping .icns — needs macOS sips/iconutil)");
   }
   await rm(tmpDir, { recursive: true, force: true });
 }
