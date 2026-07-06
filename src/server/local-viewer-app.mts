@@ -893,6 +893,16 @@ button:disabled { cursor: wait; opacity: 0.55; transform: none; box-shadow: none
   zoom: var(--read-scale, 1);
 }
 html[data-density="compact"] .turns { gap: 18px; }
+.turns-hydrating {
+  justify-self: center;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  font: 500 12px/1.6 var(--sans);
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+.turn.prehydrated { animation: none; }
 html[data-density="compact"] .user .message-card { padding: 10px 15px; }
 html[data-density="compact"] .tool .message-card { padding: 10px 14px; }
 html[data-density="compact"] .sessions { gap: 1px; }
@@ -2491,8 +2501,12 @@ function renderSessionSearchResult(result) {
 }
 
 function focusTurn(turnNumber) {
-  const target = Array.from(document.querySelectorAll("[data-turn-number]"))
-    .find((item) => item.getAttribute("data-turn-number") === String(turnNumber));
+  let target = findTurnNode(turnNumber);
+  if (!target && transcriptHydration) {
+    // 目标轮次可能还在渐进补齐的队列里：强制补齐后重试。
+    flushTranscriptHydration();
+    target = findTurnNode(turnNumber);
+  }
   if (!target) {
     return false;
   }
@@ -2505,6 +2519,11 @@ function focusTurn(turnNumber) {
   target.scrollIntoView({ behavior: "smooth", block: "center" });
   window.setTimeout(() => target.classList.remove("semantic-hit-current"), 2400);
   return true;
+}
+
+function findTurnNode(turnNumber) {
+  return Array.from(document.querySelectorAll("[data-turn-number]"))
+    .find((item) => item.getAttribute("data-turn-number") === String(turnNumber)) || null;
 }
 
 function highlightSearchSnippet(text, terms) {
@@ -3152,10 +3171,126 @@ function renderSnapshot(snapshot) {
     ? "<button type='button' class='resume-orca' data-resume-orca='" + esc(snapshot.ref || "") + "' data-resume-cwd='" + esc(snapshot.cwd || snapshot.displayCwd || "") + "' data-resume-title='" + esc(snapshot.title || "") + "' title='在 Orca 中打开终端并恢复此会话'>↗ 在 Orca 继续</button>"
     : "";
   $("exports").innerHTML = resumeButton + "<a href='/export?" + options.toString() + "&format=html' target='_blank' rel='noopener noreferrer'>导出 HTML</a><a href='/export?" + options.toString() + "&format=md' target='_blank' rel='noopener noreferrer'>导出 Markdown</a><button type='button' data-publish-cloud='1'>发布分享</button><span id='publishStatus' class='publish-status'></span>";
-  $("turns").innerHTML = snapshot.transcriptHtml || "<div class='meta'>没有找到可分享的用户或助手消息。</div>";
-  openContentLinksInNewTabs($("turns"));
+  renderTranscriptTurns(snapshot.transcriptHtml || "<div class='meta'>没有找到可分享的用户或助手消息。</div>");
   renderSessionSearch();
   postSnapshotState(snapshot);
+}
+
+// 两段式渲染：大会话先渲染最新的一段轮次（秒开），更早的轮次在后台按帧
+// 分片补进上方，并调整滚动位置保证视口内容不跳动。小会话保持一次性渲染。
+var transcriptHydration = null;
+var TRANSCRIPT_PROGRESSIVE_THRESHOLD = 140;
+var TRANSCRIPT_TAIL_COUNT = 60;
+var TRANSCRIPT_CHUNK_SIZE = 60;
+
+function cancelTranscriptHydration() {
+  if (transcriptHydration) {
+    transcriptHydration.cancelled = true;
+    transcriptHydration = null;
+  }
+}
+
+function flushTranscriptHydration() {
+  if (transcriptHydration) {
+    transcriptHydration.flush();
+  }
+}
+
+function renderTranscriptTurns(html) {
+  cancelTranscriptHydration();
+  const container = $("turns");
+  const template = document.createElement("template");
+  template.innerHTML = html || "";
+  const nodes = Array.from(template.content.children);
+  container.innerHTML = "";
+  if (nodes.length <= TRANSCRIPT_PROGRESSIVE_THRESHOLD) {
+    container.appendChild(template.content);
+    openContentLinksInNewTabs(container);
+    container.removeAttribute("aria-busy");
+    return;
+  }
+
+  const tailStart = nodes.length - TRANSCRIPT_TAIL_COUNT;
+  const placeholder = document.createElement("div");
+  placeholder.className = "turns-hydrating";
+  placeholder.textContent = "正在载入更早的 " + tailStart + " 条记录...";
+  container.appendChild(placeholder);
+  const tail = document.createDocumentFragment();
+  for (let i = tailStart; i < nodes.length; i += 1) {
+    tail.appendChild(nodes[i]);
+  }
+  openContentLinksInNewTabs(tail);
+  container.appendChild(tail);
+  container.setAttribute("aria-busy", "true");
+
+  const scroller = container.closest(".viewer") || document.scrollingElement || document.documentElement;
+  let end = tailStart;
+  const job = { cancelled: false, flush: () => {} };
+
+  const insertChunk = () => {
+    const start = Math.max(0, end - TRANSCRIPT_CHUNK_SIZE);
+    const chunk = document.createDocumentFragment();
+    for (let i = start; i < end; i += 1) {
+      // 补齐的历史轮次跳过入场动画，避免整片内容同时播放动效。
+      nodes[i].classList.add("prehydrated");
+      chunk.appendChild(nodes[i]);
+    }
+    openContentLinksInNewTabs(chunk);
+    const previousHeight = scroller.scrollHeight;
+    const previousTop = scroller.scrollTop;
+    placeholder.after(chunk);
+    scroller.scrollTop = previousTop + (scroller.scrollHeight - previousHeight);
+    end = start;
+  };
+  const finish = () => {
+    const previousHeight = scroller.scrollHeight;
+    const previousTop = scroller.scrollTop;
+    placeholder.remove();
+    scroller.scrollTop = previousTop + (scroller.scrollHeight - previousHeight);
+    container.removeAttribute("aria-busy");
+    job.cancelled = true;
+    if (transcriptHydration === job) {
+      transcriptHydration = null;
+    }
+  };
+  const step = () => {
+    if (job.cancelled) {
+      return;
+    }
+    if (!placeholder.isConnected) {
+      // 容器已被其他内容覆盖（切换会话/加载态），静默作废本次补齐。
+      job.cancelled = true;
+      if (transcriptHydration === job) {
+        transcriptHydration = null;
+      }
+      return;
+    }
+    insertChunk();
+    if (end <= 0) {
+      finish();
+      return;
+    }
+    placeholder.textContent = "正在载入更早的 " + end + " 条记录...";
+    scheduleHydrationStep(step);
+  };
+  job.flush = () => {
+    if (job.cancelled || !placeholder.isConnected) {
+      return;
+    }
+    while (end > 0) {
+      insertChunk();
+    }
+    finish();
+  };
+  transcriptHydration = job;
+  scheduleHydrationStep(step);
+}
+
+function scheduleHydrationStep(fn) {
+  // 不用 requestAnimationFrame：后台 tab 里 rAF 完全不触发，
+  // 会导致切走再切回的用户面对永远补不齐的会话。setTimeout 在
+  // 前台节奏相当，后台最多被钳到 ~1s/步，仍能推进完成。
+  window.setTimeout(fn, 16);
 }
 
 function renderSnapshotMeta(snapshot) {
