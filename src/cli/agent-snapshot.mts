@@ -4,7 +4,7 @@
 import { execFile } from "node:child_process";
 import { existsSync, readFileSync, renameSync } from "node:fs";
 import { createHash } from "node:crypto";
-import { appendFile, mkdir, readFile, rm, unlink, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, mkdtemp, readFile, rm, unlink, writeFile } from "node:fs/promises";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
@@ -172,6 +172,9 @@ async function main() {
     if (!ref) {
       throw new Error("export requires a session id or JSONL path");
     }
+    if (parsed.options.gist && parsed.options.noRedact && !parsed.options.allowUnredacted) {
+      throw new Error("export --gist refuses --no-redact unless --allow-unredacted is also set");
+    }
     const format = parsed.options.format || (parsed.options.md ? "md" : "html");
     const snapshot = await loadSnapshot(ref, {
       codexHome,
@@ -183,6 +186,12 @@ async function main() {
       includeToolOutput: parsed.options.includeToolOutput,
       redact: !parsed.options.noRedact,
     });
+    if (parsed.options.gist) {
+      const result = await createGitHubGist(renderHtml(snapshot), { publicGist: parsed.options.gistPublic });
+      console.log(result.gistUrl);
+      console.log(result.previewUrl);
+      return;
+    }
     const output = format === "md" ? renderMarkdown(snapshot) : renderHtml(snapshot);
     if (parsed.options.output) {
       await mkdir(path.dirname(path.resolve(parsed.options.output)), { recursive: true });
@@ -257,6 +266,8 @@ function parseArgs(args) {
     codexHome: "",
     cwd: "",
     format: "",
+    gist: false,
+    gistPublic: false,
     help: false,
     host: "",
     includeArchived: true,
@@ -301,6 +312,15 @@ function parseArgs(args) {
     }
     if (arg === "--html") {
       options.format = "html";
+      continue;
+    }
+    if (arg === "--gist") {
+      options.gist = true;
+      options.format = "html";
+      continue;
+    }
+    if (arg === "--gist-public") {
+      options.gistPublic = true;
       continue;
     }
     if (arg === "--md" || arg === "--markdown") {
@@ -687,6 +707,74 @@ async function publishSnapshot(snapshot, { apiUrl, token, siteUrl, expiresInDays
   return payload;
 }
 
+async function createGitHubGist(html, { publicGist = false } = {}) {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "agent-snapshot-gist-"));
+  const filePath = path.join(tempDir, "index.html");
+  try {
+    await writeFile(filePath, html, "utf8");
+    return await createGitHubGistFromFile(filePath, { publicGist });
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+}
+
+async function createGitHubGistFromFile(filePath, { publicGist = false } = {}) {
+  const ghBin = process.env.AGENT_SNAPSHOT_GH_BIN || "gh";
+  const args = ["gist", "create", "--filename", "index.html"];
+  if (publicGist) {
+    args.push("--public");
+  }
+  args.push(filePath);
+  let result;
+  try {
+    result = await execFileAsync(ghBin, args, { maxBuffer: 2 * 1024 * 1024 });
+  } catch (error) {
+    throw new Error(formatGitHubGistError(error));
+  }
+  const output = [result.stdout, result.stderr].filter(Boolean).join("\n");
+  const gistUrl = parseGistUrl(output);
+  const gistId = gistIdFromUrl(gistUrl);
+  if (!gistUrl || !gistId) {
+    throw new Error("gh gist create 未返回可识别的 Gist 地址，请确认 GitHub CLI 可用并重试。");
+  }
+  return {
+    gistUrl,
+    previewUrl: "https://gistpreview.github.io/?" + gistId + "/index.html",
+  };
+}
+
+function formatGitHubGistError(error) {
+  const code = error?.code || error?.cause?.code || "";
+  const message = [error?.stderr, error?.stdout, error?.message].filter(Boolean).join("\n").trim();
+  const hint = "请先运行：brew install gh && gh auth login";
+  if (code === "ENOENT") {
+    return "未找到 GitHub CLI（gh）。" + hint;
+  }
+  if (/not logged in|authentication|auth login|gh auth/i.test(message)) {
+    return "GitHub CLI 未登录或认证失败。" + hint + (message ? "\n" + message : "");
+  }
+  return "创建 GitHub Gist 失败。" + hint + (message ? "\n" + message : "");
+}
+
+function parseGistUrl(output) {
+  const match = String(output || "").match(/https:\/\/gist\.github\.com\/[^\s]+/);
+  return match ? match[0].replace(/[),.;]+$/, "") : "";
+}
+
+function gistIdFromUrl(url) {
+  if (!url) {
+    return "";
+  }
+  try {
+    const parsed = new URL(url);
+    const parts = parsed.pathname.split("/").filter(Boolean);
+    return parts[parts.length - 1] || "";
+  } catch {
+    const parts = String(url).split(/[/?#]/).filter(Boolean);
+    return parts[parts.length - 1] || "";
+  }
+}
+
 function createShareRequestPayload(snapshot, { apiUrl, siteUrl, expiresInDays, shareId }) {
   const normalizedApiUrl = resolveShareApiUrl(apiUrl);
   const normalizedSiteUrl = resolveShareSiteUrl(siteUrl);
@@ -1059,7 +1147,16 @@ function renderMarkdown(snapshot) {
     const heading = turn.kind === "tool" ? `Tool: ${turn.name}` : turn.role === "user" ? "User" : "Assistant";
     lines.push(`### ${heading} ${turn.turn}`, "");
     if (turn.kind === "tool") {
-      lines.push("```text", turn.text, "```", "");
+      if (Array.isArray(turn.fileChanges) && turn.fileChanges.length) {
+        for (const change of turn.fileChanges) {
+          if (change.path) {
+            lines.push(`**${escapeMarkdown(change.kind || "change")}:** \`${escapeMarkdown(change.path)}\``, "");
+          }
+          lines.push("```diff", change.diffText || "", "```", "");
+        }
+      } else {
+        lines.push("```text", turn.text, "```", "");
+      }
     } else {
       const visibleText = stripCodexAppDirectives(turn.text);
       if (visibleText) {
@@ -1323,6 +1420,14 @@ code, pre {
   user-select: none;
   font: 800 17px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
 }
+.process-files {
+  max-width: min(52vw, 560px);
+  overflow: hidden;
+  color: var(--muted);
+  font: 700 12px/1.25 ui-monospace, SFMono-Regular, Menlo, monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .process-summary::-webkit-details-marker {
   display: none;
 }
@@ -1482,6 +1587,19 @@ code, pre {
   color: var(--amber);
   font: 800 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
   text-transform: uppercase;
+}
+.file-change {
+  display: grid;
+  gap: 7px;
+}
+.file-change + .file-change {
+  margin-top: 12px;
+}
+.file-change-path {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font: 700 11px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 pre {
   overflow: auto;
@@ -2852,7 +2970,7 @@ Usage:
   agent-snapshot list [--json] [--limit N] [--cwd DIR]
   agent-snapshot search <query> [--json] [--limit N] [--scan-limit N] [--cwd DIR]
   agent-snapshot preview <session-id|path> [--json] [--include-tools] [--include-tool-output]
-  agent-snapshot export <session-id|path> [--html|--md] [--output FILE] [--include-tools] [--include-tool-output]
+  agent-snapshot export <session-id|path> [--html|--md] [--output FILE] [--gist] [--include-tools] [--include-tool-output]
   agent-snapshot publish <session-id|path> [--api-url URL] [--share-token TOKEN] [--site-url URL]
   agent-snapshot serve [--host 127.0.0.1] [--port 4321]
   agent-snapshot daemon install|status|logs|uninstall [--host 127.0.0.1] [--port 4321]
@@ -2871,7 +2989,9 @@ Options:
   --include-tools          Include tool calls in previews and exports
   --include-tool-output    Include tool output as well as tool calls
   --no-redact              Disable automatic redaction
-  --allow-unredacted       For publish only: allow publishing a --no-redact snapshot
+  --allow-unredacted       For publish and export --gist only: allow sharing a --no-redact snapshot
+  --gist                   For export only: create a secret GitHub Gist with index.html, then print the Gist and preview URLs
+  --gist-public            For export --gist only: create a public Gist instead of the default secret Gist
   --with-safety            For publish only: include local safety review rows in the cloud snapshot
   --api-url URL            For publish only: cloud API base. Defaults to $SNAPSHOT_SHARE_API_URL,
                            ~/.agent-snapshots-agent.json, or ${DEFAULT_SNAPSHOT_SHARE_API_URL}
@@ -2890,6 +3010,7 @@ Examples:
   agent-snapshot list --limit 20
   agent-snapshot search "redis race condition" --source all
   agent-snapshot export 019e457b --html -o snapshot.html
+  agent-snapshot export 019e457b --gist
   agent-snapshot publish 019e457b --api-url ${DEFAULT_SNAPSHOT_SHARE_API_URL} --site-url ${DEFAULT_SNAPSHOT_SHARE_SITE_URL}
   agent-snapshot serve --port 4321
   agent-snapshot daemon install

@@ -62,6 +62,27 @@ agent-snapshot serve --port 4321
 4. 点击 `导出 HTML` 或 `导出 Markdown` 生成只读快照。
 5. 如果需要发给别人，确认脱敏后点击 `发布分享`。
 
+命令行也可以导出：
+
+```bash
+agent-snapshot export <session-id> --html -o snapshot.html
+agent-snapshot export <session-id> --md -o snapshot.md
+```
+
+如果不想部署项目自带的分享服务，可以用 GitHub secret Gist 分享脱敏后的 HTML：
+
+```bash
+agent-snapshot export <session-id> --gist
+```
+
+这会调用 GitHub CLI 创建默认 secret gist，并打印 Gist 地址和 `gistpreview.github.io` 查看地址。需要先安装并登录：
+
+```bash
+brew install gh && gh auth login
+```
+
+加 `--gist-public` 会创建 public gist。`--gist` 默认脱敏；如果同时传 `--no-redact`，必须再显式传 `--allow-unredacted`。
+
 默认读取这些本地目录：
 
 - Codex：`$CODEX_HOME` 或 `~/.codex`
