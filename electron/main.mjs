@@ -1,7 +1,7 @@
-// Electron main process for the Codex Snapshots desktop app.
+// Electron main process for the Agent Snapshots desktop app.
 //
 // Strategy: reuse the existing local viewer server verbatim. We spawn the
-// packaged CLI (`codex-snapshot serve`) as a child process using Electron's
+// packaged CLI (`agent-snapshot serve`) as a child process using Electron's
 // bundled Node runtime (ELECTRON_RUN_AS_NODE=1), wait for it to come up on a
 // free localhost port, then point a native BrowserWindow at it. This keeps
 // 100% of the web app's behaviour while giving it a real desktop window.
@@ -31,7 +31,7 @@ let quitting = false;
 
 /** Path to the built CLI entrypoint, resolved for both dev and packaged runs. */
 function cliEntry() {
-  return path.join(APP_ROOT, "dist", "cli", "codex-snapshot.mjs");
+  return path.join(APP_ROOT, "dist", "cli", "agent-snapshot.mjs");
 }
 
 /** Grab an available TCP port on the loopback interface. */
@@ -92,7 +92,7 @@ async function startServer() {
     serverProcess = null;
     if (!quitting) {
       dialog.showErrorBox(
-        "Codex Snapshots",
+        "Agent Snapshots",
         `The local viewer server stopped unexpectedly (code ${code ?? "?"}, signal ${signal ?? "none"}).`,
       );
       app.quit();
@@ -121,7 +121,7 @@ function viewerWindowOptions() {
     minHeight: 600,
     backgroundColor: "#231d12",
     icon: APP_ICON,
-    title: "Codex Snapshots",
+    title: "Agent Snapshots",
     titleBarStyle: isMac ? "hiddenInset" : "default",
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
   };
@@ -141,7 +141,7 @@ function createWindow(startUrl) {
     vibrancy: isMac ? "under-window" : undefined,
     visualEffectState: "active",
     icon: APP_ICON,
-    title: "Codex Snapshots",
+    title: "Agent Snapshots",
     titleBarStyle: isMac ? "hiddenInset" : "default",
     webPreferences: {
       contextIsolation: true,
@@ -220,7 +220,7 @@ async function bootstrap() {
     startUrl = await startServer();
   } catch (error) {
     dialog.showErrorBox(
-      "Codex Snapshots",
+      "Agent Snapshots",
       `Failed to start the local viewer server:\n\n${error instanceof Error ? error.message : String(error)}`,
     );
     app.quit();

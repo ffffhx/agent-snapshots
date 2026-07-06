@@ -2,7 +2,7 @@
 // @ts-nocheck
 
 import { execFile } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, renameSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { appendFile, mkdir, readFile, rm, unlink, writeFile } from "node:fs/promises";
 import http from "node:http";
@@ -28,10 +28,10 @@ const DEFAULT_SERVER_LIMIT = 80;
 const DEFAULT_TRAE_RECORDER_PORT = 4732;
 const DEFAULT_VIEWER_PORT = 4321;
 const MAX_TRAE_CAPTURE_POST_BYTES = 64 * 1024 * 1024;
-const DEFAULT_SNAPSHOT_SHARE_API_URL = "https://8-218-149-148.anyip.dev/codex-snapshots";
-const DEFAULT_SNAPSHOT_SHARE_SITE_URL = "https://ffffhx.github.io/codex-snapshots";
-const DEFAULT_DAEMON_LABEL = "com.codex-snapshots.viewer";
-const SNAPSHOT_LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Codex Snapshots"><rect width="64" height="64" rx="14" fill="#c33f28"/><g transform="rotate(-5 32 32)"><rect x="18.5" y="16" width="27" height="33" rx="3" fill="#5c160c" opacity="0.22"/><rect x="18.5" y="15" width="27" height="33" rx="3" fill="#f6ecd6"/><g fill="#c9bb98"><rect x="22.5" y="21" width="19" height="2" rx="1"/><rect x="22.5" y="25.5" width="17" height="2" rx="1"/><rect x="22.5" y="30" width="19" height="2" rx="1"/><rect x="22.5" y="34.5" width="13.5" height="2" rx="1"/></g><circle cx="40.5" cy="42.5" r="6.2" fill="#a82f1c"/><circle cx="40.5" cy="42.5" r="6.2" fill="none" stroke="#fff3df" stroke-width="0.9" stroke-opacity="0.85"/><circle cx="40.5" cy="42.5" r="1.4" fill="#fff3df"/></g></svg>`;
+const DEFAULT_SNAPSHOT_SHARE_API_URL = "https://8-218-149-148.anyip.dev/agent-snapshots";
+const DEFAULT_SNAPSHOT_SHARE_SITE_URL = "https://ffffhx.github.io/agent-snapshots";
+const DEFAULT_DAEMON_LABEL = "com.agent-snapshots.viewer";
+const SNAPSHOT_LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Agent Snapshots"><rect width="64" height="64" rx="14" fill="#c33f28"/><g transform="rotate(-5 32 32)"><rect x="18.5" y="16" width="27" height="33" rx="3" fill="#5c160c" opacity="0.22"/><rect x="18.5" y="15" width="27" height="33" rx="3" fill="#f6ecd6"/><g fill="#c9bb98"><rect x="22.5" y="21" width="19" height="2" rx="1"/><rect x="22.5" y="25.5" width="17" height="2" rx="1"/><rect x="22.5" y="30" width="19" height="2" rx="1"/><rect x="22.5" y="34.5" width="13.5" height="2" rx="1"/></g><circle cx="40.5" cy="42.5" r="6.2" fill="#a82f1c"/><circle cx="40.5" cy="42.5" r="6.2" fill="none" stroke="#fff3df" stroke-width="0.9" stroke-opacity="0.85"/><circle cx="40.5" cy="42.5" r="1.4" fill="#fff3df"/></g></svg>`;
 const execFileAsync = promisify(execFile);
 let defaultShareConfigCache;
 
@@ -40,7 +40,7 @@ function findPackageRoot(startDir) {
   for (let depth = 0; depth < 8; depth += 1) {
     try {
       const pkg = JSON.parse(readFileSync(path.join(current, "package.json"), "utf8"));
-      if (pkg?.name === "codex-snapshots") {
+      if (pkg?.name === "agent-snapshots") {
         return current;
       }
     } catch {}
@@ -82,7 +82,18 @@ async function main() {
   const claudeHome = path.resolve(parsed.options.claudeHome || process.env.CLAUDE_HOME || path.join(os.homedir(), ".claude"));
   const traeHome = path.resolve(parsed.options.traeHome || process.env.TRAE_HOME || path.join(os.homedir(), ".trae-cn"));
   const traeAppHome = path.resolve(parsed.options.traeAppHome || process.env.TRAE_APP_HOME || path.join(os.homedir(), "Library", "Application Support", "Trae CN"));
-  const traeRecordingsDir = path.resolve(parsed.options.traeRecordingsDir || process.env.TRAE_RECORDINGS_DIR || path.join(os.homedir(), ".codex-snapshot", "trae-recordings"));
+  // The data dir was ~/.codex-snapshot before the agent-snapshots rename;
+  // adopt the old dir once so existing Trae recordings survive the rename.
+  const dataDir = path.join(os.homedir(), ".agent-snapshot");
+  const legacyDataDir = path.join(os.homedir(), ".codex-snapshot");
+  if (!existsSync(dataDir) && existsSync(legacyDataDir)) {
+    try {
+      renameSync(legacyDataDir, dataDir);
+    } catch {
+      // Keep using the default below; worst case recordings restart fresh.
+    }
+  }
+  const traeRecordingsDir = path.resolve(parsed.options.traeRecordingsDir || process.env.TRAE_RECORDINGS_DIR || path.join(dataDir, "trae-recordings"));
 
   if (parsed.command === "list") {
     const sessions = await listSessions({
@@ -495,15 +506,15 @@ function resolveDaemonConfig(options) {
   const homeDir = os.homedir();
   const label = options.label || process.env.SNAPSHOT_LAUNCH_AGENT_LABEL || DEFAULT_DAEMON_LABEL;
   const launchAgentsDir = path.join(homeDir, "Library", "LaunchAgents");
-  const logsDir = path.join(homeDir, "Library", "Logs", "codex-snapshots");
+  const logsDir = path.join(homeDir, "Library", "Logs", "agent-snapshots");
   const nodePath = process.env.SNAPSHOT_DAEMON_NODE || process.execPath;
   const daemonCliPath = process.env.SNAPSHOT_DAEMON_CLI || cliPath;
   const host = options.host || process.env.SNAPSHOT_DAEMON_HOST || "127.0.0.1";
   const port = options.port || readOptionalPositiveInteger(process.env.SNAPSHOT_DAEMON_PORT, "SNAPSHOT_DAEMON_PORT") || DEFAULT_VIEWER_PORT;
   const apiUrl = options.apiUrl || process.env.SNAPSHOT_SHARE_API_URL || DEFAULT_SNAPSHOT_SHARE_API_URL;
   const siteUrl = options.siteUrl || process.env.SNAPSHOT_SHARE_SITE_URL || DEFAULT_SNAPSHOT_SHARE_SITE_URL;
-  const stdoutPath = path.join(logsDir, "codex-snapshot.out.log");
-  const stderrPath = path.join(logsDir, "codex-snapshot.err.log");
+  const stdoutPath = path.join(logsDir, "agent-snapshot.out.log");
+  const stderrPath = path.join(logsDir, "agent-snapshot.err.log");
   const pathEntries = [
     path.dirname(nodePath),
     path.join(packageRoot, "node_modules", ".bin"),
@@ -638,7 +649,7 @@ async function publishSnapshot(snapshot, { apiUrl, token, siteUrl, expiresInDays
   const shareToken = resolveShareToken(token);
 
   if (!shareToken) {
-    throw new Error("Missing share API token. Set SNAPSHOT_SHARE_TOKEN, pass --share-token, or create ~/.codex-snapshots-agent.json.");
+    throw new Error("Missing share API token. Set SNAPSHOT_SHARE_TOKEN, pass --share-token, or create ~/.agent-snapshots-agent.json.");
   }
 
   let response;
@@ -649,7 +660,7 @@ async function publishSnapshot(snapshot, { apiUrl, token, siteUrl, expiresInDays
       headers: {
         Authorization: `Bearer ${shareToken}`,
         "Content-Type": "application/json",
-        "User-Agent": `codex-snapshot/${VERSION}`,
+        "User-Agent": `agent-snapshot/${VERSION}`,
       },
       body: JSON.stringify(requestPayload.body),
     });
@@ -698,7 +709,7 @@ function createShareRequestPayload(snapshot, { apiUrl, siteUrl, expiresInDays, s
 
 function formatShareApiNetworkError(error, apiUrl) {
   const reason = error?.cause?.code || error?.cause?.message || error?.message || String(error);
-  return `Could not connect to share API at ${apiUrl}: ${reason}. Start codex-snapshot-share or set SNAPSHOT_SHARE_API_URL to the running share API.`;
+  return `Could not connect to share API at ${apiUrl}: ${reason}. Start agent-snapshot-share or set SNAPSHOT_SHARE_API_URL to the running share API.`;
 }
 
 function resolveShareApiUrl(apiUrl) {
@@ -708,6 +719,7 @@ function resolveShareApiUrl(apiUrl) {
       process.env.SNAPSHOT_SHARE_API_URL ||
       process.env.TOKEN_BOARD_API_URL ||
       process.env.NEXT_PUBLIC_TOKEN_BOARD_API_URL ||
+      process.env.AGENT_SNAPSHOTS_SHARE_API_URL ||
       process.env.CODEX_SNAPSHOTS_SHARE_API_URL ||
       config.apiUrl ||
       DEFAULT_SNAPSHOT_SHARE_API_URL
@@ -719,6 +731,7 @@ function resolveShareToken(token) {
   return (
     token ||
     process.env.SNAPSHOT_SHARE_TOKEN ||
+    process.env.AGENT_SNAPSHOTS_SHARE_TOKEN ||
     process.env.CODEX_SNAPSHOTS_SHARE_TOKEN ||
     process.env.TOKEN_BOARD_AGENT_TOKEN ||
     process.env.TOKEN_BOARD_UPLOAD_TOKEN ||
@@ -844,9 +857,11 @@ function readDefaultShareConfig() {
   };
 
   const filePaths = [
+    process.env.AGENT_SNAPSHOTS_AGENT_FILE,
     process.env.CODEX_SNAPSHOTS_AGENT_FILE,
     process.env.SNAPSHOT_SHARE_TOKEN_FILE,
     process.env.TOKEN_BOARD_AGENT_FILE,
+    path.join(os.homedir(), ".agent-snapshots-agent.json"),
     path.join(os.homedir(), ".codex-snapshots-agent.json"),
     path.join(os.homedir(), ".token-board-agent.json"),
   ].filter(Boolean);
@@ -1133,7 +1148,7 @@ function renderHtml(snapshot) {
     <section class="transcript">
       ${turns}
     </section>
-    <footer class="snapshot-footer">Generated by codex-snapshot ${VERSION}. Static read-only file.</footer>
+    <footer class="snapshot-footer">Generated by agent-snapshot ${VERSION}. Static read-only file.</footer>
   </main>
 </body>
 </html>`;
@@ -2073,7 +2088,7 @@ function renderTraeRecorderScript({ endpoint, wsEndpoint, recordSensitiveContext
   const nativeFetchBound = nativeFetch.bind(window);
   const nativeWebSocket = window.WebSocket;
   if (window.__codexTraeRecorder && window.__codexTraeRecorder.installed) {
-    console.info("[codex-snapshot] Trae recorder already installed", window.__codexTraeRecorder);
+    console.info("[agent-snapshot] Trae recorder already installed", window.__codexTraeRecorder);
     return;
   }
   const recorder = {
@@ -2374,7 +2389,7 @@ function renderTraeRecorderScript({ endpoint, wsEndpoint, recordSensitiveContext
         body,
       });
     } catch (error) {
-      console.debug("[codex-snapshot] recorder post failed", error);
+      console.debug("[agent-snapshot] recorder post failed", error);
     }
   }
 
@@ -2754,7 +2769,7 @@ function renderTraeRecorderScript({ endpoint, wsEndpoint, recordSensitiveContext
 
   installDomCapture();
 
-  console.info("[codex-snapshot] Trae recorder installed. Capturing to", ENDPOINT, "pageSession=", recorder.pageSession);
+  console.info("[agent-snapshot] Trae recorder installed. Capturing to", ENDPOINT, "pageSession=", recorder.pageSession);
 })();`;
 }
 
@@ -2827,21 +2842,21 @@ function applySafetyChecksOption(snapshot, enabled) {
 }
 
 function safeFileName(value) {
-  return value.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "codex-snapshot";
+  return value.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "agent-snapshot";
 }
 
 function printHelp() {
-  console.log(`codex-snapshot ${VERSION}
+  console.log(`agent-snapshot ${VERSION}
 
 Usage:
-  codex-snapshot list [--json] [--limit N] [--cwd DIR]
-  codex-snapshot search <query> [--json] [--limit N] [--scan-limit N] [--cwd DIR]
-  codex-snapshot preview <session-id|path> [--json] [--include-tools] [--include-tool-output]
-  codex-snapshot export <session-id|path> [--html|--md] [--output FILE] [--include-tools] [--include-tool-output]
-  codex-snapshot publish <session-id|path> [--api-url URL] [--share-token TOKEN] [--site-url URL]
-  codex-snapshot serve [--host 127.0.0.1] [--port 4321]
-  codex-snapshot daemon install|status|logs|uninstall [--host 127.0.0.1] [--port 4321]
-  codex-snapshot record-trae [--host 127.0.0.1] [--port 4732]
+  agent-snapshot list [--json] [--limit N] [--cwd DIR]
+  agent-snapshot search <query> [--json] [--limit N] [--scan-limit N] [--cwd DIR]
+  agent-snapshot preview <session-id|path> [--json] [--include-tools] [--include-tool-output]
+  agent-snapshot export <session-id|path> [--html|--md] [--output FILE] [--include-tools] [--include-tool-output]
+  agent-snapshot publish <session-id|path> [--api-url URL] [--share-token TOKEN] [--site-url URL]
+  agent-snapshot serve [--host 127.0.0.1] [--port 4321]
+  agent-snapshot daemon install|status|logs|uninstall [--host 127.0.0.1] [--port 4321]
+  agent-snapshot record-trae [--host 127.0.0.1] [--port 4732]
 
 Options:
   --codex-home DIR         Use a custom Codex home. Defaults to $CODEX_HOME or ~/.codex
@@ -2849,7 +2864,7 @@ Options:
   --trae-home DIR          Use a custom Trae home. Defaults to $TRAE_HOME or ~/.trae-cn
   --trae-app-home DIR      Use a custom Trae app data home. Defaults to $TRAE_APP_HOME or ~/Library/Application Support/Trae CN
   --trae-recordings-dir DIR
-                           Use a custom Trae recorder output dir. Defaults to $TRAE_RECORDINGS_DIR or ~/.codex-snapshot/trae-recordings
+                           Use a custom Trae recorder output dir. Defaults to $TRAE_RECORDINGS_DIR or ~/.agent-snapshot/trae-recordings
   --source codex|claude|trae|all
                            Choose which local agent history to list or search. Serve shows all configured sources in the UI.
   --scan-limit N           For search only: number of recent sessions to scan. Defaults to 600
@@ -2859,11 +2874,11 @@ Options:
   --allow-unredacted       For publish only: allow publishing a --no-redact snapshot
   --with-safety            For publish only: include local safety review rows in the cloud snapshot
   --api-url URL            For publish only: cloud API base. Defaults to $SNAPSHOT_SHARE_API_URL,
-                           ~/.codex-snapshots-agent.json, or ${DEFAULT_SNAPSHOT_SHARE_API_URL}
+                           ~/.agent-snapshots-agent.json, or ${DEFAULT_SNAPSHOT_SHARE_API_URL}
   --site-url URL           For publish only: public site base used to print the share link.
-                           Defaults to $SNAPSHOT_SHARE_SITE_URL, ~/.codex-snapshots-agent.json,
+                           Defaults to $SNAPSHOT_SHARE_SITE_URL, ~/.agent-snapshots-agent.json,
                            or ${DEFAULT_SNAPSHOT_SHARE_SITE_URL}
-  --share-token TOKEN      For publish only: API token. Defaults to $SNAPSHOT_SHARE_TOKEN or ~/.codex-snapshots-agent.json
+  --share-token TOKEN      For publish only: API token. Defaults to $SNAPSHOT_SHARE_TOKEN or ~/.agent-snapshots-agent.json
   --expires-in-days N      For publish only: ask the server to expire the share after N days
   --label LABEL            For daemon only: LaunchAgent label. Defaults to ${DEFAULT_DAEMON_LABEL}
   --live-only              Ignore archived_sessions when listing
@@ -2872,30 +2887,30 @@ Options:
   -h, --help               Show this help
 
 Examples:
-  codex-snapshot list --limit 20
-  codex-snapshot search "redis race condition" --source all
-  codex-snapshot export 019e457b --html -o snapshot.html
-  codex-snapshot publish 019e457b --api-url ${DEFAULT_SNAPSHOT_SHARE_API_URL} --site-url ${DEFAULT_SNAPSHOT_SHARE_SITE_URL}
-  codex-snapshot serve --port 4321
-  codex-snapshot daemon install
-  codex-snapshot record-trae --port 4732`);
+  agent-snapshot list --limit 20
+  agent-snapshot search "redis race condition" --source all
+  agent-snapshot export 019e457b --html -o snapshot.html
+  agent-snapshot publish 019e457b --api-url ${DEFAULT_SNAPSHOT_SHARE_API_URL} --site-url ${DEFAULT_SNAPSHOT_SHARE_SITE_URL}
+  agent-snapshot serve --port 4321
+  agent-snapshot daemon install
+  agent-snapshot record-trae --port 4732`);
 }
 
 function printDaemonHelp() {
-  console.log(`codex-snapshot daemon
+  console.log(`agent-snapshot daemon
 
 Usage:
-  codex-snapshot daemon install [--host 127.0.0.1] [--port 4321]
-  codex-snapshot daemon status
-  codex-snapshot daemon logs
-  codex-snapshot daemon uninstall
+  agent-snapshot daemon install [--host 127.0.0.1] [--port 4321]
+  agent-snapshot daemon status
+  agent-snapshot daemon logs
+  agent-snapshot daemon uninstall
 
 Installs a user-level macOS LaunchAgent that starts the npm-installed
-Codex Snapshots viewer after login.
+Agent Snapshots viewer after login.
 
 Environment:
   SNAPSHOT_DAEMON_NODE=/absolute/path/to/node
-  SNAPSHOT_DAEMON_CLI=/absolute/path/to/codex-snapshot.mjs
+  SNAPSHOT_DAEMON_CLI=/absolute/path/to/agent-snapshot.mjs
   SNAPSHOT_LAUNCH_AGENT_LABEL=${DEFAULT_DAEMON_LABEL}
   SNAPSHOT_SHARE_API_URL=${DEFAULT_SNAPSHOT_SHARE_API_URL}
   SNAPSHOT_SHARE_SITE_URL=${DEFAULT_SNAPSHOT_SHARE_SITE_URL}

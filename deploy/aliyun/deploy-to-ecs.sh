@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CONFIG_FILE="${CODEX_SNAPSHOTS_ALIYUN_CONFIG:-}"
+CONFIG_FILE="${AGENT_SNAPSHOTS_ALIYUN_CONFIG:-}"
 
 for ((index = 1; index <= $#; index += 1)); do
   if [[ "${!index}" == "--config" ]]; then
@@ -22,7 +22,7 @@ fi
 
 SSH_TARGET="${SSH_TARGET:-${ALIYUN_SSH_TARGET:-}}"
 DOMAIN="${DOMAIN:-${ALIYUN_DOMAIN:-}}"
-SITE_URL="${SITE_URL:-${SNAPSHOT_SHARE_SITE_URL:-https://ffffhx.github.io/codex-snapshots/}}"
+SITE_URL="${SITE_URL:-${SNAPSHOT_SHARE_SITE_URL:-https://ffffhx.github.io/agent-snapshots/}}"
 API_URL="${API_URL:-${SNAPSHOT_SHARE_PUBLIC_API_URL:-}}"
 TOKEN="${TOKEN:-${SNAPSHOT_SHARE_TOKEN:-}}"
 GITHUB_CLIENT_ID="${SNAPSHOT_GITHUB_CLIENT_ID:-${GITHUB_CLIENT_ID:-}}"
@@ -31,7 +31,7 @@ GITHUB_OWNER_LOGIN="${SNAPSHOT_GITHUB_OWNER_LOGIN:-${SNAPSHOT_GITHUB_OWNER:-}}"
 GITHUB_OWNER_ID="${SNAPSHOT_GITHUB_OWNER_ID:-}"
 SESSION_SECRET="${SNAPSHOT_SESSION_SECRET:-}"
 AUTH_ALLOWED_ORIGINS="${SNAPSHOT_AUTH_ALLOWED_ORIGINS:-}"
-REMOTE_DIR="${REMOTE_DIR:-/tmp/codex-snapshots-deploy}"
+REMOTE_DIR="${REMOTE_DIR:-/tmp/agent-snapshots-deploy}"
 SSH_IDENTITY_FILE="${SSH_IDENTITY_FILE:-${ALIYUN_SSH_IDENTITY_FILE:-}}"
 SSH_PORT="${SSH_PORT:-${ALIYUN_SSH_PORT:-}}"
 SHARE_PORT="${SHARE_PORT:-${SNAPSHOT_SHARE_PORT:-8787}}"
@@ -45,7 +45,7 @@ RUN_PREFLIGHT="${RUN_PREFLIGHT:-1}"
 INSTALL_DEPS="${INSTALL_DEPS:-0}"
 DRY_RUN="${DRY_RUN:-0}"
 CONFIGURE_PAGES="${CONFIGURE_PAGES:-0}"
-PAGES_REPO="${PAGES_REPO:-${GITHUB_REPOSITORY:-ffffhx/codex-snapshots}}"
+PAGES_REPO="${PAGES_REPO:-${GITHUB_REPOSITORY:-ffffhx/agent-snapshots}}"
 PAGES_WORKFLOW="${PAGES_WORKFLOW:-pages.yml}"
 WAIT_PAGES="${WAIT_PAGES:-0}"
 CONFIGURE_LOCAL="${CONFIGURE_LOCAL:-0}"
@@ -65,19 +65,19 @@ Options:
   --config FILE         Source deployment variables from a local env file.
   --domain DOMAIN      Public API domain pointing to the ECS public IP.
   --token TOKEN        Optional legacy publish token. Defaults to SNAPSHOT_SHARE_TOKEN or
-                       ~/.codex-snapshots-agent.json when present.
+                       ~/.agent-snapshots-agent.json when present.
   --generate-token     Generate a strong legacy publish token for this run.
   GitHub OAuth vars   Set SNAPSHOT_GITHUB_CLIENT_ID, SNAPSHOT_GITHUB_CLIENT_SECRET,
                        SNAPSHOT_SESSION_SECRET, and SNAPSHOT_GITHUB_OWNER_LOGIN/ID
                        in the config file to require GitHub login for publish/delete.
-  --site-url URL       Public static site URL. Defaults to https://ffffhx.github.io/codex-snapshots/.
+  --site-url URL       Public static site URL. Defaults to https://ffffhx.github.io/agent-snapshots/.
   --api-url URL        Public API URL. Defaults to https://<domain>.
-  --remote-dir DIR     Temporary remote deployment directory. Defaults to /tmp/codex-snapshots-deploy.
+  --remote-dir DIR     Temporary remote deployment directory. Defaults to /tmp/agent-snapshots-deploy.
   --identity-file FILE SSH private key for the ECS host.
   --port PORT          SSH port. Defaults to the ssh client default.
   --service-port PORT  Local share API port on ECS. Defaults to 8787.
   --proxy-mode MODE    Reverse proxy mode: auto, nginx, caddy, or none. Defaults to auto.
-  --public-path PATH   Public path prefix for Caddy path proxy, for example /codex-snapshots.
+  --public-path PATH   Public path prefix for Caddy path proxy, for example /agent-snapshots.
   --issue-cert         Run certbot on the ECS host, then reinstall HTTPS Nginx config.
   --email EMAIL        Certbot email. Required with --issue-cert for non-interactive certbot.
   --install-deps       Install Node.js 20, Nginx, Certbot, Git, OpenSSL, and rsync on ECS first.
@@ -85,7 +85,7 @@ Options:
   --no-preflight       Skip DNS, SSH, and remote dependency checks before deploying.
   --no-verify          Skip final ECS API verification.
   --configure-pages    Set the GitHub Pages API variable and trigger the Pages workflow.
-  --repo OWNER/REPO    GitHub repository for --configure-pages. Defaults to ffffhx/codex-snapshots.
+  --repo OWNER/REPO    GitHub repository for --configure-pages. Defaults to ffffhx/agent-snapshots.
   --workflow FILE      GitHub Pages workflow for --configure-pages. Defaults to pages.yml.
   --wait-pages         With --configure-pages, wait for Pages and run full public verification.
   --configure-local    Write the local viewer API/site config after deploy.
@@ -292,9 +292,9 @@ const os = require("node:os");
 const path = require("node:path");
 
 const candidates = [
-  process.env.CODEX_SNAPSHOTS_AGENT_FILE,
+  process.env.AGENT_SNAPSHOTS_AGENT_FILE,
   process.env.SNAPSHOT_SHARE_TOKEN_FILE,
-  path.join(os.homedir(), ".codex-snapshots-agent.json"),
+  path.join(os.homedir(), ".agent-snapshots-agent.json"),
 ].filter(Boolean);
 
 for (const filePath of candidates) {
@@ -339,7 +339,7 @@ if [[ "${GITHUB_AUTH_ENABLED}" -eq 1 && -z "${SESSION_SECRET}" ]]; then
 fi
 
 if [[ -z "${TOKEN}" && "${GITHUB_AUTH_ENABLED}" -ne 1 ]]; then
-  echo "Missing --token, SNAPSHOT_SHARE_TOKEN, ~/.codex-snapshots-agent.json token, TOKEN=auto, or --generate-token." >&2
+  echo "Missing --token, SNAPSHOT_SHARE_TOKEN, ~/.agent-snapshots-agent.json token, TOKEN=auto, or --generate-token." >&2
   usage >&2
   exit 1
 fi
@@ -454,7 +454,7 @@ SHARE_PORT_Q="$(shell_quote "${SHARE_PORT}")"
 PROXY_MODE_Q="$(shell_quote "${PROXY_MODE}")"
 PUBLIC_PATH_Q="$(shell_quote "${PUBLIC_PATH}")"
 
-echo "Deploying Codex Snapshots share API to ${SSH_TARGET}"
+echo "Deploying Agent Snapshots share API to ${SSH_TARGET}"
 echo "Domain: ${DOMAIN}"
 echo "API URL: ${API_URL}"
 echo "Site URL: ${SITE_URL}"
@@ -498,7 +498,7 @@ if [[ "${INSTALL_DEPS}" -eq 1 ]]; then
   remote_install_deps_cmd=$(
     cat <<EOF
 set -e
-tmp_script="\$(mktemp /tmp/codex-snapshots-install-deps.XXXXXX.sh)"
+tmp_script="\$(mktemp /tmp/agent-snapshots-install-deps.XXXXXX.sh)"
 cat > "\${tmp_script}"
 chmod +x "\${tmp_script}"
 if [ "\$(id -u)" -eq 0 ]; then
@@ -542,7 +542,7 @@ rsync -az --delete \
   --exclude ".git" \
   --exclude ".env" \
   --exclude "node_modules" \
-  --exclude ".codex-snapshots" \
+  --exclude ".agent-snapshots" \
   --exclude "backups" \
   --exclude "deploy/aliyun/deploy.env" \
   --exclude "*.pem" \
@@ -657,9 +657,9 @@ Deployment command finished.
 
 Next:
   1. Set GitHub repository variable:
-     CODEX_SNAPSHOTS_PUBLIC_API_URL=${API_URL}
+     AGENT_SNAPSHOTS_PUBLIC_API_URL=${API_URL}
      or run:
-     deploy/aliyun/configure-github-pages-api.sh --api-url ${API_URL} --repo ffffhx/codex-snapshots
+     deploy/aliyun/configure-github-pages-api.sh --api-url ${API_URL} --repo ffffhx/agent-snapshots
   2. Trigger the GitHub Pages workflow and wait for it to finish.
   3. Run the public site verification:
      node deploy/aliyun/verify-public-share.mjs --api-url ${API_URL} --site-url ${SITE_URL}

@@ -11,12 +11,12 @@ import { fileURLToPath } from "node:url";
 
 const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const TOKEN = "test-token";
-const SITE_URL = "https://ffffhx.github.io/codex-snapshots/";
+const SITE_URL = "https://ffffhx.github.io/agent-snapshots/";
 const PUBLIC_API_URL = "https://snapshots.example.com";
 const FIXED_SHARE_ID = "snap_testshare1234567890";
 const GOAL_OBJECTIVE = "Keep the publishing flow safe and visible.";
 
-const tempDir = await mkdtemp(path.join(os.tmpdir(), "codex-snapshots-share-test-"));
+const tempDir = await mkdtemp(path.join(os.tmpdir(), "agent-snapshots-share-test-"));
 let serverProcess;
 
 try {
@@ -142,7 +142,7 @@ async function assertPublish(apiUrl) {
 
   const url = new URL(payload.url);
   assert(url.origin === new URL(SITE_URL).origin, `share URL should use site origin: ${payload.url}`);
-  assert(url.pathname === "/codex-snapshots/share/", `share URL should use GitHub Pages share path: ${payload.url}`);
+  assert(url.pathname === "/agent-snapshots/share/", `share URL should use GitHub Pages share path: ${payload.url}`);
   assert(url.searchParams.get("id") === FIXED_SHARE_ID, `share URL should include id: ${payload.url}`);
   assert(url.searchParams.get("api") === PUBLIC_API_URL, `share URL should include public API URL: ${payload.url}`);
 }
@@ -207,7 +207,7 @@ async function assertDelete(apiUrl, shareId) {
 async function assertGithubOwnershipAuth() {
   const port = await getFreePort();
   const apiUrl = `http://127.0.0.1:${port}`;
-  const publicApiUrl = "https://snapshots.example.com/codex-snapshots";
+  const publicApiUrl = "https://snapshots.example.com/agent-snapshots";
   const dataFile = path.join(tempDir, "github-auth-shares.json");
   const sessionSecret = "github-session-secret-for-tests";
   let authServer;
@@ -461,7 +461,7 @@ async function assertLocalViewerPublish(apiUrl) {
     viewerProcess = spawn(
       process.execPath,
       [
-        "bin/codex-snapshot.mjs",
+        "bin/agent-snapshot.mjs",
         "serve",
         "--host",
         "127.0.0.1",
@@ -482,9 +482,9 @@ async function assertLocalViewerPublish(apiUrl) {
         cwd: ROOT_DIR,
         env: {
           ...process.env,
-          CODEX_SNAPSHOTS_AGENT_FILE: tokenFile,
-          CODEX_SNAPSHOTS_SHARE_API_URL: "",
-          CODEX_SNAPSHOTS_SHARE_TOKEN: "",
+          AGENT_SNAPSHOTS_AGENT_FILE: tokenFile,
+          AGENT_SNAPSHOTS_SHARE_API_URL: "",
+          AGENT_SNAPSHOTS_SHARE_TOKEN: "",
           NEXT_PUBLIC_TOKEN_BOARD_API_URL: "",
           SNAPSHOT_SHARE_API_URL: "",
           SNAPSHOT_SHARE_PUBLIC_API_URL: "",
@@ -513,7 +513,7 @@ async function assertLocalViewerPublish(apiUrl) {
     assert(!viewerHtml.includes(TOKEN), "local viewer HTML must not expose the publish token");
     assert(viewerHtml.includes("collapsedProjects"), "local viewer should track collapsed projects");
     assert(viewerHtml.includes("data-project-collapse"), "local viewer project headers should be clickable collapse controls");
-    assert(viewerHtml.includes("CODEX_SNAPSHOT_CSRF_TOKEN"), "local viewer should include a CSRF token for publish actions");
+    assert(viewerHtml.includes("AGENT_SNAPSHOT_CSRF_TOKEN"), "local viewer should include a CSRF token for publish actions");
     const csrfToken = extractCsrfToken(viewerHtml);
 
     const options = new URLSearchParams({
@@ -537,7 +537,7 @@ async function assertLocalViewerPublish(apiUrl) {
     const noOriginPublishResponse = await fetch(publishUrl, {
       method: "POST",
       headers: {
-        "x-codex-snapshot-csrf": csrfToken,
+        "x-agent-snapshot-csrf": csrfToken,
       },
     });
     assert(
@@ -549,7 +549,7 @@ async function assertLocalViewerPublish(apiUrl) {
       method: "POST",
       headers: {
         origin: new URL(viewerUrl).origin,
-        "x-codex-snapshot-csrf": "bad-token",
+        "x-agent-snapshot-csrf": "bad-token",
       },
     });
     assert(
@@ -561,7 +561,7 @@ async function assertLocalViewerPublish(apiUrl) {
       method: "POST",
       headers: {
         origin: new URL(viewerUrl).origin,
-        "x-codex-snapshot-csrf": csrfToken,
+        "x-agent-snapshot-csrf": csrfToken,
       },
     });
 
@@ -831,7 +831,7 @@ async function startTestSiteServer(apiUrl) {
 
     if (url.pathname === "/assets/config.js") {
       response.writeHead(200, { "content-type": "application/javascript; charset=utf-8" });
-      response.end(`window.CODEX_SNAPSHOTS_CONFIG = { apiUrl: ${JSON.stringify(apiUrl)} };\n`);
+      response.end(`window.AGENT_SNAPSHOTS_CONFIG = { apiUrl: ${JSON.stringify(apiUrl)} };\n`);
       return;
     }
 
@@ -839,7 +839,7 @@ async function startTestSiteServer(apiUrl) {
       response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
       response.end(`<!doctype html>
 <html lang="zh-CN">
-<head><meta charset="utf-8"><title>Codex Snapshots</title></head>
+<head><meta charset="utf-8"><title>Agent Snapshots</title></head>
 <body>
   <main id="share-content"></main>
   <script src="../assets/config.js"></script>
@@ -927,7 +927,7 @@ function collectChildOutput(child) {
 }
 
 function extractCsrfToken(html) {
-  const match = html.match(/CODEX_SNAPSHOT_CSRF_TOKEN=("(?:\\.|[^"])*")/);
+  const match = html.match(/AGENT_SNAPSHOT_CSRF_TOKEN=("(?:\\.|[^"])*")/);
   assert(match, "viewer HTML should expose a JSON-encoded CSRF token");
   const token = JSON.parse(match[1]);
   assert(typeof token === "string" && token.length >= 32, "CSRF token should be a strong string");
@@ -943,7 +943,7 @@ function githubSessionCookie(user, secret) {
     "utf8",
   ).toString("base64url");
   const signature = createHmac("sha256", secret).update(body).digest("base64url");
-  return `codex_snapshots_session=${encodeURIComponent(`${body}.${signature}`)}`;
+  return `agent_snapshots_session=${encodeURIComponent(`${body}.${signature}`)}`;
 }
 
 async function getFreePort() {

@@ -1,12 +1,12 @@
-# Codex Snapshots
+# Agent Snapshots
 
 面向 Codex、Claude Code 和 Trae 的本地优先、只读会话快照工具。
 
 它会把你电脑上的 agent 会话整理成可以浏览、导出、脱敏和分享的快照。适合用来复盘一次调试过程、沉淀问题排查记录，或者把一段 agent 协作过程发给同事看。
 
-- 官网：<https://ffffhx.github.io/codex-snapshots/>
-- npm：<https://www.npmjs.com/package/codex-snapshots>
-- 仓库：<https://github.com/ffffhx/codex-snapshots>
+- 官网：<https://ffffhx.github.io/agent-snapshots/>
+- npm：<https://www.npmjs.com/package/agent-snapshots>
+- 仓库：<https://github.com/ffffhx/agent-snapshots>
 
 ## 它能做什么
 
@@ -17,21 +17,21 @@
 - 支持导出 HTML / Markdown 快照。
 - 支持在页面里一键发布已脱敏分享链接。
 
-Codex Snapshots 默认不会上传你的本地会话。只有你在页面里主动点击 `发布分享` 时，才会把当前快照发送到配置好的分享服务。
+Agent Snapshots 默认不会上传你的本地会话。只有你在页面里主动点击 `发布分享` 时，才会把当前快照发送到配置好的分享服务。
 
 ## 截图
 
 ### 本地查看器
 
-![Codex Snapshots 本地查看器](docs/images/local-viewer.jpg)
+![Agent Snapshots 本地查看器](docs/images/local-viewer.jpg)
 
 ### 官网首页
 
-![Codex Snapshots 官网首页](docs/images/public-home.jpg)
+![Agent Snapshots 官网首页](docs/images/public-home.jpg)
 
 ### 公开分享列表
 
-![Codex Snapshots 公开分享列表](docs/images/public-sessions.jpg)
+![Agent Snapshots 公开分享列表](docs/images/public-sessions.jpg)
 
 ## 快速开始
 
@@ -40,7 +40,7 @@ Codex Snapshots 默认不会上传你的本地会话。只有你在页面里主�
 不需要克隆仓库，直接运行：
 
 ```bash
-npx codex-snapshots@latest serve --port 4321
+npx agent-snapshots@latest serve --port 4321
 ```
 
 然后打开 <http://127.0.0.1:4321/>。
@@ -48,9 +48,11 @@ npx codex-snapshots@latest serve --port 4321
 如果你想长期使用，可以全局安装：
 
 ```bash
-npm install -g codex-snapshots@latest
-codex-snapshot serve --port 4321
+npm install -g agent-snapshots@latest
+agent-snapshot serve --port 4321
 ```
+
+> 注：npm 包 `agent-snapshots` 将随下一个版本发布；在那之前请安装旧包名 `codex-snapshots@latest`（命令为 `codex-snapshot`）。
 
 ## 怎么使用
 

@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { sendJson } from "./http.js";
-export const MUTATION_CSRF_HEADER = "x-codex-snapshot-csrf";
+export const MUTATION_CSRF_HEADER = "x-agent-snapshot-csrf";
 export function createMutationCsrfToken() {
     return randomBytes(32).toString("base64url");
 }

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Generate the desktop app icons (build/icon.png + build/icon.icns) from the
-// Codex Snapshots logo SVG. Uses macOS-native tooling (qlmanage/sips/iconutil)
+// Agent Snapshots logo SVG. Uses macOS-native tooling (qlmanage/sips/iconutil)
 // to rasterize; on other platforms it produces the PNG only when a rasterizer
 // is available and skips the .icns step.
 
@@ -17,9 +17,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
 const BUILD_DIR = path.join(ROOT, "build");
 
-// Kept in sync with SNAPSHOT_LOGO_SVG in src/cli/codex-snapshot.mts.
+// Kept in sync with SNAPSHOT_LOGO_SVG in src/cli/agent-snapshot.mts.
 // Full-bleed vermillion squircle (the 朱红印章 identity) holding a cream archived
-// "session page" with a red wax seal — exactly what Codex Snapshots is: read-only
+// "session page" with a red wax seal — exactly what Agent Snapshots is: read-only
 // snapshots of sessions, stamped. Bold, high-contrast, and unmistakably not a disc.
 const LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
   <defs>
@@ -114,7 +114,7 @@ async function buildIcns(basePng) {
 async function main() {
   await mkdir(BUILD_DIR, { recursive: true });
   const tmpDir = await import("node:fs/promises").then((fs) =>
-    fs.mkdtemp(path.join(os.tmpdir(), "codex-snapshots-icon-")),
+    fs.mkdtemp(path.join(os.tmpdir(), "agent-snapshots-icon-")),
   );
   const svgPath = path.join(tmpDir, "icon.svg");
   await writeFile(svgPath, LOGO_SVG, "utf8");

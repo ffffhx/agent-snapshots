@@ -3,6 +3,7 @@ node_modules/
 .env
 .env.*
 !.env.example
+.agent-snapshots/
 .codex-snapshots/
 backups/
 deploy/aliyun/deploy.env

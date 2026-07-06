@@ -31,7 +31,7 @@ let syncing = false;
 
 function indexPath() {
   const cacheHome = process.env.XDG_CACHE_HOME || path.join(os.homedir(), ".cache");
-  return path.join(cacheHome, "codex-snapshots", "search-index.v1.db");
+  return path.join(cacheHome, "agent-snapshots", "search-index.v1.db");
 }
 
 async function getDb() {

@@ -7,7 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const tempDir = await mkdtemp(path.join(os.tmpdir(), "codex-snapshots-site-config-test-"));
+const tempDir = await mkdtemp(path.join(os.tmpdir(), "agent-snapshots-site-config-test-"));
 
 try {
   await assertWritesEmptyConfigWhenUnset();
@@ -46,7 +46,7 @@ async function assertRejectsUnsafePublicApis() {
   for (const unsafeUrl of unsafeUrls) {
     const output = path.join(tempDir, `unsafe-${unsafeUrls.indexOf(unsafeUrl)}.js`);
     const result = await runConfig(["--output", output, "--api-url", unsafeUrl], {}, { expectFailure: true });
-    assert(result.stderr.includes("CODEX_SNAPSHOTS_PUBLIC_API_URL"), `unsafe URL should fail with config error: ${unsafeUrl}`);
+    assert(result.stderr.includes("AGENT_SNAPSHOTS_PUBLIC_API_URL"), `unsafe URL should fail with config error: ${unsafeUrl}`);
   }
 }
 
@@ -63,7 +63,7 @@ async function runConfig(args, env, { expectFailure = false } = {}) {
       cwd: ROOT_DIR,
       env: {
         ...process.env,
-        CODEX_SNAPSHOTS_PUBLIC_API_URL: "",
+        AGENT_SNAPSHOTS_PUBLIC_API_URL: "",
         SNAPSHOT_SHARE_PUBLIC_API_URL: "",
         SNAPSHOT_SHARE_API_URL: "",
         ...env,

@@ -13,7 +13,7 @@ import { detectRisks, redactText } from "../core/privacy.js";
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 8787;
 const MAX_BODY_BYTES = 64 * 1024 * 1024;
-const SNAPSHOT_LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Codex Snapshots"><rect width="64" height="64" rx="14" fill="#231d12"/><circle cx="32" cy="32" r="20" fill="none" stroke="#4f4533" stroke-width="1.6"/><g transform="translate(32,32)"><path d="M -12.71 -14.12 A 19 19 0 0 1 12.71 -14.12 L 5.48 -2.44 A 6 6 0 0 0 -1.85 -5.71 Z" fill="#c9bd9f"/><path d="M 5.87 -18.07 A 19 19 0 0 1 18.58 3.95 L 4.85 3.53 A 6 6 0 0 0 4.01 -4.46 Z" fill="#e7dcc4"/><path d="M 18.58 -3.95 A 19 19 0 0 1 5.87 18.07 L -0.63 5.97 A 6 6 0 0 0 5.87 1.25 Z" fill="#c9bd9f"/><path d="M 12.71 14.12 A 19 19 0 0 1 -12.71 14.12 L -5.48 2.44 A 6 6 0 0 0 1.85 5.71 Z" fill="#e7dcc4"/><path d="M -5.87 18.07 A 19 19 0 0 1 -18.58 -3.95 L -4.85 -3.53 A 6 6 0 0 0 -4.01 4.46 Z" fill="#c9bd9f"/><path d="M -18.58 3.95 A 19 19 0 0 1 -5.87 -18.07 L 0.63 -5.97 A 6 6 0 0 0 -5.87 -1.25 Z" fill="#e7dcc4"/></g><circle cx="32" cy="32" r="3.4" fill="#b23a2b"/></svg>`;
+const SNAPSHOT_LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Agent Snapshots"><rect width="64" height="64" rx="14" fill="#231d12"/><circle cx="32" cy="32" r="20" fill="none" stroke="#4f4533" stroke-width="1.6"/><g transform="translate(32,32)"><path d="M -12.71 -14.12 A 19 19 0 0 1 12.71 -14.12 L 5.48 -2.44 A 6 6 0 0 0 -1.85 -5.71 Z" fill="#c9bd9f"/><path d="M 5.87 -18.07 A 19 19 0 0 1 18.58 3.95 L 4.85 3.53 A 6 6 0 0 0 4.01 -4.46 Z" fill="#e7dcc4"/><path d="M 18.58 -3.95 A 19 19 0 0 1 5.87 18.07 L -0.63 5.97 A 6 6 0 0 0 5.87 1.25 Z" fill="#c9bd9f"/><path d="M 12.71 14.12 A 19 19 0 0 1 -12.71 14.12 L -5.48 2.44 A 6 6 0 0 0 1.85 5.71 Z" fill="#e7dcc4"/><path d="M -5.87 18.07 A 19 19 0 0 1 -18.58 -3.95 L -4.85 -3.53 A 6 6 0 0 0 -4.01 4.46 Z" fill="#c9bd9f"/><path d="M -18.58 3.95 A 19 19 0 0 1 -5.87 -18.07 L 0.63 -5.97 A 6 6 0 0 0 -5.87 -1.25 Z" fill="#e7dcc4"/></g><circle cx="32" cy="32" r="3.4" fill="#b23a2b"/></svg>`;
 
 const parsed = parseArgs(process.argv.slice(2));
 
@@ -25,17 +25,18 @@ if (parsed.help) {
 const host = parsed.options.host || process.env.HOST || DEFAULT_HOST;
 const port = Number(parsed.options.port || process.env.PORT || DEFAULT_PORT);
 const dataFile = path.resolve(
-  expandHome(parsed.options.dataFile || process.env.SNAPSHOT_SHARE_DATA_FILE || ".codex-snapshots/shares.json")
+  expandHome(parsed.options.dataFile || process.env.SNAPSHOT_SHARE_DATA_FILE || ".agent-snapshots/shares.json")
 );
 const shareToken =
   parsed.options.token ||
   process.env.SNAPSHOT_SHARE_TOKEN ||
+  process.env.AGENT_SNAPSHOTS_SHARE_TOKEN ||
   process.env.CODEX_SNAPSHOTS_SHARE_TOKEN ||
   process.env.TOKEN_BOARD_AGENT_TOKEN ||
   process.env.TOKEN_BOARD_UPLOAD_TOKEN ||
   "";
 const githubAuth = readGithubAuthConfig();
-const authCookieName = sanitizeCookieName(process.env.SNAPSHOT_AUTH_COOKIE_NAME) || "codex_snapshots_session";
+const authCookieName = sanitizeCookieName(process.env.SNAPSHOT_AUTH_COOKIE_NAME) || "agent_snapshots_session";
 const tokenAuthEnabled =
   Boolean(shareToken) && (!githubAuth.enabled || process.env.SNAPSHOT_SHARE_ALLOW_TOKEN_AUTH === "true");
 
@@ -105,7 +106,7 @@ async function main() {
       if (request.method === "GET" && url.pathname === "/health") {
         sendJson(response, 200, {
           ok: true,
-          service: "codex-snapshots-share-api",
+          service: "agent-snapshots-share-api",
           auth: githubAuth.enabled ? "github" : tokenAuthEnabled ? "token" : "disabled",
           owner: githubAuth.ownerLabel || null,
         });
@@ -260,7 +261,7 @@ async function main() {
     server.listen(port, host, resolve);
   });
 
-  console.log(`Codex Snapshots share API is running at http://${host}:${port}`);
+  console.log(`Agent Snapshots share API is running at http://${host}:${port}`);
   console.log(`Storage: ${dataFile}`);
   console.log(`Auth: ${githubAuth.enabled ? "GitHub OAuth required" : tokenAuthEnabled ? "SNAPSHOT_SHARE_TOKEN required" : "disabled (local/dev only)"}`);
 }
@@ -418,13 +419,13 @@ function renderHome() {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Codex Snapshots Share API</title>
+  <title>Agent Snapshots Share API</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <style>${shareCss()}</style>
 </head>
 <body>
   <main class="shell">
-    <p class="eyebrow">Codex Snapshots</p>
+    <p class="eyebrow">Agent Snapshots</p>
     <h1>Share API is running</h1>
     <p>Publish redacted snapshots with <code>pnpm snapshot publish</code>, then open the returned share link.</p>
     <dl>
@@ -819,7 +820,7 @@ async function exchangeGithubCodeForToken(code, redirectUri) {
     headers: {
       accept: "application/json",
       "content-type": "application/json",
-      "user-agent": "codex-snapshots-share-api",
+      "user-agent": "agent-snapshots-share-api",
     },
     body: JSON.stringify({
       client_id: githubAuth.clientId,
@@ -843,7 +844,7 @@ async function fetchGithubUser(accessToken) {
     headers: {
       accept: "application/vnd.github+json",
       authorization: `Bearer ${accessToken}`,
-      "user-agent": "codex-snapshots-share-api",
+      "user-agent": "agent-snapshots-share-api",
       "x-github-api-version": "2022-11-28",
     },
   });
@@ -1341,7 +1342,7 @@ function parseArgs(args) {
 }
 
 function printHelp() {
-  console.log(`codex-snapshots share-api
+  console.log(`agent-snapshots share-api
 
 Usage:
   node server/share-api.mjs [--host 127.0.0.1] [--port 8787] [--data-file FILE] [--token TOKEN]
@@ -1349,7 +1350,7 @@ Usage:
 Environment:
 	  SNAPSHOT_SHARE_TOKEN       Bearer token required for publish/delete
 	                             when GitHub OAuth is not configured
-	  SNAPSHOT_SHARE_DATA_FILE   JSON storage file. Defaults to .codex-snapshots/shares.json
+	  SNAPSHOT_SHARE_DATA_FILE   JSON storage file. Defaults to .agent-snapshots/shares.json
 	  SNAPSHOT_SHARE_SITE_URL    Base URL used in returned share links
 	  SNAPSHOT_SHARE_PUBLIC_API_URL
 	                             Public API base used in returned share links

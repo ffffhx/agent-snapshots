@@ -3,8 +3,8 @@ set -euo pipefail
 
 SSH_TARGET=""
 SSH_OPTS=()
-REMOTE_FILE="/var/lib/codex-snapshots/shares.json"
-OUTPUT_DIR="backups/codex-snapshots"
+REMOTE_FILE="/var/lib/agent-snapshots/shares.json"
+OUTPUT_DIR="backups/agent-snapshots"
 
 usage() {
   cat <<'EOF'
@@ -15,8 +15,8 @@ Options:
   --ssh TARGET          SSH target, for example root@1.2.3.4.
   --identity-file FILE  SSH private key for the ECS host.
   --port PORT           SSH port.
-  --remote-file FILE    Remote share data file. Defaults to /var/lib/codex-snapshots/shares.json.
-  --output-dir DIR      Local backup directory. Defaults to backups/codex-snapshots.
+  --remote-file FILE    Remote share data file. Defaults to /var/lib/agent-snapshots/shares.json.
+  --output-dir DIR      Local backup directory. Defaults to backups/agent-snapshots.
   -h, --help            Show help.
 EOF
 }

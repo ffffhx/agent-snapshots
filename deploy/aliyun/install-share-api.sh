@@ -13,14 +13,14 @@ if [[ -z "${DOMAIN}" ]]; then
 fi
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-APP_DIR="${APP_DIR:-/opt/codex-snapshots}"
-ENV_DIR="/etc/codex-snapshots"
-STATE_DIR="/var/lib/codex-snapshots"
-SERVICE_PATH="/etc/systemd/system/codex-snapshot-share.service"
+APP_DIR="${APP_DIR:-/opt/agent-snapshots}"
+ENV_DIR="/etc/agent-snapshots"
+STATE_DIR="/var/lib/agent-snapshots"
+SERVICE_PATH="/etc/systemd/system/agent-snapshot-share.service"
 NGINX_DIR="/etc/nginx/conf.d"
-NGINX_PATH="${NGINX_DIR}/codex-snapshots.conf"
+NGINX_PATH="${NGINX_DIR}/agent-snapshots.conf"
 CERT_DIR="/etc/letsencrypt/live/${DOMAIN}"
-SITE_URL="${SNAPSHOT_SHARE_SITE_URL:-https://ffffhx.github.io/codex-snapshots/}"
+SITE_URL="${SNAPSHOT_SHARE_SITE_URL:-https://ffffhx.github.io/agent-snapshots/}"
 API_URL="${SNAPSHOT_SHARE_PUBLIC_API_URL:-https://${DOMAIN}}"
 TOKEN="${SNAPSHOT_SHARE_TOKEN:-}"
 GITHUB_CLIENT_ID="${SNAPSHOT_GITHUB_CLIENT_ID:-}"
@@ -80,7 +80,7 @@ if [[ "${GITHUB_AUTH_ENABLED}" -eq 1 ]]; then
 fi
 
 if ! command -v pnpm >/dev/null 2>&1; then
-  echo "pnpm is required to build and install codex-snapshots runtime dependencies." >&2
+  echo "pnpm is required to build and install agent-snapshots runtime dependencies." >&2
   exit 1
 fi
 
@@ -114,7 +114,7 @@ rsync -a --delete \
   --exclude ".git" \
   --exclude ".env" \
   --exclude "node_modules" \
-  --exclude ".codex-snapshots" \
+  --exclude ".agent-snapshots" \
   --exclude "backups" \
   --exclude "deploy/aliyun/deploy.env" \
   --exclude "*.pem" \
@@ -147,10 +147,10 @@ rm -rf "${APP_DIR}/backups"
 chmod 0600 "${ENV_DIR}/share-api.env"
 chown root:root "${ENV_DIR}/share-api.env"
 
-install -m 0644 "${REPO_ROOT}/deploy/aliyun/codex-snapshot-share.service" "${SERVICE_PATH}"
+install -m 0644 "${REPO_ROOT}/deploy/aliyun/agent-snapshot-share.service" "${SERVICE_PATH}"
 
 systemctl daemon-reload
-systemctl enable --now codex-snapshot-share.service
+systemctl enable --now agent-snapshot-share.service
 
 if [[ "${PROXY_MODE}" == "auto" ]]; then
   if command -v caddy >/dev/null 2>&1 && systemctl is-active --quiet caddy; then
@@ -178,8 +178,8 @@ const fs = require("node:fs");
 const filePath = process.env.SNAPSHOT_SHARE_CADDY_FILE;
 const publicPath = process.env.SNAPSHOT_SHARE_PUBLIC_PATH.replace(/\/+$/, "");
 const port = process.env.SNAPSHOT_SHARE_PORT;
-const markerStart = "\t# codex-snapshots-share start";
-const markerEnd = "\t# codex-snapshots-share end";
+const markerStart = "\t# agent-snapshots-share start";
+const markerEnd = "\t# agent-snapshots-share end";
 const route = [
   markerStart,
   `\thandle_path ${publicPath}/* {`,
@@ -189,7 +189,7 @@ const route = [
 ].join("\n");
 
 let text = fs.readFileSync(filePath, "utf8");
-text = text.replace(/\n\t# codex-snapshots-share start[\s\S]*?\n\t# codex-snapshots-share end\n?/g, "\n");
+text = text.replace(/\n\t# agent-snapshots-share start[\s\S]*?\n\t# agent-snapshots-share end\n?/g, "\n");
 
 const start = text.indexOf("(room_services) {");
 if (start === -1) {
@@ -224,9 +224,9 @@ NODE
 elif [[ "${PROXY_MODE}" == "nginx" ]]; then
   install -d -m 0755 "${NGINX_DIR}"
   if [[ -f "${CERT_DIR}/fullchain.pem" && -f "${CERT_DIR}/privkey.pem" ]]; then
-    NGINX_TEMPLATE="${REPO_ROOT}/deploy/aliyun/nginx-codex-snapshots.conf"
+    NGINX_TEMPLATE="${REPO_ROOT}/deploy/aliyun/nginx-agent-snapshots.conf"
   else
-    NGINX_TEMPLATE="${REPO_ROOT}/deploy/aliyun/nginx-codex-snapshots.bootstrap.conf"
+    NGINX_TEMPLATE="${REPO_ROOT}/deploy/aliyun/nginx-agent-snapshots.bootstrap.conf"
     echo "TLS certificate not found at ${CERT_DIR}; installing HTTP bootstrap Nginx config."
     echo "After issuing a certificate, re-run this script to install the HTTPS config."
   fi
@@ -249,4 +249,4 @@ fi
 echo "Share API service installed."
 echo "Local health check: curl http://${SHARE_HOST}:${SHARE_PORT}/api/snapshots/health"
 echo "Public health check: curl ${API_URL%/}/api/snapshots/health"
-echo "Set GitHub repository variable CODEX_SNAPSHOTS_PUBLIC_API_URL=${API_URL}"
+echo "Set GitHub repository variable AGENT_SNAPSHOTS_PUBLIC_API_URL=${API_URL}"

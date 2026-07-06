@@ -22,7 +22,7 @@ const siteUrl = normalizeUrl(
   parsed.options.siteUrl ||
     process.env.SNAPSHOT_SHARE_SITE_URL ||
     localPublisherConfig.siteUrl ||
-    "https://ffffhx.github.io/codex-snapshots/"
+    "https://ffffhx.github.io/agent-snapshots/"
 );
 const token = parsed.options.token || process.env.SNAPSHOT_SHARE_TOKEN || localPublisherConfig.token || "";
 const shouldPublish = parsed.options.publish;
@@ -156,7 +156,7 @@ async function checkPublish(baseUrl, publicSiteUrl, publishToken) {
       apiUrl: baseUrl,
       siteUrl: publicSiteUrl,
       snapshot: {
-        title: "Codex Snapshots public deployment verification",
+        title: "Agent Snapshots public deployment verification",
         engine: "codex",
         engineLabel: "Codex",
         redacted: true,
@@ -206,8 +206,8 @@ async function checkSharePageShell(shareUrl) {
   }
 
   const text = await response.text();
-  if (!text.includes("assets/share.js") && !text.includes("CODEX_SNAPSHOTS_CONFIG")) {
-    throw new Error(`Public share page at ${shareUrl} did not look like the Codex Snapshots viewer.`);
+  if (!text.includes("assets/share.js") && !text.includes("AGENT_SNAPSHOTS_CONFIG")) {
+    throw new Error(`Public share page at ${shareUrl} did not look like the Agent Snapshots viewer.`);
   }
 
   console.log("✓ Public share page shell is reachable");
@@ -254,9 +254,9 @@ function normalizeUrl(value) {
 function readLocalPublisherConfig(tokenFile) {
   const candidates = [
     tokenFile,
-    process.env.CODEX_SNAPSHOTS_AGENT_FILE,
+    process.env.AGENT_SNAPSHOTS_AGENT_FILE,
     process.env.SNAPSHOT_SHARE_TOKEN_FILE,
-    path.join(os.homedir(), ".codex-snapshots-agent.json"),
+    path.join(os.homedir(), ".agent-snapshots-agent.json"),
   ].filter(Boolean);
 
   for (const filePath of candidates) {
@@ -385,7 +385,7 @@ function printHelp() {
   console.log(`verify-public-share
 
 Usage:
-  node deploy/aliyun/verify-public-share.mjs --api-url https://snapshots.example.com --site-url https://ffffhx.github.io/codex-snapshots/
+  node deploy/aliyun/verify-public-share.mjs --api-url https://snapshots.example.com --site-url https://ffffhx.github.io/agent-snapshots/
   SNAPSHOT_SHARE_TOKEN=<legacy-token> node deploy/aliyun/verify-public-share.mjs --api-url https://snapshots.example.com --publish
 
 Checks:
@@ -398,7 +398,7 @@ Checks:
 
 Options:
   --skip-site-config    Do not check the static site's assets/config.js
-  --check-local-config  Check ~/.codex-snapshots-agent.json or --token-file
+  --check-local-config  Check ~/.agent-snapshots-agent.json or --token-file
   --token-file FILE     Local publisher config file
 `);
 }

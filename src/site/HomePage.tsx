@@ -45,15 +45,15 @@ const STATUS_LABELS: Record<StatusState, string> = {
   error: "未启动",
 };
 
-const TEMP_REVIEW_COMMAND = `npx codex-snapshots@latest serve --port 4321
+const TEMP_REVIEW_COMMAND = `npx agent-snapshots@latest serve --port 4321
 
 # 或者全局安装 npm 包
-npm install -g codex-snapshots@latest
-codex-snapshot serve --port 4321`;
+npm install -g agent-snapshots@latest
+agent-snapshot serve --port 4321`;
 
-const DAEMON_INSTALL_COMMAND = `npm install -g codex-snapshots@latest
-codex-snapshot daemon install
-codex-snapshot daemon status`;
+const DAEMON_INSTALL_COMMAND = `npm install -g agent-snapshots@latest
+agent-snapshot daemon install
+agent-snapshot daemon status`;
 
 export function HomePage() {
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
@@ -177,7 +177,7 @@ export function HomePage() {
       <section className="hero" aria-labelledby="hero-title">
         <div className="hero-copy">
           <p className="eyebrow">本地优先 / 只读审阅 / 可脱敏分享</p>
-          <h1 id="hero-title">Codex Snapshots</h1>
+          <h1 id="hero-title">Agent Snapshots</h1>
           <p className="lede">把 Codex、Claude Code 和 Trae 的本地会话整理成可审阅、可导出、可发布的只读快照。</p>
           <div className="hero-stats" aria-label="能力概览">
             <span>
@@ -195,11 +195,11 @@ export function HomePage() {
               <span aria-hidden="true">↗</span>
               打开本地查看器
             </a>
-            <a className="button" href="https://www.npmjs.com/package/codex-snapshots" target="_blank" rel="noopener noreferrer">
+            <a className="button" href="https://www.npmjs.com/package/agent-snapshots" target="_blank" rel="noopener noreferrer">
               <span aria-hidden="true">pkg</span>
               npm 包
             </a>
-            <a className="button" href="https://github.com/ffffhx/codex-snapshots" target="_blank" rel="noopener noreferrer">
+            <a className="button" href="https://github.com/ffffhx/agent-snapshots" target="_blank" rel="noopener noreferrer">
               <span aria-hidden="true">git</span>
               GitHub 仓库
             </a>
@@ -261,7 +261,7 @@ export function HomePage() {
             <pre>
               <code>{TEMP_REVIEW_COMMAND}</code>
             </pre>
-            <CopyButton command="npx codex-snapshots@latest serve --port 4321">复制 npx 命令</CopyButton>
+            <CopyButton command="npx agent-snapshots@latest serve --port 4321">复制 npx 命令</CopyButton>
           </div>
         </article>
         <article className="command-block">
@@ -294,9 +294,9 @@ export function HomePage() {
           </p>
           <div className="command-line">
             <pre>
-              <code>npx codex-snapshots@latest serve --port 4321</code>
+              <code>npx agent-snapshots@latest serve --port 4321</code>
             </pre>
-            <CopyButton command="npx codex-snapshots@latest serve --port 4321">复制</CopyButton>
+            <CopyButton command="npx agent-snapshots@latest serve --port 4321">复制</CopyButton>
           </div>
         </article>
       </section>
@@ -306,7 +306,7 @@ export function HomePage() {
 
 function ProductShot() {
   return (
-    <div className="product-shot" aria-label="Codex Snapshots 产品预览">
+    <div className="product-shot" aria-label="Agent Snapshots 产品预览">
       <aside className="shot-sidebar">
         <div className="shot-kicker">Local Agents</div>
         <div className="shot-title">Projects</div>
@@ -325,7 +325,7 @@ function ProductShot() {
         <div className="shot-project active">
           <span className="shot-dot"></span>
           <div>
-            <b>codex-snapshots</b>
+            <b>agent-snapshots</b>
             <small>优化官网和本地查看器</small>
           </div>
           <em>刚刚</em>
@@ -361,7 +361,7 @@ function ProductShot() {
         </div>
         <div className="shot-meta">
           <span>Codex</span>
-          <span>~/Code/codex-snapshots</span>
+          <span>~/Code/agent-snapshots</span>
           <span>7 entries</span>
           <span>redacted: yes</span>
         </div>

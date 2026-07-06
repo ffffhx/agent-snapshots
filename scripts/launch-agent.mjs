@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "..");
-const cliPath = path.join(repoRoot, "dist", "cli", "codex-snapshot.mjs");
+const cliPath = path.join(repoRoot, "dist", "cli", "agent-snapshot.mjs");
 const legacyCommand = process.argv[2] || "status";
 const args = ["daemon", legacyCommand, ...process.argv.slice(3)];
 

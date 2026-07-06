@@ -1,13 +1,13 @@
 # Deploy the Share API on Alibaba Cloud ECS
 
-This deployment runs `codex-snapshot-share` on `127.0.0.1:8787`, exposes it through Nginx + HTTPS, and lets the GitHub Pages site list and render public sessions.
+This deployment runs `agent-snapshot-share` on `127.0.0.1:8787`, exposes it through Nginx + HTTPS, and lets the GitHub Pages site list and render public sessions.
 
 Replace these examples before running commands:
 
 - `snapshots.example.com`: your public API domain
 - `your-client-id` / `your-client-secret`: your GitHub OAuth App credentials
 - `your-github-login`: your GitHub login; this account can delete any shared session
-- `https://ffffhx.github.io/codex-snapshots/`: the public static site
+- `https://ffffhx.github.io/agent-snapshots/`: the public static site
 
 ## 1. Prepare Alibaba Cloud
 
@@ -120,15 +120,15 @@ deploy/aliyun/deploy-to-ecs.sh \
 Clone this repository on the ECS host, then run the installer from the repository root:
 
 ```bash
-git clone https://github.com/ffffhx/codex-snapshots.git
-cd codex-snapshots
+git clone https://github.com/ffffhx/agent-snapshots.git
+cd agent-snapshots
 
 sudo DOMAIN=snapshots.example.com \
   SNAPSHOT_GITHUB_CLIENT_ID=your-client-id \
   SNAPSHOT_GITHUB_CLIENT_SECRET=your-client-secret \
   SNAPSHOT_SESSION_SECRET="$(openssl rand -base64 48)" \
   SNAPSHOT_GITHUB_OWNER_LOGIN=your-github-login \
-  SNAPSHOT_SHARE_SITE_URL=https://ffffhx.github.io/codex-snapshots/ \
+  SNAPSHOT_SHARE_SITE_URL=https://ffffhx.github.io/agent-snapshots/ \
   SNAPSHOT_SHARE_PUBLIC_API_URL=https://snapshots.example.com \
   deploy/aliyun/install-share-api.sh
 ```
@@ -151,7 +151,7 @@ sudo DOMAIN=snapshots.example.com \
   SNAPSHOT_GITHUB_CLIENT_SECRET=your-client-secret \
   SNAPSHOT_SESSION_SECRET="$(openssl rand -base64 48)" \
   SNAPSHOT_GITHUB_OWNER_LOGIN=your-github-login \
-  SNAPSHOT_SHARE_SITE_URL=https://ffffhx.github.io/codex-snapshots/ \
+  SNAPSHOT_SHARE_SITE_URL=https://ffffhx.github.io/agent-snapshots/ \
   SNAPSHOT_SHARE_PUBLIC_API_URL=https://snapshots.example.com \
   deploy/aliyun/install-share-api.sh
 ```
@@ -168,7 +168,7 @@ curl https://snapshots.example.com/api/snapshots
 Set this repository variable in GitHub:
 
 ```text
-CODEX_SNAPSHOTS_PUBLIC_API_URL=https://snapshots.example.com
+AGENT_SNAPSHOTS_PUBLIC_API_URL=https://snapshots.example.com
 ```
 
 You can set it and trigger the Pages workflow with GitHub CLI:
@@ -176,7 +176,7 @@ You can set it and trigger the Pages workflow with GitHub CLI:
 ```bash
 deploy/aliyun/configure-github-pages-api.sh \
   --api-url https://snapshots.example.com \
-  --repo ffffhx/codex-snapshots
+  --repo ffffhx/agent-snapshots
 ```
 
 The helper refuses placeholder or local-only API URLs so the public site does not get configured to fetch from `127.0.0.1` or `snapshots.example.com`.
@@ -197,7 +197,7 @@ After the Pages workflow finishes, run the read-only checks:
 ```bash
 node deploy/aliyun/verify-public-share.mjs \
   --api-url https://snapshots.example.com \
-  --site-url https://ffffhx.github.io/codex-snapshots/
+  --site-url https://ffffhx.github.io/agent-snapshots/
 ```
 
 This proves:
@@ -210,7 +210,7 @@ This proves:
 GitHub OAuth publishing is verified from the browser: open the local viewer, click “发布分享”, log in with GitHub when prompted, and confirm the shared session appears on the public site. For legacy token mode only, add `--publish --token <same-token>` to create one small verification snapshot from the command line.
 
 To verify only the ECS API before Pages has deployed, add `--skip-site-config`.
-After configuring the local publisher, add `--check-local-config` to prove that `~/.codex-snapshots-agent.json` also points at the same Aliyun API and public site.
+After configuring the local publisher, add `--check-local-config` to prove that `~/.agent-snapshots-agent.json` also points at the same Aliyun API and public site.
 
 ## 8. Publish from your local viewer
 
@@ -218,11 +218,11 @@ Configure your local viewer with the public API and site:
 
 ```bash
 SNAPSHOT_SHARE_API_URL=https://snapshots.example.com \
-SNAPSHOT_SHARE_SITE_URL=https://ffffhx.github.io/codex-snapshots/ \
+SNAPSHOT_SHARE_SITE_URL=https://ffffhx.github.io/agent-snapshots/ \
 deploy/aliyun/configure-local-publisher.sh
 ```
 
-The helper rejects placeholder and local-only API URLs before it writes `~/.codex-snapshots-agent.json`.
+The helper rejects placeholder and local-only API URLs before it writes `~/.agent-snapshots-agent.json`.
 That file stores the public API/site URLs, so the local viewer knows which remote share API to use. With GitHub OAuth, the browser session cookie handles publish/delete auth after login.
 
 Verify the local publisher config:
@@ -230,7 +230,7 @@ Verify the local publisher config:
 ```bash
 node deploy/aliyun/verify-public-share.mjs \
   --api-url https://snapshots.example.com \
-  --site-url https://ffffhx.github.io/codex-snapshots/ \
+  --site-url https://ffffhx.github.io/agent-snapshots/ \
   --skip-site-config \
   --check-local-config
 ```
@@ -245,16 +245,16 @@ For the macOS LaunchAgent, let the helper reinstall the daemon with the public A
 
 ```bash
 SNAPSHOT_SHARE_API_URL=https://snapshots.example.com \
-SNAPSHOT_SHARE_SITE_URL=https://ffffhx.github.io/codex-snapshots/ \
+SNAPSHOT_SHARE_SITE_URL=https://ffffhx.github.io/agent-snapshots/ \
 deploy/aliyun/configure-local-publisher.sh --reinstall-daemon
 ```
 
-The local publisher config can also be edited manually in `~/.codex-snapshots-agent.json`:
+The local publisher config can also be edited manually in `~/.agent-snapshots-agent.json`:
 
 ```json
 {
   "snapshotShareApiUrl": "https://snapshots.example.com",
-  "snapshotShareSiteUrl": "https://ffffhx.github.io/codex-snapshots"
+  "snapshotShareSiteUrl": "https://ffffhx.github.io/agent-snapshots"
 }
 ```
 
@@ -263,11 +263,11 @@ The local publisher config can also be edited manually in `~/.codex-snapshots-ag
 Useful ECS commands:
 
 ```bash
-sudo systemctl status codex-snapshot-share
-sudo journalctl -u codex-snapshot-share -f
+sudo systemctl status agent-snapshot-share
+sudo journalctl -u agent-snapshot-share -f
 sudo nginx -t
 sudo systemctl reload nginx
-sudo cp /var/lib/codex-snapshots/shares.json ~/shares.json.backup
+sudo cp /var/lib/agent-snapshots/shares.json ~/shares.json.backup
 ```
 
 You can run the same health checks from your local machine:
@@ -292,7 +292,7 @@ Restore a local backup to ECS:
 ```bash
 deploy/aliyun/restore-share-data.sh \
   --ssh root@1.2.3.4 \
-  --file backups/codex-snapshots/shares-20260101T000000Z.json
+  --file backups/agent-snapshots/shares-20260101T000000Z.json
 ```
 
 The restore script validates the JSON locally and saves the previous remote file next to the live data before replacing it.
@@ -300,7 +300,7 @@ The restore script validates the JSON locally and saves the previous remote file
 The share data is stored in:
 
 ```text
-/var/lib/codex-snapshots/shares.json
+/var/lib/agent-snapshots/shares.json
 ```
 
 Local publisher checks:

@@ -118,12 +118,12 @@ export async function prewarmSemanticIndex(options) {
     };
 }
 export function defaultSemanticIndexPath() {
-    const override = process.env.CODEX_SNAPSHOTS_SEMANTIC_INDEX || process.env.SNAPSHOT_SEMANTIC_INDEX;
+    const override = process.env.AGENT_SNAPSHOTS_SEMANTIC_INDEX || process.env.CODEX_SNAPSHOTS_SEMANTIC_INDEX || process.env.SNAPSHOT_SEMANTIC_INDEX;
     if (override) {
         return override;
     }
     const cacheHome = process.env.XDG_CACHE_HOME || path.join(os.homedir(), ".cache");
-    return path.join(cacheHome, "codex-snapshots", "semantic-index.v1.json");
+    return path.join(cacheHome, "agent-snapshots", "semantic-index.v1.json");
 }
 async function ensureSemanticSessionIndex({ codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir, scanLimit = DEFAULT_SCAN_LIMIT, updateLimit = DEFAULT_UPDATE_LIMIT, cwd = "", includeArchived = true, source = "all", completeOnly = true, includeTools = false, includeToolOutput = false, model = defaultEmbeddingModel(), baseUrl = defaultOllamaBaseUrl(), indexPath = defaultSemanticIndexPath(), listSessions, loadSnapshot, embedder = embedTexts, }) {
     const sessionScanLimit = clampInteger(scanLimit, 1, MAX_SCAN_LIMIT, DEFAULT_SCAN_LIMIT);
@@ -338,7 +338,7 @@ function compactVector(vector) {
     return vector.map((value) => Number(Number(value || 0).toFixed(6)));
 }
 function pruneSemanticIndex(index) {
-    const limit = clampInteger(process.env.CODEX_SNAPSHOTS_SEMANTIC_INDEX_LIMIT || DEFAULT_MAX_INDEX_SESSIONS, 100, 5000, DEFAULT_MAX_INDEX_SESSIONS);
+    const limit = clampInteger(process.env.AGENT_SNAPSHOTS_SEMANTIC_INDEX_LIMIT || process.env.CODEX_SNAPSHOTS_SEMANTIC_INDEX_LIMIT || DEFAULT_MAX_INDEX_SESSIONS, 100, 5000, DEFAULT_MAX_INDEX_SESSIONS);
     const groups = new Map();
     for (const entry of Object.entries(index.entries)) {
         const optionsKey = entry[1].optionsKey || "unknown";

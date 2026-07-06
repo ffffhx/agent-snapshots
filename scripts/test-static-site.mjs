@@ -11,7 +11,7 @@ const PUBLIC_API_URL = "https://snapshots.example.test";
 async function testHomepagePublicSessions() {
   const requests = [];
   const { document } = await runStaticPage("site/index.html", {
-    locationHref: "https://ffffhx.github.io/codex-snapshots/",
+    locationHref: "https://ffffhx.github.io/agent-snapshots/",
     config: { apiUrl: PUBLIC_API_URL },
     fetch: async (url, options = {}) => {
       requests.push(String(url));
@@ -37,7 +37,7 @@ async function testHomepagePublicSessions() {
               createdAt: "2026-05-28T00:00:00.000Z",
               redacted: true,
               turnCount: 2,
-              url: "https://ffffhx.github.io/codex-snapshots/share/?id=snap_publicsession123456",
+              url: "https://ffffhx.github.io/agent-snapshots/share/?id=snap_publicsession123456",
             },
           ],
           count: 1,
@@ -75,7 +75,7 @@ async function testHomepageDeletesOwnPublicSessionWithGithubLogin() {
   const requests = [];
   let deleted = false;
   const { document, window } = await runStaticPage("site/index.html", {
-    locationHref: "https://ffffhx.github.io/codex-snapshots/",
+    locationHref: "https://ffffhx.github.io/agent-snapshots/",
     config: { apiUrl: PUBLIC_API_URL },
     confirm: () => true,
     fetch: async (url, options = {}) => {
@@ -164,10 +164,10 @@ async function testHomepageDeletesOwnPublicSessionWithGithubLogin() {
 async function testPublicHomepageWithoutConfiguredApiDoesNotFetchLoopback() {
   const requests = [];
   const { document } = await runStaticPage("site/index.html", {
-    locationHref: "https://ffffhx.github.io/codex-snapshots/",
+    locationHref: "https://ffffhx.github.io/agent-snapshots/",
     config: {},
     storage: {
-      "codex-snapshots.api": "http://127.0.0.1:8787",
+      "agent-snapshots.api": "http://127.0.0.1:8787",
     },
     fetch: async (url) => {
       requests.push(String(url));
@@ -223,7 +223,7 @@ async function testLocalHomepageDefaultsToLocalApi() {
 async function testSharePageLoadsFromConfiguredApi() {
   const requests = [];
   const { document } = await runStaticPage("site/share/index.html", {
-    locationHref: "https://ffffhx.github.io/codex-snapshots/share/?id=snap_publicsession123456",
+    locationHref: "https://ffffhx.github.io/agent-snapshots/share/?id=snap_publicsession123456",
     config: { apiUrl: PUBLIC_API_URL },
     fetch: async (url) => {
       requests.push(String(url));
@@ -294,10 +294,10 @@ async function testSharePageLoadsFromConfiguredApi() {
 async function testPublicSharePageWithoutConfiguredApiDoesNotFetchLoopback() {
   const requests = [];
   const { document } = await runStaticPage("site/share/index.html", {
-    locationHref: "https://ffffhx.github.io/codex-snapshots/share/?id=snap_publicsession123456",
+    locationHref: "https://ffffhx.github.io/agent-snapshots/share/?id=snap_publicsession123456",
     config: {},
     storage: {
-      "codex-snapshots.api": "http://127.0.0.1:8787",
+      "agent-snapshots.api": "http://127.0.0.1:8787",
     },
     fetch: async (url) => {
       requests.push(String(url));
@@ -321,7 +321,7 @@ async function runStaticPage(relativeHtmlPath, { locationHref, config, fetch, st
   });
   const { window } = dom;
 
-  window.CODEX_SNAPSHOTS_CONFIG = config;
+  window.AGENT_SNAPSHOTS_CONFIG = config;
   window.fetch = fetch;
   window.open = open;
   window.confirm = confirm;

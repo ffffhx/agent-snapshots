@@ -243,12 +243,12 @@ export async function prewarmSemanticIndex(options: SemanticIndexBuildOptions) {
 }
 
 export function defaultSemanticIndexPath() {
-  const override = process.env.CODEX_SNAPSHOTS_SEMANTIC_INDEX || process.env.SNAPSHOT_SEMANTIC_INDEX;
+  const override = process.env.AGENT_SNAPSHOTS_SEMANTIC_INDEX || process.env.CODEX_SNAPSHOTS_SEMANTIC_INDEX || process.env.SNAPSHOT_SEMANTIC_INDEX;
   if (override) {
     return override;
   }
   const cacheHome = process.env.XDG_CACHE_HOME || path.join(os.homedir(), ".cache");
-  return path.join(cacheHome, "codex-snapshots", "semantic-index.v1.json");
+  return path.join(cacheHome, "agent-snapshots", "semantic-index.v1.json");
 }
 
 async function ensureSemanticSessionIndex({
@@ -504,7 +504,7 @@ function compactVector(vector: number[]) {
 }
 
 function pruneSemanticIndex(index: SemanticIndexFile) {
-  const limit = clampInteger(process.env.CODEX_SNAPSHOTS_SEMANTIC_INDEX_LIMIT || DEFAULT_MAX_INDEX_SESSIONS, 100, 5000, DEFAULT_MAX_INDEX_SESSIONS);
+  const limit = clampInteger(process.env.AGENT_SNAPSHOTS_SEMANTIC_INDEX_LIMIT || process.env.CODEX_SNAPSHOTS_SEMANTIC_INDEX_LIMIT || DEFAULT_MAX_INDEX_SESSIONS, 100, 5000, DEFAULT_MAX_INDEX_SESSIONS);
   const groups = new Map<string, Array<[string, IndexEntry]>>();
   for (const entry of Object.entries(index.entries)) {
     const optionsKey = entry[1].optionsKey || "unknown";

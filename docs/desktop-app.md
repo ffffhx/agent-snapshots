@@ -1,14 +1,14 @@
 # Desktop app (Electron)
 
 The local viewer can run as a native desktop app. It reuses the exact same
-local server (`codex-snapshot serve`) and web UI — the desktop shell just spawns
+local server (`agent-snapshot serve`) and web UI — the desktop shell just spawns
 that server on a private localhost port and shows it in a native window.
 
 ## How it works
 
 - `electron/main.mjs` is the Electron main process.
 - On launch it picks a free loopback port, spawns the built CLI
-  (`dist/cli/codex-snapshot.mjs serve`) using Electron's bundled Node runtime
+  (`dist/cli/agent-snapshot.mjs serve`) using Electron's bundled Node runtime
   (`ELECTRON_RUN_AS_NODE=1`), waits for the server to answer, then opens a
   `BrowserWindow` pointed at `http://127.0.0.1:<port>/`.
 - External links (share URLs, docs) open in your system browser; everything

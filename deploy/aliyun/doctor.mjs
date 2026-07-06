@@ -22,7 +22,7 @@ main().catch((error) => {
 });
 
 async function main() {
-  const configPath = path.resolve(parsed.options.config || process.env.CODEX_SNAPSHOTS_ALIYUN_CONFIG || DEFAULT_CONFIG);
+  const configPath = path.resolve(parsed.options.config || process.env.AGENT_SNAPSHOTS_ALIYUN_CONFIG || DEFAULT_CONFIG);
   const checks = [];
 
   if (!existsSync(configPath)) {
@@ -101,8 +101,8 @@ function resolveConfig(config) {
     githubOwner: first(config.SNAPSHOT_GITHUB_OWNER_LOGIN, config.SNAPSHOT_GITHUB_OWNER, config.SNAPSHOT_GITHUB_OWNER_ID),
     sessionSecret: first(config.SNAPSHOT_SESSION_SECRET),
     issueCert: isEnabled(config.ISSUE_CERT),
-    pagesRepo: first(config.PAGES_REPO, process.env.GITHUB_REPOSITORY, "ffffhx/codex-snapshots"),
-    siteUrl: first(config.SITE_URL, config.SNAPSHOT_SHARE_SITE_URL, "https://ffffhx.github.io/codex-snapshots/"),
+    pagesRepo: first(config.PAGES_REPO, process.env.GITHUB_REPOSITORY, "ffffhx/agent-snapshots"),
+    siteUrl: first(config.SITE_URL, config.SNAPSHOT_SHARE_SITE_URL, "https://ffffhx.github.io/agent-snapshots/"),
     sshTarget: first(config.SSH_TARGET, config.ALIYUN_SSH_TARGET),
     token: first(config.TOKEN, config.SNAPSHOT_SHARE_TOKEN),
   };
@@ -247,9 +247,9 @@ function commandExists(command) {
 
 function readLocalToken() {
   const candidates = [
-    process.env.CODEX_SNAPSHOTS_AGENT_FILE,
+    process.env.AGENT_SNAPSHOTS_AGENT_FILE,
     process.env.SNAPSHOT_SHARE_TOKEN_FILE,
-    path.join(os.homedir(), ".codex-snapshots-agent.json"),
+    path.join(os.homedir(), ".agent-snapshots-agent.json"),
   ].filter(Boolean);
 
   for (const filePath of candidates) {

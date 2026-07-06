@@ -9,7 +9,7 @@ export function renderLauncherApp(csrfToken) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Codex Snapshots</title>
+  <title>Agent Snapshots</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <style>${launcherCss()}</style>
 </head>
@@ -28,7 +28,7 @@ export function renderLauncherApp(csrfToken) {
     <footer class="foot">
       <span class="brand">
         <svg class="mark" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#c33f28"/><g transform="rotate(-5 32 32)"><rect x="18.5" y="15" width="27" height="33" rx="3" fill="#f6ecd6"/><g fill="#c9bb98"><rect x="22.5" y="21" width="19" height="2" rx="1"/><rect x="22.5" y="25.5" width="17" height="2" rx="1"/><rect x="22.5" y="30" width="19" height="2" rx="1"/></g><circle cx="40.5" cy="42.5" r="6.2" fill="#a82f1c"/><circle cx="40.5" cy="42.5" r="6.2" fill="none" stroke="#fff3df" stroke-width="0.9" stroke-opacity="0.85"/></g></svg>
-        Codex Snapshots
+        Agent Snapshots
       </span>
       <span id="hint" class="hint"></span>
     </footer>

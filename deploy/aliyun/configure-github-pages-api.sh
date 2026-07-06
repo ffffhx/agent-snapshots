@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-API_URL="${CODEX_SNAPSHOTS_PUBLIC_API_URL:-${SNAPSHOT_SHARE_PUBLIC_API_URL:-${SNAPSHOT_SHARE_API_URL:-}}}"
-REPO="${GITHUB_REPOSITORY:-ffffhx/codex-snapshots}"
+API_URL="${AGENT_SNAPSHOTS_PUBLIC_API_URL:-${SNAPSHOT_SHARE_PUBLIC_API_URL:-${SNAPSHOT_SHARE_API_URL:-}}}"
+REPO="${GITHUB_REPOSITORY:-ffffhx/agent-snapshots}"
 WORKFLOW="pages.yml"
 TRIGGER_WORKFLOW=1
 WAIT_WORKFLOW=0
@@ -12,11 +12,11 @@ usage() {
 Usage:
   deploy/aliyun/configure-github-pages-api.sh \
     --api-url https://snapshots.example.com \
-    [--repo ffffhx/codex-snapshots]
+    [--repo ffffhx/agent-snapshots]
 
 Options:
   --api-url URL       Public share API URL to expose to GitHub Pages.
-  --repo OWNER/REPO   GitHub repository. Defaults to ffffhx/codex-snapshots.
+  --repo OWNER/REPO   GitHub repository. Defaults to ffffhx/agent-snapshots.
   --workflow FILE     Pages workflow file. Defaults to pages.yml.
   --no-dispatch       Set the variable but do not trigger the workflow.
   --wait              Wait for the triggered workflow to finish.
@@ -62,7 +62,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z "${API_URL}" ]]; then
-  echo "Missing API URL. Set CODEX_SNAPSHOTS_PUBLIC_API_URL or pass --api-url." >&2
+  echo "Missing API URL. Set AGENT_SNAPSHOTS_PUBLIC_API_URL or pass --api-url." >&2
   exit 1
 fi
 
@@ -119,11 +119,11 @@ fi
 
 gh auth status >/dev/null
 
-gh variable set CODEX_SNAPSHOTS_PUBLIC_API_URL \
+gh variable set AGENT_SNAPSHOTS_PUBLIC_API_URL \
   --repo "${REPO}" \
   --body "${API_URL%/}"
 
-echo "Set CODEX_SNAPSHOTS_PUBLIC_API_URL=${API_URL%/} on ${REPO}"
+echo "Set AGENT_SNAPSHOTS_PUBLIC_API_URL=${API_URL%/} on ${REPO}"
 
 if [[ "${TRIGGER_WORKFLOW}" -eq 1 ]]; then
   gh workflow run "${WORKFLOW}" --repo "${REPO}"

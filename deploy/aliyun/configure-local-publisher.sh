@@ -2,9 +2,9 @@
 set -euo pipefail
 
 API_URL="${SNAPSHOT_SHARE_API_URL:-${SNAPSHOT_SHARE_PUBLIC_API_URL:-}}"
-SITE_URL="${SNAPSHOT_SHARE_SITE_URL:-https://ffffhx.github.io/codex-snapshots/}"
+SITE_URL="${SNAPSHOT_SHARE_SITE_URL:-https://ffffhx.github.io/agent-snapshots/}"
 TOKEN="${SNAPSHOT_SHARE_TOKEN:-}"
-TOKEN_FILE="${SNAPSHOT_SHARE_TOKEN_FILE:-${HOME}/.codex-snapshots-agent.json}"
+TOKEN_FILE="${SNAPSHOT_SHARE_TOKEN_FILE:-${HOME}/.agent-snapshots-agent.json}"
 REINSTALL_DAEMON=0
 CHECK_API=1
 
@@ -18,7 +18,7 @@ Options:
   --api-url URL          Public share API URL. Defaults to SNAPSHOT_SHARE_API_URL or SNAPSHOT_SHARE_PUBLIC_API_URL.
   --site-url URL         Public static site URL. Defaults to SNAPSHOT_SHARE_SITE_URL or GitHub Pages.
   --token TOKEN          Optional publish token for legacy token auth. Defaults to SNAPSHOT_SHARE_TOKEN.
-  --token-file FILE      Local publisher config file for codex-snapshot. Defaults to ~/.codex-snapshots-agent.json.
+  --token-file FILE      Local publisher config file for agent-snapshot. Defaults to ~/.agent-snapshots-agent.json.
   --reinstall-daemon     Reinstall the macOS LaunchAgent with the public API/site URLs.
   --no-check             Skip the API health check.
   -h, --help             Show help.

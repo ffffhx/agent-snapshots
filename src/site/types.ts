@@ -47,6 +47,6 @@ export type SnapshotPayload = {
 
 declare global {
   interface Window {
-    CODEX_SNAPSHOTS_CONFIG?: SiteConfig;
+    AGENT_SNAPSHOTS_CONFIG?: SiteConfig;
   }
 }

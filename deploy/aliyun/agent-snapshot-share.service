@@ -1,6 +1,6 @@
 [Unit]
-Description=Codex Snapshots Share API
-Documentation=https://github.com/ffffhx/codex-snapshots
+Description=Agent Snapshots Share API
+Documentation=https://github.com/ffffhx/agent-snapshots
 After=network-online.target
 Wants=network-online.target
 
@@ -8,19 +8,19 @@ Wants=network-online.target
 Type=simple
 User=codexsnap
 Group=codexsnap
-WorkingDirectory=/opt/codex-snapshots
+WorkingDirectory=/opt/agent-snapshots
 Environment=NODE_ENV=production
 Environment=HOST=127.0.0.1
 Environment=PORT=8787
-EnvironmentFile=/etc/codex-snapshots/share-api.env
-ExecStart=/usr/bin/env node /opt/codex-snapshots/server/share-api.mjs
+EnvironmentFile=/etc/agent-snapshots/share-api.env
+ExecStart=/usr/bin/env node /opt/agent-snapshots/server/share-api.mjs
 Restart=always
 RestartSec=3
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=true
 ProtectSystem=strict
-ReadWritePaths=/var/lib/codex-snapshots
+ReadWritePaths=/var/lib/agent-snapshots
 
 [Install]
 WantedBy=multi-user.target

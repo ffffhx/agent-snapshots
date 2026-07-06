@@ -39,7 +39,7 @@ await new Promise((resolve, reject) => {
   server.listen(port, host, resolve);
 });
 
-console.log(`Codex Snapshots website is running at http://${host}:${port}`);
+console.log(`Agent Snapshots website is running at http://${host}:${port}`);
 
 async function resolveFile(pathname) {
   const decoded = decodeURIComponent(pathname);
@@ -95,7 +95,7 @@ function parseArgs(args) {
 }
 
 function printHelp() {
-  console.log(`codex-snapshots site server
+  console.log(`agent-snapshots site server
 
 Usage:
   node scripts/serve-site.mjs [--host 127.0.0.1] [--port 4322]

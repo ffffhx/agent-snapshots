@@ -4,7 +4,7 @@ export const DEFAULT_VIEWER_URL = "http://127.0.0.1:4321/";
 export const DEFAULT_API_URL = "http://127.0.0.1:8787";
 
 export function config(): SiteConfig {
-  return window.CODEX_SNAPSHOTS_CONFIG || {};
+  return window.AGENT_SNAPSHOTS_CONFIG || {};
 }
 
 export function normalizeViewerUrl(value: string | null | undefined): string {
@@ -17,7 +17,7 @@ export function normalizeApiUrl(value: string | null | undefined): string {
 }
 
 export function resolveInitialApiUrl(params: URLSearchParams): string {
-  const storedApiUrl = safeLocalStorageGet("codex-snapshots.api");
+  const storedApiUrl = safeLocalStorageGet("agent-snapshots.api");
   const resolved = params.get("api") || config().apiUrl || safeStoredApiUrl(storedApiUrl);
   return normalizeApiUrl(resolved || (isLocalPage() ? DEFAULT_API_URL : ""));
 }

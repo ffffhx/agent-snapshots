@@ -63,12 +63,12 @@ async function makeClaudeHome() {
 
 test("local code path markdown links render as inline code instead of anchors", () => {
   const html = renderMarkdownHtml(
-    "改动在 [src/server/local-viewer-app.mts](/Users/bytedance/Code/codex-snapshots/src/server/local-viewer-app.mts)，" +
+    "改动在 [src/server/local-viewer-app.mts](/Users/bytedance/Code/agent-snapshots/src/server/local-viewer-app.mts)，" +
       "并同步生成 [dist/server/local-viewer-app.mjs](dist/server/local-viewer-app.mjs)。",
   );
   assert.ok(html.includes("<code>src/server/local-viewer-app.mts</code>"), html);
   assert.ok(html.includes("<code>dist/server/local-viewer-app.mjs</code>"), html);
-  assert.ok(!html.includes('href="/Users/bytedance/Code/codex-snapshots/src/server/local-viewer-app.mts"'), html);
+  assert.ok(!html.includes('href="/Users/bytedance/Code/agent-snapshots/src/server/local-viewer-app.mts"'), html);
   assert.ok(!html.includes('href="dist/server/local-viewer-app.mjs"'), html);
 });
 

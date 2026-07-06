@@ -4,21 +4,21 @@ set -euo pipefail
 SSH_TARGET=""
 SSH_OPTS=()
 INPUT_FILE=""
-REMOTE_FILE="/var/lib/codex-snapshots/shares.json"
+REMOTE_FILE="/var/lib/agent-snapshots/shares.json"
 RESTART_SERVICE=1
 
 usage() {
   cat <<'EOF'
 Usage:
-  deploy/aliyun/restore-share-data.sh --ssh root@1.2.3.4 --file backups/codex-snapshots/shares-20260101T000000Z.json
+  deploy/aliyun/restore-share-data.sh --ssh root@1.2.3.4 --file backups/agent-snapshots/shares-20260101T000000Z.json
 
 Options:
   --ssh TARGET          SSH target, for example root@1.2.3.4.
   --file FILE           Local share data JSON backup to restore.
   --identity-file FILE  SSH private key for the ECS host.
   --port PORT           SSH port.
-  --remote-file FILE    Remote share data file. Defaults to /var/lib/codex-snapshots/shares.json.
-  --no-restart          Restore the file without restarting codex-snapshot-share.
+  --remote-file FILE    Remote share data file. Defaults to /var/lib/agent-snapshots/shares.json.
+  --no-restart          Restore the file without restarting agent-snapshot-share.
   -h, --help            Show help.
 EOF
 }
@@ -93,8 +93,8 @@ remote_file_q="$(shell_quote "${REMOTE_FILE}")"
 remote_cmd=$(
   cat <<EOF
 set -e
-tmp_file="\$(mktemp /tmp/codex-snapshots-restore.XXXXXX.json)"
-root_script="\$(mktemp /tmp/codex-snapshots-restore-root.XXXXXX.sh)"
+tmp_file="\$(mktemp /tmp/agent-snapshots-restore.XXXXXX.json)"
+root_script="\$(mktemp /tmp/agent-snapshots-restore-root.XXXXXX.sh)"
 cleanup() {
   rm -f "\${tmp_file}" "\${root_script}"
 }
@@ -118,7 +118,7 @@ fi
 install -o codexsnap -g codexsnap -m 0640 "\${tmp_file}" "\${remote_file}"
 
 if [ "\${restart_service}" = "1" ]; then
-  systemctl restart codex-snapshot-share.service
+  systemctl restart agent-snapshot-share.service
 fi
 ROOT_SCRIPT
 chmod +x "\${root_script}"

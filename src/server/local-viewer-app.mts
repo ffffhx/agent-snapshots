@@ -7,7 +7,7 @@ export function renderServerApp(csrfToken, shareConfig = {}) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Codex Snapshots</title>
+  <title>Agent Snapshots</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <style>${serverCss()}</style>
 </head>
@@ -17,7 +17,7 @@ export function renderServerApp(csrfToken, shareConfig = {}) {
       <div class="sidebar-top">
         <div class="brand">
           <svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#c33f28"/><g transform="rotate(-5 32 32)"><rect x="18.5" y="16" width="27" height="33" rx="3" fill="#5c160c" opacity="0.22"/><rect x="18.5" y="15" width="27" height="33" rx="3" fill="#f6ecd6"/><g fill="#c9bb98"><rect x="22.5" y="21" width="19" height="2" rx="1"/><rect x="22.5" y="25.5" width="17" height="2" rx="1"/><rect x="22.5" y="30" width="19" height="2" rx="1"/><rect x="22.5" y="34.5" width="13.5" height="2" rx="1"/></g><circle cx="40.5" cy="42.5" r="6.2" fill="#a82f1c"/><circle cx="40.5" cy="42.5" r="6.2" fill="none" stroke="#fff3df" stroke-width="0.9" stroke-opacity="0.85"/><circle cx="40.5" cy="42.5" r="1.4" fill="#fff3df"/></g></svg>
-          <div class="brand-wm"><b>Codex Snapshots</b><span>Read-only archive</span></div>
+          <div class="brand-wm"><b>Agent Snapshots</b><span>Read-only archive</span></div>
         </div>
         <div class="toolbar">
           <button id="openSearch" class="search-entry" type="button" title="搜索会话正文">
@@ -110,7 +110,7 @@ export function renderServerApp(csrfToken, shareConfig = {}) {
     </section>
   </div>
   <div id="toast" class="toast" hidden></div>
-  <script>window.CODEX_SNAPSHOT_SHARE_CONFIG=${inlineJson(shareConfig || {})}; window.CODEX_SNAPSHOT_CSRF_TOKEN=${inlineJson(csrfToken)};</script>
+  <script>window.AGENT_SNAPSHOT_SHARE_CONFIG=${inlineJson(shareConfig || {})}; window.AGENT_SNAPSHOT_CSRF_TOKEN=${inlineJson(csrfToken)};</script>
   <script>${serverJs()}</script>
 </body>
 </html>`;
@@ -1419,20 +1419,20 @@ const SEMANTIC_SEARCH_UPDATE_LIMIT = 24;
 const SEMANTIC_PREWARM_SCAN_LIMIT = 1200;
 const SEMANTIC_PREWARM_UPDATE_LIMIT = 120;
 const SAFETY_CHECKS_ENABLED = false;
-const SIDEBAR_WIDTH_KEY = "codex-snapshot.sidebar-width.v2";
+const SIDEBAR_WIDTH_KEY = "agent-snapshot.sidebar-width.v2";
 const SIDEBAR_MIN = 240;
 const SIDEBAR_MAX = 460;
-const THEME_KEY = "codex-snapshot.theme.v1";
-const DENSITY_KEY = "codex-snapshot.density.v1";
-const READ_SCALE_KEY = "codex-snapshot.read-scale.v1";
+const THEME_KEY = "agent-snapshot.theme.v1";
+const DENSITY_KEY = "agent-snapshot.density.v1";
+const READ_SCALE_KEY = "agent-snapshot.read-scale.v1";
 const THEMES = ["light", "sepia", "dark"];
 const READ_SCALE_MIN = 0.85;
 const READ_SCALE_MAX = 1.4;
 const READ_SCALE_STEP = 0.05;
 const $ = (id) => document.getElementById(id);
 const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
-const shareConfig = window.CODEX_SNAPSHOT_SHARE_CONFIG || {};
-const csrfToken = String(window.CODEX_SNAPSHOT_CSRF_TOKEN || "");
+const shareConfig = window.AGENT_SNAPSHOT_SHARE_CONFIG || {};
+const csrfToken = String(window.AGENT_SNAPSHOT_CSRF_TOKEN || "");
 
 function renderLoading(message) {
   return "<div class='loading-state' role='status' aria-live='polite' aria-busy='true'>" +
@@ -1534,7 +1534,7 @@ function isKeyboardActivation(event) {
   return event.key === "Enter" || event.key === " ";
 }
 
-const STATS_RATE_KEY = "codex-snapshot.stats-rate.v1";
+const STATS_RATE_KEY = "agent-snapshot.stats-rate.v1";
 
 function loadStatsRate() {
   try {
@@ -3216,7 +3216,7 @@ function postSnapshotState(snapshot) {
   }
   const options = activeOptions();
   window.parent.postMessage({
-    type: "codex-snapshot:state",
+    type: "agent-snapshot:state",
     version: 1,
     selected: state.selected,
     title: snapshot.title || state.selected,

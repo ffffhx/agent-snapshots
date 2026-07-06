@@ -68,10 +68,10 @@ export async function semanticSearchSnapshot(snapshot, { query, limit = DEFAULT_
     };
 }
 export function defaultEmbeddingModel() {
-    return String(process.env.SNAPSHOT_EMBEDDING_MODEL || process.env.CODEX_SNAPSHOTS_EMBEDDING_MODEL || DEFAULT_EMBEDDING_MODEL).trim();
+    return String(process.env.SNAPSHOT_EMBEDDING_MODEL || process.env.AGENT_SNAPSHOTS_EMBEDDING_MODEL || process.env.CODEX_SNAPSHOTS_EMBEDDING_MODEL || DEFAULT_EMBEDDING_MODEL).trim();
 }
 export function defaultOllamaBaseUrl() {
-    return String(process.env.SNAPSHOT_OLLAMA_URL || process.env.CODEX_SNAPSHOTS_OLLAMA_URL || process.env.OLLAMA_HOST || DEFAULT_OLLAMA_BASE_URL).trim();
+    return String(process.env.SNAPSHOT_OLLAMA_URL || process.env.AGENT_SNAPSHOTS_OLLAMA_URL || process.env.CODEX_SNAPSHOTS_OLLAMA_URL || process.env.OLLAMA_HOST || DEFAULT_OLLAMA_BASE_URL).trim();
 }
 export function normalizeOllamaBaseUrl(value) {
     const clean = String(value || DEFAULT_OLLAMA_BASE_URL).trim().replace(/\/+$/, "");

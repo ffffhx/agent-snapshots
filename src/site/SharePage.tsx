@@ -90,11 +90,11 @@ async function loadShare({
     setTitle("缺少分享 API");
     setMeta("公开站点需要配置分享 API。");
     setGoalObjective("");
-    setContentHtml('<div class="empty">请使用带有 ?api=https://... 的分享链接，或先配置 CODEX_SNAPSHOTS_PUBLIC_API_URL。</div>');
+    setContentHtml('<div class="empty">请使用带有 ?api=https://... 的分享链接，或先配置 AGENT_SNAPSHOTS_PUBLIC_API_URL。</div>');
     return;
   }
 
-  safeLocalStorageSet("codex-snapshots.api", apiUrl);
+  safeLocalStorageSet("agent-snapshots.api", apiUrl);
 
   const response = await fetch(`${apiUrl}/api/snapshots/${encodeURIComponent(shareId)}`, {
     cache: "no-store",

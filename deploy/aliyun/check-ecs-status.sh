@@ -78,9 +78,9 @@ run_root() {
 }
 
 echo "== systemd =="
-systemctl is-enabled codex-snapshot-share.service || true
-systemctl is-active codex-snapshot-share.service || true
-systemctl --no-pager --lines=12 status codex-snapshot-share.service || true
+systemctl is-enabled agent-snapshot-share.service || true
+systemctl is-active agent-snapshot-share.service || true
+systemctl --no-pager --lines=12 status agent-snapshot-share.service || true
 
 echo
 echo "== local health =="
@@ -89,13 +89,13 @@ echo
 
 echo
 echo "== install files =="
-run_root test -f /etc/codex-snapshots/share-api.env
-run_root test -f /etc/systemd/system/codex-snapshot-share.service
-run_root test -d /var/lib/codex-snapshots
-run_root test -f /etc/nginx/conf.d/codex-snapshots.conf
+run_root test -f /etc/agent-snapshots/share-api.env
+run_root test -f /etc/systemd/system/agent-snapshot-share.service
+run_root test -d /var/lib/agent-snapshots
+run_root test -f /etc/nginx/conf.d/agent-snapshots.conf
 if command -v stat >/dev/null 2>&1; then
-  run_root stat -c "env %a %U:%G %n" /etc/codex-snapshots/share-api.env
-  run_root stat -c "state %a %U:%G %n" /var/lib/codex-snapshots
+  run_root stat -c "env %a %U:%G %n" /etc/agent-snapshots/share-api.env
+  run_root stat -c "state %a %U:%G %n" /var/lib/agent-snapshots
 fi
 
 echo
@@ -116,7 +116,7 @@ fi
 echo
 echo "== nginx =="
 run_root nginx -t
-run_root grep -q "proxy_pass http://127.0.0.1:8787" /etc/nginx/conf.d/codex-snapshots.conf
+run_root grep -q "proxy_pass http://127.0.0.1:8787" /etc/nginx/conf.d/agent-snapshots.conf
 '
 
 SSH_CMD=(ssh)

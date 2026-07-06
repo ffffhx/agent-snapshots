@@ -41,7 +41,7 @@ SSH_IDENTITY_FILE=
 SSH_PORT=
 DOMAIN=snapshots.mycompany.dev
 API_URL=https://snapshots.mycompany.dev
-SITE_URL=https://ffffhx.github.io/codex-snapshots/
+SITE_URL=https://ffffhx.github.io/agent-snapshots/
 TOKEN=test-token-0123456789
 CERTBOT_EMAIL=ops@example.org
 INSTALL_DEPS=0
@@ -52,7 +52,7 @@ CONFIGURE_PAGES=0
 WAIT_PAGES=0
 CONFIGURE_LOCAL=0
 REINSTALL_DAEMON=0
-REMOTE_DIR=/tmp/codex-snapshots-deploy
+REMOTE_DIR=/tmp/agent-snapshots-deploy
 EOF
 
 bash "${ROOT_DIR}/deploy/aliyun/deploy-to-ecs.sh" --config "${VALID_CONFIG}" --dry-run >"${OUTPUT_FILE}" 2>&1
@@ -70,7 +70,7 @@ cat >"${AUTO_TOKEN_CONFIG}" <<'EOF'
 SSH_TARGET=root@203.0.113.42
 DOMAIN=snapshots.mycompany.dev
 API_URL=https://snapshots.mycompany.dev
-SITE_URL=https://ffffhx.github.io/codex-snapshots/
+SITE_URL=https://ffffhx.github.io/agent-snapshots/
 TOKEN=auto
 INSTALL_DEPS=0
 ISSUE_CERT=0
@@ -80,7 +80,7 @@ CONFIGURE_PAGES=0
 WAIT_PAGES=0
 CONFIGURE_LOCAL=1
 REINSTALL_DAEMON=0
-REMOTE_DIR=/tmp/codex-snapshots-deploy
+REMOTE_DIR=/tmp/agent-snapshots-deploy
 EOF
 
 bash "${ROOT_DIR}/deploy/aliyun/deploy-to-ecs.sh" --config "${AUTO_TOKEN_CONFIG}" --dry-run >"${OUTPUT_FILE}" 2>&1
@@ -98,7 +98,7 @@ cat >"${OAUTH_CONFIG}" <<'EOF'
 SSH_TARGET=root@203.0.113.42
 DOMAIN=snapshots.mycompany.dev
 API_URL=https://snapshots.mycompany.dev
-SITE_URL=https://ffffhx.github.io/codex-snapshots/
+SITE_URL=https://ffffhx.github.io/agent-snapshots/
 TOKEN=change-me
 SNAPSHOT_GITHUB_CLIENT_ID=client-id-0123456789
 SNAPSHOT_GITHUB_CLIENT_SECRET=client-secret-0123456789
@@ -112,7 +112,7 @@ CONFIGURE_PAGES=0
 WAIT_PAGES=0
 CONFIGURE_LOCAL=1
 REINSTALL_DAEMON=0
-REMOTE_DIR=/tmp/codex-snapshots-deploy
+REMOTE_DIR=/tmp/agent-snapshots-deploy
 EOF
 
 bash "${ROOT_DIR}/deploy/aliyun/deploy-to-ecs.sh" --config "${OAUTH_CONFIG}" --dry-run >"${OUTPUT_FILE}" 2>&1
@@ -131,7 +131,7 @@ cat >"${LOCAL_TOKEN_CONFIG}" <<'EOF'
 SSH_TARGET=root@203.0.113.42
 DOMAIN=snapshots.mycompany.dev
 API_URL=https://snapshots.mycompany.dev
-SITE_URL=https://ffffhx.github.io/codex-snapshots/
+SITE_URL=https://ffffhx.github.io/agent-snapshots/
 INSTALL_DEPS=0
 ISSUE_CERT=0
 RUN_PREFLIGHT=0
@@ -140,14 +140,14 @@ CONFIGURE_PAGES=0
 WAIT_PAGES=0
 CONFIGURE_LOCAL=0
 REINSTALL_DAEMON=0
-REMOTE_DIR=/tmp/codex-snapshots-deploy
+REMOTE_DIR=/tmp/agent-snapshots-deploy
 EOF
 
 cat >"${TOKEN_FILE}" <<'EOF'
 {
   "snapshotShareToken": "local-file-token-0123456789",
   "snapshotShareApiUrl": "https://snapshots.mycompany.dev",
-  "snapshotShareSiteUrl": "https://ffffhx.github.io/codex-snapshots"
+  "snapshotShareSiteUrl": "https://ffffhx.github.io/agent-snapshots"
 }
 EOF
 
@@ -171,7 +171,7 @@ grep -q "Token still uses the placeholder change-me" "${OUTPUT_FILE}"
 
 bash "${ROOT_DIR}/deploy/aliyun/configure-local-publisher.sh" \
   --api-url https://snapshots.mycompany.dev \
-  --site-url https://ffffhx.github.io/codex-snapshots/ \
+  --site-url https://ffffhx.github.io/agent-snapshots/ \
   --token test-token-0123456789 \
   --token-file "${TOKEN_FILE}" \
   --no-check >"${OUTPUT_FILE}" 2>&1
@@ -180,17 +180,17 @@ grep -q "Wrote local publisher config" "${OUTPUT_FILE}"
 grep -q "Public share API: https://snapshots.mycompany.dev" "${OUTPUT_FILE}"
 grep -q '"snapshotShareToken": "test-token-0123456789"' "${TOKEN_FILE}"
 grep -q '"snapshotShareApiUrl": "https://snapshots.mycompany.dev"' "${TOKEN_FILE}"
-grep -q '"snapshotShareSiteUrl": "https://ffffhx.github.io/codex-snapshots"' "${TOKEN_FILE}"
+grep -q '"snapshotShareSiteUrl": "https://ffffhx.github.io/agent-snapshots"' "${TOKEN_FILE}"
 
 bash "${ROOT_DIR}/deploy/aliyun/configure-local-publisher.sh" \
   --api-url https://snapshots.mycompany.dev \
-  --site-url https://ffffhx.github.io/codex-snapshots/ \
+  --site-url https://ffffhx.github.io/agent-snapshots/ \
   --token-file "${TOKEN_FILE}" \
   --no-check >"${OUTPUT_FILE}" 2>&1
 
 grep -q "Legacy publish token: not configured" "${OUTPUT_FILE}"
 grep -q '"snapshotShareApiUrl": "https://snapshots.mycompany.dev"' "${TOKEN_FILE}"
-grep -q '"snapshotShareSiteUrl": "https://ffffhx.github.io/codex-snapshots"' "${TOKEN_FILE}"
+grep -q '"snapshotShareSiteUrl": "https://ffffhx.github.io/agent-snapshots"' "${TOKEN_FILE}"
 if grep -q '"snapshotShareToken"' "${TOKEN_FILE}"; then
   echo "OAuth local publisher config should not require a snapshotShareToken." >&2
   exit 1
@@ -220,11 +220,11 @@ grep -q 'SNAPSHOT_SHARE_TOKEN=%s' "${ROOT_DIR}/deploy/aliyun/install-share-api.s
 grep -q 'SNAPSHOT_SHARE_PUBLIC_API_URL=%s' "${ROOT_DIR}/deploy/aliyun/install-share-api.sh"
 grep -q 'SNAPSHOT_SHARE_TOKEN must be a single-line value' "${ROOT_DIR}/deploy/aliyun/install-share-api.sh"
 
-grep -q 'proxy_pass http://127.0.0.1:8787' "${ROOT_DIR}/deploy/aliyun/nginx-codex-snapshots.bootstrap.conf"
-grep -q 'proxy_set_header X-Forwarded-Host $host;' "${ROOT_DIR}/deploy/aliyun/nginx-codex-snapshots.bootstrap.conf"
-grep -q 'proxy_set_header X-Forwarded-Port $server_port;' "${ROOT_DIR}/deploy/aliyun/nginx-codex-snapshots.bootstrap.conf"
-grep -q 'Strict-Transport-Security "max-age=31536000"' "${ROOT_DIR}/deploy/aliyun/nginx-codex-snapshots.conf"
-grep -q 'X-Frame-Options DENY' "${ROOT_DIR}/deploy/aliyun/nginx-codex-snapshots.conf"
-grep -q 'proxy_set_header X-Forwarded-Proto https;' "${ROOT_DIR}/deploy/aliyun/nginx-codex-snapshots.conf"
+grep -q 'proxy_pass http://127.0.0.1:8787' "${ROOT_DIR}/deploy/aliyun/nginx-agent-snapshots.bootstrap.conf"
+grep -q 'proxy_set_header X-Forwarded-Host $host;' "${ROOT_DIR}/deploy/aliyun/nginx-agent-snapshots.bootstrap.conf"
+grep -q 'proxy_set_header X-Forwarded-Port $server_port;' "${ROOT_DIR}/deploy/aliyun/nginx-agent-snapshots.bootstrap.conf"
+grep -q 'Strict-Transport-Security "max-age=31536000"' "${ROOT_DIR}/deploy/aliyun/nginx-agent-snapshots.conf"
+grep -q 'X-Frame-Options DENY' "${ROOT_DIR}/deploy/aliyun/nginx-agent-snapshots.conf"
+grep -q 'proxy_set_header X-Forwarded-Proto https;' "${ROOT_DIR}/deploy/aliyun/nginx-agent-snapshots.conf"
 
 echo "✓ Aliyun deploy config validation checks passed"

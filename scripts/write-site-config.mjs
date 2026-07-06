@@ -19,6 +19,7 @@ main().catch((error) => {
 async function main() {
   const apiUrl = normalizePublicApiUrl(
     parsed.options.apiUrl ||
+      process.env.AGENT_SNAPSHOTS_PUBLIC_API_URL ||
       process.env.CODEX_SNAPSHOTS_PUBLIC_API_URL ||
       process.env.SNAPSHOT_SHARE_PUBLIC_API_URL ||
       process.env.SNAPSHOT_SHARE_API_URL ||
@@ -30,7 +31,7 @@ async function main() {
   await mkdir(path.dirname(outputPath), { recursive: true });
   await writeFile(
     outputPath,
-    `window.CODEX_SNAPSHOTS_CONFIG = ${inlineJson({ apiUrl })};\n`,
+    `window.AGENT_SNAPSHOTS_CONFIG = ${inlineJson({ apiUrl })};\n`,
     "utf8"
   );
 
@@ -48,15 +49,15 @@ function normalizePublicApiUrl(value, { allowLocal }) {
   try {
     url = new URL(text);
   } catch {
-    throw new Error(`CODEX_SNAPSHOTS_PUBLIC_API_URL must be a valid URL: ${text}`);
+    throw new Error(`AGENT_SNAPSHOTS_PUBLIC_API_URL must be a valid URL: ${text}`);
   }
 
   if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new Error(`CODEX_SNAPSHOTS_PUBLIC_API_URL must start with http:// or https://: ${text}`);
+    throw new Error(`AGENT_SNAPSHOTS_PUBLIC_API_URL must start with http:// or https://: ${text}`);
   }
 
   if (!allowLocal && !isPublicHost(url.hostname)) {
-    throw new Error(`CODEX_SNAPSHOTS_PUBLIC_API_URL must be a public API host, got ${text}`);
+    throw new Error(`AGENT_SNAPSHOTS_PUBLIC_API_URL must be a public API host, got ${text}`);
   }
 
   return url.toString().replace(/\/+$/, "");
@@ -150,10 +151,10 @@ Usage:
   node scripts/write-site-config.mjs --api-url https://snapshots.example.com --output site/assets/config.js
 
 Environment:
-  CODEX_SNAPSHOTS_PUBLIC_API_URL  Public share API URL used by GitHub Pages.
+  AGENT_SNAPSHOTS_PUBLIC_API_URL  Public share API URL used by GitHub Pages.
 
 Options:
-  --api-url URL    Public share API URL. Defaults to CODEX_SNAPSHOTS_PUBLIC_API_URL.
+  --api-url URL    Public share API URL. Defaults to AGENT_SNAPSHOTS_PUBLIC_API_URL.
   --output FILE    Config file to write. Defaults to site/assets/config.js.
   --allow-local    Allow localhost/private API URLs for local development only.
   -h, --help       Show help.
