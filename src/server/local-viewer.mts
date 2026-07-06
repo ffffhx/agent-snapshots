@@ -166,11 +166,12 @@ export async function serveLocalViewer({
         }
         const id = url.searchParams.get("id") || "";
         const cwd = url.searchParams.get("cwd") || "";
-        if (!id.startsWith("codex:")) {
-          sendJson(response, { ok: false, error: "仅支持在 Orca 中恢复 Codex 会话" }, 400);
+        const refMatch = /^(codex|claude):(.+)$/.exec(id);
+        if (!refMatch) {
+          sendJson(response, { ok: false, error: "该会话无法在 Orca 中恢复（仅支持 Codex / Claude）" }, 400);
           return;
         }
-        const result = await resumeSessionInOrca({ sessionId: id.slice("codex:".length), cwd });
+        const result = await resumeSessionInOrca({ engine: refMatch[1], sessionId: refMatch[2], cwd });
         sendJson(response, result, result.ok ? 200 : 400);
         return;
       }

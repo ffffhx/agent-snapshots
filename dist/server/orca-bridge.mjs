@@ -25,11 +25,23 @@ function resolveOrcaBinary() {
     }
     return "orca";
 }
-export function resumeSessionInOrca({ sessionId, cwd }) {
+// The resume command per engine, run inside an Orca terminal in the session's
+// project. Codex threads resume with `codex resume`; Claude Code conversations
+// resume by session id with `claude --resume`. (Trae has no CLI resume.)
+const RESUME_COMMAND = {
+    codex: (id) => `codex resume ${id}`,
+    claude: (id) => `claude --resume ${id}`,
+};
+export function resumeSessionInOrca({ engine, sessionId, cwd }) {
     return new Promise((resolve) => {
         const id = String(sessionId || "").trim();
         if (!SESSION_ID_RE.test(id)) {
             resolve({ ok: false, error: "无效的会话 ID" });
+            return;
+        }
+        const buildCommand = RESUME_COMMAND[engine];
+        if (!buildCommand) {
+            resolve({ ok: false, error: "该会话无法在 Orca 中恢复（仅支持 Codex / Claude）" });
             return;
         }
         let dir = String(cwd || "").trim();
@@ -59,7 +71,7 @@ export function resumeSessionInOrca({ sessionId, cwd }) {
             "--worktree",
             `path:${dir}`,
             "--command",
-            `codex resume ${id}`,
+            buildCommand(id),
             "--title",
             `resume ${id.slice(0, 8)}`,
             "--focus",

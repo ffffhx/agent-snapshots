@@ -2177,7 +2177,7 @@ function renderSearchResult(result, index) {
     "<div class='search-result-actions'>" +
       "<button type='button' class='sr-act' data-sr-action='open' title='打开会话（↵）'>打开</button>" +
       "<button type='button' class='sr-act' data-sr-action='in-session' title='打开并在此会话内搜索'>会话内搜</button>" +
-      (result.engine === "codex" ? "<button type='button' class='sr-act sr-act-orca' data-sr-action='resume-orca' title='在 Orca 中打开终端并恢复此会话'>↗ Orca 继续</button>" : "") +
+      (result.engine !== "trae" ? "<button type='button' class='sr-act sr-act-orca' data-sr-action='resume-orca' title='在 Orca 中打开终端并恢复此会话'>↗ Orca 继续</button>" : "") +
       "<button type='button' class='sr-act' data-sr-action='export-html' title='导出为 HTML'>导出 HTML</button>" +
       "<button type='button' class='sr-act' data-sr-action='copy-path' title='复制项目路径'>复制路径</button>" +
     "</div>" +
@@ -3148,7 +3148,7 @@ function renderSnapshot(snapshot) {
   }).join("") : "";
   $("risks").innerHTML = snapshot.safetyChecks === false ? "" : notices + risks;
   const options = activeOptions();
-  const resumeButton = snapshot.engine === "codex"
+  const resumeButton = snapshot.engine !== "trae"
     ? "<button type='button' class='resume-orca' data-resume-orca='" + esc(snapshot.ref || "") + "' data-resume-cwd='" + esc(snapshot.cwd || snapshot.displayCwd || "") + "' title='在 Orca 中打开终端并恢复此会话'>↗ 在 Orca 继续</button>"
     : "";
   $("exports").innerHTML = resumeButton + "<a href='/export?" + options.toString() + "&format=html' target='_blank' rel='noopener noreferrer'>导出 HTML</a><a href='/export?" + options.toString() + "&format=md' target='_blank' rel='noopener noreferrer'>导出 Markdown</a><button type='button' data-publish-cloud='1'>发布分享</button><span id='publishStatus' class='publish-status'></span>";
@@ -3375,8 +3375,8 @@ function showToast(message, isError) {
 }
 
 async function resumeInOrca(ref, cwd) {
-  if (!ref || !ref.startsWith("codex:")) {
-    showToast("仅支持在 Orca 中恢复 Codex 会话", true);
+  if (!ref || !(ref.startsWith("codex:") || ref.startsWith("claude:"))) {
+    showToast("该会话无法在 Orca 中恢复（仅支持 Codex / Claude）", true);
     return;
   }
   showToast("正在唤起 Orca...", false);
