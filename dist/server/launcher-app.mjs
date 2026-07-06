@@ -82,12 +82,13 @@ html,body{height:100%;background:transparent;color:var(--ink);font-family:var(--
 .empty{display:grid;place-items:center;height:100%;min-height:180px;color:var(--faint);font:600 13px/1.5 var(--mono);text-align:center}
 .spin{width:15px;height:15px;border:2px solid rgba(233,220,196,0.2);border-top-color:var(--seal);border-radius:99px;animation:sp .8s linear infinite;margin-right:8px;display:inline-block;vertical-align:-2px}
 @keyframes sp{to{transform:rotate(360deg)}}
-.foot{display:flex;align-items:center;justify-content:space-between;gap:12px;height:38px;flex:0 0 auto;padding:0 14px;border-top:1px solid var(--line);-webkit-app-region:drag}
-.brand{display:inline-flex;align-items:center;gap:8px;color:var(--dim);font:700 11px/1 var(--mono);letter-spacing:0.02em}
+.foot{display:flex;align-items:center;justify-content:space-between;gap:12px;height:42px;flex:0 0 auto;padding:0 14px;border-top:1px solid var(--line-2);background:linear-gradient(0deg,rgba(14,10,6,0.62),rgba(14,10,6,0.16));-webkit-app-region:drag}
+.brand{display:inline-flex;align-items:center;gap:8px;color:#c3b596;font:700 11px/1 var(--mono);letter-spacing:0.03em}
 .mark{width:18px;height:18px;border-radius:5px}
-.hint{color:var(--faint);font:600 11px/1 var(--mono)}
-.hint kbd{display:inline-block;min-width:14px;margin:0 1px;padding:2px 5px;border:1px solid var(--line-2);border-radius:5px;background:rgba(233,220,196,0.06);color:var(--dim);font:700 10px/1 var(--mono)}
-.hint b{color:var(--seal)}
+.hint{color:#cdc0a1;font:600 11.5px/1 var(--mono);white-space:nowrap}
+.hint .sep{color:rgba(233,220,196,0.26);margin:0 7px;font-style:normal}
+.hint .act{color:var(--seal);font-weight:800}
+.hint kbd{display:inline-flex;align-items:center;justify-content:center;min-width:19px;height:20px;margin-right:6px;padding:0 6px;border:1px solid rgba(233,220,196,0.24);border-top-color:rgba(255,255,255,0.28);border-radius:6px;background:linear-gradient(180deg,rgba(233,220,196,0.16),rgba(233,220,196,0.08));color:#efe3c5;font:700 11px/1 var(--mono);box-shadow:inset 0 1px 0 rgba(255,255,255,0.12),0 1px 2px rgba(0,0,0,0.4);vertical-align:-4px}
 .toast{position:fixed;left:50%;bottom:52px;transform:translateX(-50%);z-index:9;max-width:86vw;border:1px solid var(--line-2);border-left:3px solid var(--seal);border-radius:9px;background:rgba(30,23,15,0.95);color:var(--ink);padding:10px 14px;font:600 12.5px/1.4 var(--sans);box-shadow:0 20px 50px -24px #000}
 .toast[hidden]{display:none}
 .toast.err{border-left-color:#e0563b}
@@ -204,10 +205,11 @@ function highlight(text,terms){
 function updateHint(){
   const it=state.items[state.sel];
   const k=it?engineKey(it):"codex";
+  const sep="<span class='sep'>·</span>";
   const primary=k==="trae"
-    ? "<kbd>↵</kbd> 此会话无法恢复 &nbsp;·&nbsp; <b>⌘↵</b> 完整视图"
-    : "<b>↵</b> 在 Orca 继续 &nbsp;·&nbsp; <kbd>⌘↵</kbd> 完整视图";
-  $("hint").innerHTML=primary+" &nbsp;·&nbsp; <kbd>↑↓</kbd> 选择 &nbsp;·&nbsp; <kbd>esc</kbd> 关闭";
+    ? "<kbd>↵</kbd> 无法恢复"+sep+"<kbd>⌘↵</kbd> <span class='act'>完整视图</span>"
+    : "<span class='act'>↵ 在 Orca 继续</span>"+sep+"<kbd>⌘↵</kbd> 完整视图";
+  $("hint").innerHTML=primary+sep+"<kbd>↑↓</kbd> 选择"+sep+"<kbd>esc</kbd> 关闭";
 }
 
 function move(d){
