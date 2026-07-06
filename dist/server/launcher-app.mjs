@@ -229,7 +229,7 @@ async function resumeOrOpen(it){
   if(k==="trae"){ showToast("Trae 会话无法在 Orca 中恢复 · 按 ⌘↵ 打开完整视图",false); return; }
   showToast("正在唤起 Orca…",false);
   try{
-    const p=new URLSearchParams({id:it.ref||"",cwd:it.cwd||it.displayCwd||""});
+    const p=new URLSearchParams({id:it.ref||"",cwd:it.cwd||it.displayCwd||"",title:it.title||""});
     const r=await fetch("/api/resume-in-orca?"+p.toString(),{method:"POST",headers:{"${MUTATION_CSRF_HEADER}":window.CSRF}});
     const d=await r.json();
     if(r.ok&&d.ok) showToast(d.message||"已在 Orca 中恢复会话",false);

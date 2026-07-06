@@ -2332,7 +2332,7 @@ async function runSearchResultAction(action, ref) {
     return;
   }
   if (action === "resume-orca") {
-    resumeInOrca(ref, result.cwd || result.displayCwd || "");
+    resumeInOrca(ref, result.cwd || result.displayCwd || "", result.title || "");
     return;
   }
   if (action === "export-html" || action === "export-md") {
@@ -3149,7 +3149,7 @@ function renderSnapshot(snapshot) {
   $("risks").innerHTML = snapshot.safetyChecks === false ? "" : notices + risks;
   const options = activeOptions();
   const resumeButton = snapshot.engine !== "trae"
-    ? "<button type='button' class='resume-orca' data-resume-orca='" + esc(snapshot.ref || "") + "' data-resume-cwd='" + esc(snapshot.cwd || snapshot.displayCwd || "") + "' title='在 Orca 中打开终端并恢复此会话'>↗ 在 Orca 继续</button>"
+    ? "<button type='button' class='resume-orca' data-resume-orca='" + esc(snapshot.ref || "") + "' data-resume-cwd='" + esc(snapshot.cwd || snapshot.displayCwd || "") + "' data-resume-title='" + esc(snapshot.title || "") + "' title='在 Orca 中打开终端并恢复此会话'>↗ 在 Orca 继续</button>"
     : "";
   $("exports").innerHTML = resumeButton + "<a href='/export?" + options.toString() + "&format=html' target='_blank' rel='noopener noreferrer'>导出 HTML</a><a href='/export?" + options.toString() + "&format=md' target='_blank' rel='noopener noreferrer'>导出 Markdown</a><button type='button' data-publish-cloud='1'>发布分享</button><span id='publishStatus' class='publish-status'></span>";
   $("turns").innerHTML = snapshot.transcriptHtml || "<div class='meta'>没有找到可分享的用户或助手消息。</div>";
@@ -3374,14 +3374,14 @@ function showToast(message, isError) {
   toastTimer = setTimeout(() => { el.hidden = true; }, 4200);
 }
 
-async function resumeInOrca(ref, cwd) {
+async function resumeInOrca(ref, cwd, title) {
   if (!ref || !(ref.startsWith("codex:") || ref.startsWith("claude:"))) {
     showToast("该会话无法在 Orca 中恢复（仅支持 Codex / Claude）", true);
     return;
   }
   showToast("正在唤起 Orca...", false);
   try {
-    const params = new URLSearchParams({ id: ref, cwd: cwd || "" });
+    const params = new URLSearchParams({ id: ref, cwd: cwd || "", title: title || "" });
     const response = await fetch("/api/resume-in-orca?" + params.toString(), {
       method: "POST",
       headers: { "${MUTATION_CSRF_HEADER}": csrfToken },
@@ -3677,7 +3677,7 @@ $("exports").addEventListener("click", (event) => {
   }
   const resumeBtn = event.target.closest("[data-resume-orca]");
   if (resumeBtn) {
-    resumeInOrca(resumeBtn.dataset.resumeOrca, resumeBtn.dataset.resumeCwd);
+    resumeInOrca(resumeBtn.dataset.resumeOrca, resumeBtn.dataset.resumeCwd, resumeBtn.dataset.resumeTitle);
   }
 });
 $("turns").addEventListener("click", (event) => {

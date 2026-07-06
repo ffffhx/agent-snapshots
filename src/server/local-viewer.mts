@@ -171,7 +171,7 @@ export async function serveLocalViewer({
           sendJson(response, { ok: false, error: "该会话无法在 Orca 中恢复（仅支持 Codex / Claude）" }, 400);
           return;
         }
-        const result = await resumeSessionInOrca({ engine: refMatch[1], sessionId: refMatch[2], cwd });
+        const result = await resumeSessionInOrca({ engine: refMatch[1], sessionId: refMatch[2], cwd, title: url.searchParams.get("title") || "" });
         sendJson(response, result, result.ok ? 200 : 400);
         return;
       }
