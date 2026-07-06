@@ -8,9 +8,11 @@
 // summary) in SQLite, keyed by the session mtime, so queries reuse the exact
 // same `matchSearchDocument` scoring/snippet logic without touching the disk.
 //
-// CJK-friendly by design: candidates are selected with indexed `LIKE` over a
-// folded text column (substring match works for any language), avoiding the
-// FTS5 tokenizer pitfalls for Chinese/Japanese/Korean.
+// Candidate selection is FTS5 with the `trigram` tokenizer over a folded text
+// column: substring MATCH works for any language (including CJK) once a term
+// is >= 3 characters, backed by an inverted index instead of a full-table
+// scan. Terms shorter than 3 characters (common for Chinese) fall back to the
+// indexed-`LIKE` scan over the same column, so short queries keep working.
 
 import path from "node:path";
 import os from "node:os";
@@ -28,6 +30,7 @@ const SEARCH_DOC_LIMIT = 24;
 
 let dbPromise = null;
 let syncing = false;
+let ftsEnabled = false;
 
 function indexPath() {
   const cacheHome = process.env.XDG_CACHE_HOME || path.join(os.homedir(), ".cache");
@@ -65,9 +68,58 @@ async function getDb() {
     )`);
     db.exec("CREATE INDEX IF NOT EXISTS docs_source ON docs(source)");
     db.exec("CREATE INDEX IF NOT EXISTS docs_mtime ON docs(mtime)");
+    ftsEnabled = setupFtsIndex(db);
     return db;
   })();
   return dbPromise;
+}
+
+// External-content FTS5 table mirroring docs.fold, kept in sync by triggers so
+// every code path that writes docs (upsert, delete sweep) is covered. Returns
+// false when the bundled SQLite lacks FTS5/trigram, in which case searches use
+// the LIKE fallback only.
+function setupFtsIndex(db) {
+  try {
+    const hadFts = Boolean(db.prepare("SELECT 1 AS x FROM sqlite_master WHERE type = 'table' AND name = 'docs_fts'").get());
+    db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS docs_fts USING fts5(
+      fold,
+      content='docs',
+      content_rowid='rowid',
+      tokenize='trigram'
+    )`);
+    db.exec(`CREATE TRIGGER IF NOT EXISTS docs_fts_ai AFTER INSERT ON docs BEGIN
+      INSERT INTO docs_fts(rowid, fold) VALUES (new.rowid, new.fold);
+    END`);
+    db.exec(`CREATE TRIGGER IF NOT EXISTS docs_fts_ad AFTER DELETE ON docs BEGIN
+      INSERT INTO docs_fts(docs_fts, rowid, fold) VALUES ('delete', old.rowid, old.fold);
+    END`);
+    db.exec(`CREATE TRIGGER IF NOT EXISTS docs_fts_au AFTER UPDATE OF fold ON docs BEGIN
+      INSERT INTO docs_fts(docs_fts, rowid, fold) VALUES ('delete', old.rowid, old.fold);
+      INSERT INTO docs_fts(rowid, fold) VALUES (new.rowid, new.fold);
+    END`);
+    // Backfill for databases created before the FTS table. COUNT(*) on an
+    // external-content table proxies to `docs` and can't detect an empty
+    // index, so a one-time meta flag marks the rebuild instead.
+    db.exec("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)");
+    const ready = db.prepare("SELECT value FROM meta WHERE key = 'fts_ready'").get();
+    if (!hadFts || !ready || ready.value !== "1") {
+      db.exec("INSERT INTO docs_fts(docs_fts) VALUES('rebuild')");
+      db.prepare("INSERT INTO meta (key, value) VALUES ('fts_ready', '1') ON CONFLICT(key) DO UPDATE SET value = excluded.value").run();
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// FTS5 string syntax: double quotes delimit a phrase; trigram makes a quoted
+// phrase of >= 3 characters behave as an indexed substring match.
+function ftsPhrase(term) {
+  return '"' + String(term).replace(/"/g, '""') + '"';
+}
+
+function termLength(term) {
+  return Array.from(String(term)).length;
 }
 
 function engineKey(engine) {
@@ -125,6 +177,30 @@ export async function syncSearchIndex({
   let updated = 0;
   let failed = 0;
   let pending = 0;
+  // Reads (session files) stay async; writes are buffered and flushed inside
+  // short transactions so the initial build doesn't pay per-row commit costs
+  // and never holds the write lock across an await.
+  const writeBuffer = [];
+  const flushWrites = () => {
+    if (!writeBuffer.length) {
+      return;
+    }
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      for (const row of writeBuffer) {
+        upsert.run(...row);
+      }
+      db.exec("COMMIT");
+    } catch (error) {
+      try {
+        db.exec("ROLLBACK");
+      } catch {
+        // Ignore rollback failures; the transaction is already dead.
+      }
+      throw error;
+    }
+    writeBuffer.length = 0;
+  };
   for (const summary of sessions) {
     const ref = refOf(summary);
     const existing = getStmt.get(ref);
@@ -144,7 +220,7 @@ export async function syncSearchIndex({
       if (withTokens) {
         tokens = await extractSessionTokenUsage(summary);
       }
-      upsert.run(
+      writeBuffer.push([
         ref,
         summary.engine || "codex",
         engineKey(summary.engine),
@@ -161,11 +237,39 @@ export async function syncSearchIndex({
         tokens?.output || 0,
         tokens?.model || "",
         Date.now(),
-      );
+      ]);
+      if (writeBuffer.length >= 50) {
+        flushWrites();
+      }
       updated += 1;
       indexed += 1;
     } catch {
       failed += 1;
+    }
+  }
+  flushWrites();
+  // When this pass saw the complete, unfiltered session list, evict rows for
+  // sessions that no longer exist on disk (the FTS triggers mirror deletes).
+  if (source === "all" && !cwd && includeArchived && sessions.length < scanLimit && pending === 0) {
+    const liveRefs = new Set(sessions.map((summary) => refOf(summary)));
+    const staleRefs = db.prepare("SELECT ref FROM docs").all()
+      .map((row) => row.ref)
+      .filter((ref) => !liveRefs.has(ref));
+    if (staleRefs.length) {
+      const del = db.prepare("DELETE FROM docs WHERE ref = ?");
+      db.exec("BEGIN IMMEDIATE");
+      try {
+        for (const ref of staleRefs) {
+          del.run(ref);
+        }
+        db.exec("COMMIT");
+      } catch {
+        try {
+          db.exec("ROLLBACK");
+        } catch {
+          // Ignore rollback failures.
+        }
+      }
     }
   }
   return { scanned: sessions.length, indexed, updated, pending, failed, total: await indexRowCount() };
@@ -196,28 +300,54 @@ export async function searchIndexed({ query, source = "all", cwd = "", limit = S
     return { query: cleanQuery, terms: [], scanned: total, matched: 0, failed: 0, results: [], indexed: total, viaIndex: true };
   }
 
+  // Trigram MATCH needs >= 3 characters per phrase; shorter terms (common in
+  // Chinese) are constrained with LIKE on top of the FTS candidates, or the
+  // whole query falls back to the LIKE scan when no term is long enough.
+  const longTerms = ftsEnabled ? terms.filter((term) => termLength(term) >= 3) : [];
+  const shortTerms = terms.filter((term) => !longTerms.includes(term));
+
   const params = [];
-  let where = "1=1";
-  if (source && source !== "all") {
-    where += " AND source = ?";
-    params.push(engineKey(source));
-  }
-  if (cwd) {
-    where += " AND (cwd = ? OR display_cwd = ?)";
-    params.push(cwd, cwd);
-  }
-  const conditions = [];
-  conditions.push("fold LIKE ? ESCAPE '\\'");
-  params.push("%" + likeEscape(normalizedQuery) + "%");
-  if (terms.length) {
-    conditions.push("(" + terms.map(() => "fold LIKE ? ESCAPE '\\'").join(" AND ") + ")");
-    for (const term of terms) {
+  let sql;
+  if (longTerms.length) {
+    let where = "docs_fts MATCH ?";
+    params.push(longTerms.map(ftsPhrase).join(" AND "));
+    for (const term of shortTerms) {
+      where += " AND d.fold LIKE ? ESCAPE '\\'";
       params.push("%" + likeEscape(term) + "%");
     }
+    if (source && source !== "all") {
+      where += " AND d.source = ?";
+      params.push(engineKey(source));
+    }
+    if (cwd) {
+      where += " AND (d.cwd = ? OR d.display_cwd = ?)";
+      params.push(cwd, cwd);
+    }
+    sql = `SELECT d.fields_json, d.segments_json, d.summary_json FROM docs_fts JOIN docs d ON d.rowid = docs_fts.rowid WHERE ${where}`;
+  } else {
+    let where = "1=1";
+    if (source && source !== "all") {
+      where += " AND source = ?";
+      params.push(engineKey(source));
+    }
+    if (cwd) {
+      where += " AND (cwd = ? OR display_cwd = ?)";
+      params.push(cwd, cwd);
+    }
+    const conditions = [];
+    conditions.push("fold LIKE ? ESCAPE '\\'");
+    params.push("%" + likeEscape(normalizedQuery) + "%");
+    if (terms.length) {
+      conditions.push("(" + terms.map(() => "fold LIKE ? ESCAPE '\\'").join(" AND ") + ")");
+      for (const term of terms) {
+        params.push("%" + likeEscape(term) + "%");
+      }
+    }
+    where += " AND (" + conditions.join(" OR ") + ")";
+    sql = `SELECT fields_json, segments_json, summary_json FROM docs WHERE ${where}`;
   }
-  where += " AND (" + conditions.join(" OR ") + ")";
 
-  const rows = db.prepare(`SELECT fields_json, segments_json, summary_json FROM docs WHERE ${where}`).all(...params);
+  const rows = db.prepare(sql).all(...params);
   const results = [];
   for (const row of rows) {
     try {
