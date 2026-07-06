@@ -1,6 +1,10 @@
 // @ts-nocheck
 import http from "node:http";
+import { execFile } from "node:child_process";
+import { stat } from "node:fs/promises";
+import { promisify } from "node:util";
 import { send, sendJson } from "./http.js";
+import { redactText } from "../core/privacy.js";
 import { allowMutationRequest, createMutationCsrfToken, isAllowedSnapshotServerRequest, setSnapshotServerCorsHeaders, } from "./local-security.js";
 import { renderServerApp } from "./local-viewer-app.mjs";
 import { renderLauncherApp } from "./launcher-app.mjs";
@@ -8,6 +12,7 @@ import { prewarmSemanticIndex, semanticSearchSessions } from "./semantic-index.m
 import { semanticSearchSnapshot } from "./semantic-search.mjs";
 import { searchIndexed, syncSearchIndexInBackground, searchIndexStats, indexRowCount } from "./search-index.mjs";
 import { resumeSessionInOrca } from "./orca-bridge.mjs";
+const execFileAsync = promisify(execFile);
 export async function serveLocalViewer({ codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir, host, port, defaultServerLimit, snapshotLogoSvg, shareConfig, listSessions, loadSnapshot, searchSessions, applySafetyChecksOption, snapshotApiResponse, publishAllSnapshots, publishSnapshot, createShareRequestPayload, stableSnapshotShareId, renderMarkdown, renderHtml, readPositiveInteger, readNonNegativeInteger, safeFileName, }) {
     const csrfToken = createMutationCsrfToken();
     const server = http.createServer(async (request, response) => {
@@ -127,6 +132,26 @@ export async function serveLocalViewer({ codexHome, claudeHome, traeHome, traeAp
                     pricePerMTokOut: Number(url.searchParams.get("priceOut") || "0") || 0,
                 });
                 sendJson(response, stats);
+                return;
+            }
+            if (url.pathname === "/api/session-commits") {
+                const id = url.searchParams.get("id");
+                if (!id) {
+                    sendJson(response, { error: "missing id" }, 400);
+                    return;
+                }
+                const snapshot = await loadSnapshot(id, {
+                    codexHome,
+                    claudeHome,
+                    traeHome,
+                    traeAppHome,
+                    traeRecordingsDir,
+                    includeTools: false,
+                    includeToolOutput: false,
+                    redact: false,
+                });
+                const commits = await readSessionCommits(snapshot);
+                sendJson(response, { commits });
                 return;
             }
             if (url.pathname === "/api/resume-in-orca") {
@@ -384,4 +409,84 @@ export async function serveLocalViewer({ codexHome, claudeHome, traeHome, traeAp
     console.log(`Trae home: ${traeHome}`);
     console.log(`Trae app home: ${traeAppHome}`);
     console.log(`Trae recordings: ${traeRecordingsDir}`);
+}
+async function readSessionCommits(snapshot) {
+    const cwd = typeof snapshot?.cwd === "string" ? snapshot.cwd.trim() : "";
+    if (!cwd) {
+        return [];
+    }
+    const range = sessionTurnTimeRange(snapshot?.turns || []);
+    if (!range) {
+        return [];
+    }
+    const cwdInfo = await stat(cwd).catch(() => null);
+    if (!cwdInfo?.isDirectory()) {
+        return [];
+    }
+    try {
+        const repoCheck = await execFileAsync("git", ["rev-parse", "--is-inside-work-tree"], { cwd });
+        if (String(repoCheck.stdout || "").trim() !== "true") {
+            return [];
+        }
+        const result = await execFileAsync("git", [
+            "log",
+            "--since",
+            range.start.toISOString(),
+            "--until",
+            range.end.toISOString(),
+            "--pretty=format:%H%x09%cI%x09%s",
+        ], { cwd });
+        return parseGitLogCommits(result.stdout || "");
+    }
+    catch {
+        return [];
+    }
+}
+function sessionTurnTimeRange(turns) {
+    const first = firstValidTurnDate(turns);
+    const last = firstValidTurnDate((turns || []).slice().reverse());
+    if (!first || !last) {
+        return null;
+    }
+    const startMs = first.getTime();
+    const endMs = last.getTime();
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) {
+        return null;
+    }
+    return {
+        start: new Date(Math.min(startMs, endMs)),
+        end: new Date(Math.max(startMs, endMs) + 10 * 60 * 1000),
+    };
+}
+function firstValidTurnDate(turns) {
+    for (const turn of turns || []) {
+        const timestamp = String(turn?.timestamp || "").trim();
+        if (!timestamp) {
+            continue;
+        }
+        const date = new Date(timestamp);
+        if (Number.isFinite(date.getTime())) {
+            return date;
+        }
+    }
+    return null;
+}
+function parseGitLogCommits(output) {
+    return String(output || "")
+        .split(/\r?\n/)
+        .map((line) => {
+        const parts = line.split("\t");
+        if (parts.length < 3) {
+            return null;
+        }
+        const sha = String(parts.shift() || "").trim();
+        const timestamp = String(parts.shift() || "").trim();
+        const subject = redactText(parts.join("\t").trim());
+        if (!sha || !timestamp || !subject) {
+            return null;
+        }
+        return { sha, timestamp, subject };
+    })
+        .filter(Boolean)
+        .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 }

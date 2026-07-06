@@ -883,6 +883,41 @@ button:disabled { cursor: wait; opacity: 0.55; transform: none; box-shadow: none
 .risk.medium b { color: var(--amber); }
 .risk span { line-height: 1.4; font-size: 13px; }
 .risk em { color: var(--muted); font-style: normal; font-size: 12.5px; line-height: 1.4; overflow-wrap: anywhere; }
+.commit-card {
+  justify-content: center;
+}
+.commit-card .commit-body {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  width: min(760px, 100%);
+  border: 1px solid rgba(47, 93, 73, 0.24);
+  border-left: 4px solid var(--pine);
+  border-radius: 10px;
+  background: var(--pine-soft);
+  color: var(--ink-soft);
+  padding: 10px 13px;
+  box-shadow: var(--shadow-soft);
+}
+.commit-sha {
+  border: 1px solid rgba(47, 93, 73, 0.28);
+  border-radius: 6px;
+  background: var(--panel-wash);
+  color: var(--pine);
+  padding: 4px 6px;
+  font: 700 10.5px/1 var(--mono);
+}
+.commit-subject {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font: 600 13.5px/1.4 var(--sans);
+}
+.commit-time {
+  color: var(--muted);
+  font: 600 11px/1 var(--mono);
+  white-space: nowrap;
+}
 
 /* ---------- 对话 ---------- */
 .turns {
@@ -950,6 +985,15 @@ html[data-density="compact"] .sessions { gap: 1px; }
   font: 600 13px/1.3 var(--mono); letter-spacing: 0.05em;
   transition: color 130ms ease;
 }
+.process-files {
+  max-width: min(52vw, 540px);
+  overflow: hidden;
+  color: var(--faint);
+  font: 600 11px/1.3 var(--mono);
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .process-summary:hover { color: var(--seal-deep); }
 .process-summary::-webkit-details-marker { display: none; }
 .process-summary::after {
@@ -969,6 +1013,19 @@ html[data-density="compact"] .sessions { gap: 1px; }
 }
 .tool-details summary:hover { color: var(--seal-deep); }
 .tool-details[open] summary { margin-bottom: 8px; }
+.file-change {
+  display: grid;
+  gap: 7px;
+}
+.file-change + .file-change {
+  margin-top: 12px;
+}
+.file-change-path {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font: 700 11px/1.35 var(--mono);
+}
 .subagents { width: min(1000px, 100%); margin-top: 36px; border-top: 2px solid var(--line); padding-top: 18px; display: grid; gap: 10px; }
 .subagents-head { font: 700 12px/1 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); display: flex; align-items: center; gap: 8px; }
 .subagents-count { color: var(--faint); }
@@ -3153,6 +3210,7 @@ async function selectSession(id) {
 
 function renderSnapshot(snapshot) {
   state.currentSnapshot = snapshot;
+  snapshot.commitCount = "";
   resetSessionSearchState(false);
   $("title").textContent = snapshot.title;
   $("meta").classList.remove("empty", "loading");
@@ -3172,6 +3230,7 @@ function renderSnapshot(snapshot) {
     : "";
   $("exports").innerHTML = resumeButton + "<a href='/export?" + options.toString() + "&format=html' target='_blank' rel='noopener noreferrer'>导出 HTML</a><a href='/export?" + options.toString() + "&format=md' target='_blank' rel='noopener noreferrer'>导出 Markdown</a><button type='button' data-publish-cloud='1'>发布分享</button><span id='publishStatus' class='publish-status'></span>";
   renderTranscriptTurns(snapshot.transcriptHtml || "<div class='meta'>没有找到可分享的用户或助手消息。</div>");
+  loadSessionCommits(snapshot, state.requestToken);
   renderSessionSearch();
   postSnapshotState(snapshot);
 }
@@ -3293,6 +3352,165 @@ function scheduleHydrationStep(fn) {
   window.setTimeout(fn, 16);
 }
 
+async function loadSessionCommits(snapshot, requestToken) {
+  const ref = snapshot.ref || state.selected || "";
+  if (!ref) {
+    return;
+  }
+  try {
+    const params = new URLSearchParams({ id: ref });
+    const response = await fetch("/api/session-commits?" + params.toString());
+    const result = await response.json();
+    if (requestToken !== state.requestToken || state.selected !== ref || state.currentSnapshot !== snapshot) {
+      return;
+    }
+    const commits = Array.isArray(result.commits) ? result.commits : [];
+    snapshot.commitCount = commits.length;
+    $("meta").innerHTML = renderSnapshotMeta(snapshot);
+    insertSessionCommitCards(snapshot, commits);
+  } catch {
+    if (requestToken === state.requestToken && state.selected === ref && state.currentSnapshot === snapshot) {
+      snapshot.commitCount = 0;
+      $("meta").innerHTML = renderSnapshotMeta(snapshot);
+    }
+  }
+}
+
+function insertSessionCommitCards(snapshot, commits) {
+  const container = $("turns");
+  Array.from(container.querySelectorAll(".commit-card")).forEach((node) => node.remove());
+  if (!Array.isArray(commits) || !commits.length) {
+    return;
+  }
+  flushTranscriptHydration();
+  const timeline = transcriptTopLevelTimeline(snapshot, container);
+  const sorted = commits.slice().sort((a, b) => commitTimeMs(a) - commitTimeMs(b));
+  for (const commit of sorted) {
+    const card = renderCommitCardNode(commit);
+    const before = commitInsertBeforeNode(timeline, commitTimeMs(commit));
+    if (before) {
+      container.insertBefore(card, before);
+    } else {
+      const subagents = container.querySelector(".subagents");
+      container.insertBefore(card, subagents || null);
+    }
+  }
+}
+
+function transcriptTopLevelTimeline(snapshot, container) {
+  const items = snapshotTopLevelItems(snapshot.turns || []);
+  const nodes = Array.from(container.children).filter((node) => {
+    return !node.classList.contains("commit-card")
+      && !node.classList.contains("subagents")
+      && !node.classList.contains("turns-hydrating");
+  });
+  const timeline = [];
+  for (let index = 0; index < items.length && index < nodes.length; index += 1) {
+    const time = earliestTurnTimeMs(items[index].turns);
+    if (Number.isFinite(time)) {
+      timeline.push({ node: nodes[index], time: time });
+    }
+  }
+  return timeline.sort((a, b) => a.time - b.time);
+}
+
+function snapshotTopLevelItems(turns) {
+  const items = [];
+  let index = 0;
+  while (index < turns.length) {
+    const turn = turns[index];
+    if (isSnapshotUserTurn(turn)) {
+      items.push({ turns: [turn] });
+      index += 1;
+      continue;
+    }
+    const segment = [];
+    while (index < turns.length && !isSnapshotUserTurn(turns[index])) {
+      segment.push(turns[index]);
+      index += 1;
+    }
+    const finalIndex = lastAssistantTurnIndex(segment);
+    if (finalIndex === -1) {
+      if (segment.length) {
+        items.push({ turns: segment });
+      }
+      continue;
+    }
+    if (finalIndex === segment.length - 1) {
+      const processTurns = segment.slice(0, finalIndex);
+      if (processTurns.length) {
+        items.push({ turns: processTurns });
+      }
+      items.push({ turns: [segment[finalIndex]] });
+      continue;
+    }
+    items.push({ turns: segment });
+  }
+  return items;
+}
+
+function isSnapshotUserTurn(turn) {
+  return Boolean(turn && turn.kind !== "tool" && turn.role === "user");
+}
+
+function isSnapshotAssistantTurn(turn) {
+  return Boolean(turn && turn.kind !== "tool" && turn.role === "assistant");
+}
+
+function lastAssistantTurnIndex(turns) {
+  for (let index = turns.length - 1; index >= 0; index -= 1) {
+    if (isSnapshotAssistantTurn(turns[index])) {
+      return index;
+    }
+  }
+  return -1;
+}
+
+function earliestTurnTimeMs(turns) {
+  let best = Number.POSITIVE_INFINITY;
+  for (const turn of turns || []) {
+    const time = new Date(turn.timestamp || "").getTime();
+    if (Number.isFinite(time) && time < best) {
+      best = time;
+    }
+  }
+  return best;
+}
+
+function commitInsertBeforeNode(timeline, commitMs) {
+  if (!Number.isFinite(commitMs)) {
+    return null;
+  }
+  for (const item of timeline) {
+    if (item.time > commitMs && item.node && item.node.isConnected) {
+      return item.node;
+    }
+  }
+  return null;
+}
+
+function renderCommitCardNode(commit) {
+  const card = document.createElement("article");
+  card.className = "turn commit-card";
+  card.setAttribute("data-commit-sha", String(commit.sha || ""));
+  card.setAttribute("data-commit-timestamp", String(commit.timestamp || ""));
+  const shortSha = String(commit.sha || "").slice(0, 7);
+  const subject = String(commit.subject || "").trim() || "(no subject)";
+  const timestamp = String(commit.timestamp || "");
+  card.innerHTML =
+    "<div class='commit-body' title='" + esc(timestamp) + "'>" +
+      "<code class='commit-sha'>" + esc(shortSha) + "</code>" +
+      "<span class='commit-subject'>" + esc(subject) + "</span>" +
+      "<time class='commit-time' datetime='" + esc(timestamp) + "'>" + esc(relativeTime(timestamp)) + "</time>" +
+    "</div>";
+  return card;
+}
+
+function commitTimeMs(commit) {
+  const time = new Date(commit && commit.timestamp || "").getTime();
+  return Number.isFinite(time) ? time : Number.POSITIVE_INFINITY;
+}
+
 function renderSnapshotMeta(snapshot) {
   const usage = snapshot.tokenUsage || {};
   const totalTokens = tokenUsageNumber(usage.totalTokens ?? usage.total_tokens);
@@ -3310,6 +3528,9 @@ function renderSnapshotMeta(snapshot) {
   }
   if (entries) {
     parts.push("<span class='sep'>·</span><span>" + esc(entries) + " 条记录</span>");
+  }
+  if (snapshot.commitCount !== "" && snapshot.commitCount !== undefined && snapshot.commitCount !== null) {
+    parts.push("<span class='sep'>·</span><span>" + esc(snapshot.commitCount) + " commits</span>");
   }
   if (tokens) {
     parts.push("<span class='sep'>·</span><span><b>" + esc(formatTokenShort(tokens)) + "</b> tokens</span>");
