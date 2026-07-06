@@ -181,7 +181,7 @@ function row(it,i){
   const snip=it.snippet?highlight(it.snippet,it.terms):"";
   const sub=[proj,relTime(it.mtime)].filter(Boolean).join(" · ");
   const subLine=state.mode==="search"&&snip?snip:esc(sub);
-  const hint=k==="codex"?"↵ Orca":"↵ 打开";
+  const hint=k==="codex"?"↵ Orca 继续":"⌘↵ 查看";
   return "<div class='row"+(i===state.sel?" sel":"")+"' data-i='"+i+"'>"+
     "<span class='badge "+k+"'>"+badgeChar(k)+"</span>"+
     "<div class='rc'><div class='rt'>"+esc(title)+"</div><div class='rs'>"+subLine+"</div></div>"+
@@ -209,8 +209,10 @@ function highlight(text,terms){
 function updateHint(){
   const it=state.items[state.sel];
   const k=it?engineKey(it):"codex";
-  const primary=k==="codex"?"<b>↵</b> 在 Orca 继续":"<b>↵</b> 打开";
-  $("hint").innerHTML=primary+" &nbsp;·&nbsp; <kbd>⌘↵</kbd> 完整视图 &nbsp;·&nbsp; <kbd>↑↓</kbd> 选择 &nbsp;·&nbsp; <kbd>esc</kbd> 关闭";
+  const primary=k==="codex"
+    ? "<b>↵</b> 在 Orca 继续 &nbsp;·&nbsp; <kbd>⌘↵</kbd> 完整视图"
+    : "<kbd>↵</kbd> 仅 Codex 可恢复 &nbsp;·&nbsp; <b>⌘↵</b> 完整视图";
+  $("hint").innerHTML=primary+" &nbsp;·&nbsp; <kbd>↑↓</kbd> 选择 &nbsp;·&nbsp; <kbd>esc</kbd> 关闭";
 }
 
 function move(d){
@@ -229,7 +231,7 @@ function openFull(it){
 async function resumeOrOpen(it){
   if(!it) return;
   const k=engineKey(it);
-  if(k!=="codex"){ openFull(it); return; }
+  if(k!=="codex"){ showToast("只有 Codex 会话能在 Orca 中恢复 · 按 ⌘↵ 打开完整视图",false); return; }
   showToast("正在唤起 Orca…",false);
   try{
     const p=new URLSearchParams({id:it.ref||"",cwd:it.cwd||it.displayCwd||""});
