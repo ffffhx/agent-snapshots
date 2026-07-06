@@ -34,6 +34,21 @@ function resolveOrcaBinary() {
   return "orca";
 }
 
+// `orca terminal switch/create --focus` only select the tab inside Orca; if the
+// Orca window sits behind other apps the user still sees nothing. `open -a`
+// activates the already-running app without launching a second instance.
+// Best-effort: failing to raise the window must not fail the resume itself.
+async function bringOrcaToFront() {
+  if (process.platform !== "darwin") {
+    return;
+  }
+  try {
+    await execFileAsync("open", ["-a", "Orca"]);
+  } catch {
+    // Ignore: the tab switch already succeeded; the window just stays behind.
+  }
+}
+
 // The resume command per engine, run inside an Orca terminal in the session's
 // project. Codex threads resume with `codex resume`; Claude Code conversations
 // resume by session id with `claude --resume`. (Trae has no CLI resume.)
@@ -115,6 +130,7 @@ export async function resumeSessionInOrca({ engine, sessionId, cwd, title }) {
   if (existing) {
     try {
       await execFileAsync(orca, ["terminal", "switch", "--terminal", existing, "--json"]);
+      await bringOrcaToFront();
       return { ok: true, message: "已切换到 Orca 中正在运行的会话" };
     } catch {
       // Fall through to creating a fresh resume if the switch failed.
@@ -132,6 +148,7 @@ export async function resumeSessionInOrca({ engine, sessionId, cwd, title }) {
       "--focus",
       "--json",
     ]);
+    await bringOrcaToFront();
     return { ok: true, message: "已在 Orca 中打开终端并恢复会话" };
   } catch (error) {
     const message = error && error.code === "ENOENT"
