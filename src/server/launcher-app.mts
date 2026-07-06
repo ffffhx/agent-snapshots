@@ -79,7 +79,7 @@ html,body{height:100%;background:transparent;color:var(--ink);font-family:var(--
 .rc{min-width:0}
 .rt{overflow:hidden;color:var(--ink);font:500 14px/1.3 var(--sans);text-overflow:ellipsis;white-space:nowrap}
 .rs{overflow:hidden;margin-top:2px;color:var(--dim);font:500 11.5px/1.3 var(--mono);text-overflow:ellipsis;white-space:nowrap}
-.rs mark{background:transparent;color:var(--seal);font-weight:700}
+.rs mark{color:#ffd7a0;font-weight:700;background:rgba(217,79,57,0.26);border-radius:3px;padding:0 2px;box-decoration-break:clone;-webkit-box-decoration-break:clone}
 .racc{display:flex;align-items:center;gap:10px;flex:0 0 auto;color:var(--faint);font:600 11px/1 var(--mono);white-space:nowrap}
 .rowhint{color:var(--seal);opacity:0;font-weight:700}
 .row.sel .rowhint{opacity:1}
@@ -191,17 +191,24 @@ function row(it,i){
 }
 
 function highlight(text,terms){
-  const src=String(text||"").slice(0,180);
+  const full=String(text||"");
   const needles=Array.from(new Set((terms||[]).map(t=>String(t||"").trim().toLowerCase()).filter(Boolean))).sort((a,b)=>b.length-a.length).slice(0,10);
-  if(!needles.length) return esc(src);
+  if(!needles.length) return esc(full.slice(0,180));
+  const fullLow=full.toLowerCase();
+  // Center the window on the FIRST match so the keyword is visible on the single
+  // line (the row clips with an ellipsis; a match deep in a long tool-call would
+  // otherwise be cut off). Keep a little context before it.
+  let first=-1;
+  for(const n of needles){ const i=fullLow.indexOf(n); if(i>=0 && (first<0||i<first)) first=i; }
+  const start = first<0 ? 0 : Math.max(0, first-16);
+  const src=full.slice(start,start+220);
   const low=src.toLowerCase();
   const marks=[];
   for(const n of needles){ let from=0,idx; while((idx=low.indexOf(n,from))>=0){ marks.push([idx,idx+n.length]); from=idx+n.length; } }
-  if(!marks.length) return esc(src);
   marks.sort((a,b)=>a[0]-b[0]);
   const merged=[];
   for(const m of marks){ const last=merged[merged.length-1]; if(last&&m[0]<=last[1]) last[1]=Math.max(last[1],m[1]); else merged.push([m[0],m[1]]); }
-  let out="",pos=0;
+  let out=start>0?"…":"",pos=0;
   for(const seg of merged){ out+=esc(src.slice(pos,seg[0]))+"<mark>"+esc(src.slice(seg[0],seg[1]))+"</mark>"; pos=seg[1]; }
   out+=esc(src.slice(pos));
   return out;
