@@ -1,5 +1,6 @@
+import hljs from "highlight.js";
 import { escapeHtml, sanitizeRenderedHtml, stripAppDirectives } from "../shared/sanitize.js";
-import type { SnapshotImage, SnapshotTurn } from "../core/snapshot.js";
+import type { SnapshotFileChange, SnapshotImage, SnapshotTurn } from "../core/snapshot.js";
 
 export type { SnapshotImage, SnapshotTurn } from "../core/snapshot.js";
 
@@ -236,7 +237,9 @@ function renderProcessGroupHtml(
     return "";
   }
 
-  return `<article class="${escapeHtml(processClassName(options))}"><details class="process-details" data-process-index="${escapeHtml(index)}"><summary class="process-summary"><span>${escapeHtml(processLabel(item.durationTurns || turns, options.labels.processed))}</span></summary><div class="process-body">${turns.map((turn) => renderProcessEntryHtml(turn, options)).join("")}</div></details></article>`;
+  const files = fileChangeLabel(processFileChanges(turns));
+  const fileHtml = files ? `<span class="process-files">${escapeHtml(files)}</span>` : "";
+  return `<article class="${escapeHtml(processClassName(options))}"><details class="process-details" data-process-index="${escapeHtml(index)}"><summary class="process-summary"><span>${escapeHtml(processLabel(item.durationTurns || turns, options.labels.processed))}</span>${fileHtml}</summary><div class="process-body">${turns.map((turn) => renderProcessEntryHtml(turn, options)).join("")}</div></details></article>`;
 }
 
 function renderProcessEntryHtml(turn: SnapshotTurn, options: NormalizedTranscriptRenderOptions): string {
@@ -265,10 +268,74 @@ function turnRole(turn: SnapshotTurn): "tool" | "user" | "assistant" {
 
 function renderTurnBodyHtml(turn: SnapshotTurn, options: NormalizedTranscriptRenderOptions): string {
   if (turn.kind === "tool") {
-    return `<details class="tool-details"><summary>${escapeHtml(options.labels.tool)}${turn.name ? ` / ${escapeHtml(turn.name)}` : ""}</summary><pre>${escapeHtml(turn.text || "")}</pre></details>`;
+    const files = fileChangeLabel(turn.fileChanges || []);
+    const fileSuffix = files ? ` · ${escapeHtml(files)}` : "";
+    const body = (turn.fileChanges || []).length ? renderFileChangesHtml(turn.fileChanges || []) : `<pre>${escapeHtml(turn.text || "")}</pre>`;
+    return `<details class="tool-details"><summary>${escapeHtml(options.labels.tool)}${turn.name ? ` / ${escapeHtml(turn.name)}` : ""}${fileSuffix}</summary>${body}</details>`;
   }
   const content = `${sanitizeRenderedHtml(turn.html || "") || renderPlainTextHtml(turn.text)}${renderImagesHtml(turn.images || [], options)}`;
   return options.contentClassName ? `<div class="${escapeHtml(options.contentClassName)}">${content}</div>` : content;
+}
+
+function renderFileChangesHtml(fileChanges: SnapshotFileChange[]): string {
+  const groups = uniqueFileChangeGroups(fileChanges);
+  return groups.map((group) => {
+    const label = group.paths.length ? `<div class="file-change-path">${escapeHtml(group.paths.join(", "))}</div>` : "";
+    return `<div class="file-change">${label}${renderDiffPreHtml(group.diffText)}</div>`;
+  }).join("");
+}
+
+function renderDiffPreHtml(diffText: string): string {
+  const code = String(diffText || "");
+  let html = "";
+  if (hljs.getLanguage("diff")) {
+    html = hljs.highlight(code, { language: "diff", ignoreIllegals: true }).value;
+  } else {
+    html = escapeHtml(code);
+  }
+  return `<pre data-language="diff"><code class="hljs language-diff">${html}</code></pre>`;
+}
+
+function uniqueFileChangeGroups(fileChanges: SnapshotFileChange[]): Array<{ diffText: string; paths: string[] }> {
+  const groups = new Map<string, { diffText: string; paths: string[] }>();
+  for (const change of fileChanges || []) {
+    const diffText = String(change.diffText || "");
+    if (!diffText) {
+      continue;
+    }
+    const current = groups.get(diffText) || { diffText, paths: [] };
+    const path = String(change.path || "").trim();
+    if (path && !current.paths.includes(path)) {
+      current.paths.push(path);
+    }
+    groups.set(diffText, current);
+  }
+  return Array.from(groups.values());
+}
+
+function processFileChanges(turns: SnapshotTurn[]): SnapshotFileChange[] {
+  return (turns || []).flatMap((turn) => Array.isArray(turn.fileChanges) ? turn.fileChanges : []);
+}
+
+function fileChangeLabel(fileChanges: SnapshotFileChange[]): string {
+  const paths = uniqueFilePaths(fileChanges);
+  if (!paths.length) {
+    return "";
+  }
+  const visible = paths.slice(0, 3);
+  const rest = paths.length - visible.length;
+  return visible.join(" · ") + (rest > 0 ? ` 等 ${rest} 个文件` : "");
+}
+
+function uniqueFilePaths(fileChanges: SnapshotFileChange[]): string[] {
+  const paths: string[] = [];
+  for (const change of fileChanges || []) {
+    const path = String(change.path || "").trim();
+    if (path && !paths.includes(path)) {
+      paths.push(path);
+    }
+  }
+  return paths;
 }
 
 function renderBodyContainerHtml(turn: SnapshotTurn, options: NormalizedTranscriptRenderOptions): string {

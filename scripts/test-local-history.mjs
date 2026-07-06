@@ -12,6 +12,7 @@ import { fileURLToPath } from "node:url";
 const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const { listSessions, loadSnapshot } = await import(path.join(ROOT_DIR, "dist/sources/local-history.mjs"));
 const { renderMarkdownHtml } = await import(path.join(ROOT_DIR, "dist/renderers/markdown.mjs"));
+const { renderTranscriptHtml } = await import(path.join(ROOT_DIR, "dist/renderers/transcript.js"));
 const { prewarmSemanticIndex, semanticSearchSessions } = await import(path.join(ROOT_DIR, "dist/server/semantic-index.mjs"));
 
 const tests = [];
@@ -367,6 +368,75 @@ test("subagents honor includeTools=false (no tool turns leak)", async () => {
     const sub = snap.subagents[0];
     assert.ok(sub.turns.length >= 1, "subagent message turns still parsed");
     assert.ok(!sub.turns.some((t) => t.kind === "tool"), "no tool turns when includeTools=false");
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
+test("Claude Edit tool calls render structured patches as redacted diff file changes", async () => {
+  const home = await makeClaudeHome();
+  try {
+    const id = "77777777-7777-7777-7777-777777777777";
+    const cwd = "/tmp/projDiff";
+    await writeClaudeSession(home, "-tmp-projDiff", id, [
+      userRow(id, cwd, "update the config"),
+      {
+        sessionId: id,
+        cwd,
+        type: "assistant",
+        timestamp: "2026-06-01T00:00:01.000Z",
+        message: {
+          role: "assistant",
+          content: [{
+            type: "tool_use",
+            id: "toolu_edit",
+            name: "Edit",
+            input: {
+              file_path: "/tmp/projDiff/src/config.ts",
+              old_string: "export const password = \"old\";",
+              new_string: "export const password = \"hunter2\";",
+            },
+          }],
+        },
+      },
+      {
+        sessionId: id,
+        cwd,
+        type: "user",
+        timestamp: "2026-06-01T00:00:02.000Z",
+        message: {
+          role: "user",
+          content: [{ type: "tool_result", tool_use_id: "toolu_edit", content: "updated" }],
+        },
+        toolUseResult: {
+          filePath: "/tmp/projDiff/src/config.ts",
+          structuredPatch: [{
+            oldStart: 1,
+            oldLines: 1,
+            newStart: 1,
+            newLines: 1,
+            lines: [
+              "-export const password = \"old\";",
+              "+export const password = \"hunter2\";",
+            ],
+          }],
+        },
+      },
+      assistantRow(id, "done"),
+    ]);
+    const snap = await loadSnapshot(`claude:${id}`, { claudeHome: home, includeTools: true, includeToolOutput: false, redact: true });
+    const editTurn = snap.turns.find((turn) => turn.kind === "tool" && turn.name === "Edit");
+    assert.ok(editTurn?.fileChanges?.length, "Edit tool should carry fileChanges");
+    const [change] = editTurn.fileChanges;
+    assert.equal(change.kind, "edit");
+    assert.ok(change.path.endsWith("src/config.ts"), change.path);
+    assert.ok(change.diffText.includes("@@ -1,1 +1,1 @@"), change.diffText);
+    assert.ok(!change.diffText.includes("hunter2"), change.diffText);
+    assert.ok(change.diffText.includes("[REDACTED]"), change.diffText);
+    const html = renderTranscriptHtml(snap.turns, { includeProcessMessageMeta: true, includeTopLevelToolMeta: true });
+    assert.ok(html.includes("language-diff"), html);
+    assert.ok(html.includes("process-files"), html);
+    assert.ok(html.includes("src/config.ts"), html);
   } finally {
     await rm(home, { recursive: true, force: true });
   }

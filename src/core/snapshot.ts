@@ -4,6 +4,12 @@ export type SnapshotImage = {
   unavailableReason?: string;
 };
 
+export type SnapshotFileChange = {
+  path: string;
+  kind: "edit" | "write" | "patch";
+  diffText: string;
+};
+
 export type SnapshotTurn = {
   kind?: string;
   role?: string;
@@ -12,6 +18,7 @@ export type SnapshotTurn = {
   text?: string;
   html?: string;
   images?: SnapshotImage[];
+  fileChanges?: SnapshotFileChange[];
   timestamp?: string;
 };
 

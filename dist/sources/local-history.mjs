@@ -9,6 +9,7 @@ import { promisify } from "node:util";
 import { addImageRisk, addRisks, detectRisks, redactText, severityRank } from "../core/privacy.js";
 import { renderMarkdownHtml } from "../renderers/markdown.mjs";
 import { stripAppDirectives as stripCodexAppDirectives } from "../shared/sanitize.js";
+import { extractClaudeToolFileChanges, extractCodexToolFileChanges, rawFileChangeText, redactFileChanges, } from "./file-changes.mjs";
 const MAX_TEXT_CHARS = 20000;
 const MAX_TURNS = 5000;
 const MAX_SUMMARY_LINES = 140;
@@ -768,15 +769,20 @@ async function loadCodexSnapshot(ref, { codexHome, includeTools, includeToolOutp
             if (!rawText.trim()) {
                 continue;
             }
+            const fileChanges = extractCodexToolFileChanges(toolName(item), item.arguments || "");
             addRisks(risks, rawText, turnNumber || 1);
-            turns.push({
+            const toolTurn = {
                 kind: "tool",
                 role: "tool",
                 turn: turnNumber || 1,
                 name: toolName(item),
                 text: redact ? redactText(rawText) : rawText,
                 timestamp: row.timestamp || "",
-            });
+            };
+            if (fileChanges.length) {
+                toolTurn.fileChanges = redact ? redactFileChanges(fileChanges, redactText) : fileChanges;
+            }
+            turns.push(toolTurn);
         }
     }
     return {
@@ -1097,6 +1103,7 @@ async function loadClaudeSnapshot(ref, { claudeHome, includeTools, includeToolOu
 async function buildClaudeTurns(filePath, { includeTools, includeToolOutput, redact }) {
     const risks = new Map();
     const turns = [];
+    const toolTurnsById = new Map();
     let turnNumber = 0;
     let truncated = false;
     for await (const row of readJsonl(filePath)) {
@@ -1126,6 +1133,7 @@ async function buildClaudeTurns(filePath, { includeTools, includeToolOutput, red
             });
         }
         if (includeTools) {
+            applyClaudeStructuredPatchResult(row, message, toolTurnsById, risks, turnNumber || 1, redact);
             for (const tool of message.toolCalls) {
                 addRisks(risks, tool.text, turnNumber || 1);
                 const toolTurn = {
@@ -1138,6 +1146,10 @@ async function buildClaudeTurns(filePath, { includeTools, includeToolOutput, red
                 };
                 if (tool.id) {
                     toolTurn.toolUseId = tool.id;
+                    toolTurnsById.set(tool.id, toolTurn);
+                }
+                if (tool.fileChanges?.length) {
+                    toolTurn.fileChanges = redact ? redactFileChanges(tool.fileChanges, redactText) : tool.fileChanges;
                 }
                 turns.push(toolTurn);
             }
@@ -1156,6 +1168,31 @@ async function buildClaudeTurns(filePath, { includeTools, includeToolOutput, red
         }
     }
     return { turns, risks, turnNumber, truncated };
+}
+function applyClaudeStructuredPatchResult(row, message, toolTurnsById, risks, turnNumber, redact) {
+    const result = row?.toolUseResult;
+    if (!result || typeof result !== "object") {
+        return;
+    }
+    const structuredPatch = result.structuredPatch;
+    if (!structuredPatch) {
+        return;
+    }
+    const toolUseId = (message.toolResults || []).map((tool) => tool.name).find(Boolean) || row.sourceToolUseID || row.sourceToolUseId || "";
+    const toolTurn = toolUseId ? toolTurnsById.get(toolUseId) : null;
+    if (!toolTurn) {
+        return;
+    }
+    const filePath = result.filePath || result.file_path || result.file?.filePath || "";
+    if (!filePath) {
+        return;
+    }
+    const changes = extractClaudeToolFileChanges("Edit", { file_path: filePath }, structuredPatch);
+    if (!changes.length) {
+        return;
+    }
+    addRisks(risks, rawFileChangeText(changes), turnNumber);
+    toolTurn.fileChanges = redact ? redactFileChanges(changes, redactText) : changes;
 }
 // Parse the Task/Agent subagent transcripts that live under
 // `<dir>/<parentSessionId>/subagents/**/agent-*.jsonl` so they can be shown
@@ -1327,6 +1364,8 @@ function extractClaudeMessageParts(message) {
                 toolCalls.push({
                     name: item.name || "tool_use",
                     id: item.id || "",
+                    input: item.input || {},
+                    fileChanges: extractClaudeToolFileChanges(item.name || "tool_use", item.input || {}),
                     text: renderClaudeToolCall(item),
                 });
                 continue;

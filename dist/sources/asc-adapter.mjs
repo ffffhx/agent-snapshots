@@ -15,9 +15,10 @@ import { realpath, stat } from "node:fs/promises";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { discoverSessionFiles, parseSessionFile, toSnapshot } from "agent-session-core";
-import { detectRisks, redactText } from "../core/privacy.js";
+import { addRisks, detectRisks, redactText, severityRank } from "../core/privacy.js";
 import { renderMarkdownHtml } from "../renderers/markdown.mjs";
 import { stripAppDirectives as stripCodexAppDirectives } from "../shared/sanitize.js";
+import { extractClaudeToolFileChanges, extractCodexToolFileChanges, rawFileChangeText, redactFileChanges, } from "./file-changes.mjs";
 import { listSessions as legacyListSessions, loadSnapshot as legacyLoadSnapshot, searchSessions as legacySearchSessions, } from "./local-history.mjs";
 const ASC_ENGINES = new Set(["codex", "claude"]);
 const ENGINE_LABELS = { codex: "Codex", claude: "Claude Code" };
@@ -184,6 +185,7 @@ function ascSnapshot(session, { includeTools, includeToolOutput, redact }) {
         // Match local-history's addImageRisk: one "image-attachment" risk per image.
         imageRiskFinding: { id: "image-attachment", label: "Image attachment", severity: "medium" },
     });
+    attachAscFileChanges(session, snapshot, { includeTools, redact });
     // Strip any directive prefix that survived into the title/goal (ASC derives
     // them from raw first-message text; toSnapshot already redacted them).
     if (typeof snapshot.title === "string") {
@@ -277,6 +279,7 @@ function loadAscClaudeSubagents(parentFilePath, parentSessionId, { includeTools,
             detectRisks,
             imageRiskFinding: { id: "image-attachment", label: "Image attachment", severity: "medium" },
         });
+        attachAscFileChanges(session, snap, { includeTools, redact });
         const turns = Array.isArray(snap.turns) ? snap.turns : [];
         if (!turns.length) {
             continue;
@@ -305,6 +308,111 @@ function loadAscClaudeSubagents(parentFilePath, parentSessionId, { includeTools,
         });
     }
     return subagents;
+}
+function attachAscFileChanges(session, snapshot, { includeTools, redact }) {
+    if (!includeTools || !snapshot || !Array.isArray(snapshot.turns)) {
+        return;
+    }
+    const structuredPatches = session.engine === "claude" ? readClaudeStructuredPatches(session.filePath) : new Map();
+    let cursor = 0;
+    for (const ev of session.events || []) {
+        if (ev.kind !== "tool_call") {
+            continue;
+        }
+        const found = findNextToolTurn(snapshot.turns, cursor, ev);
+        if (!found) {
+            continue;
+        }
+        cursor = found.index + 1;
+        const patchInfo = ev.callId ? structuredPatches.get(ev.callId) : null;
+        let fileChanges = session.engine === "codex"
+            ? extractCodexToolFileChanges(ev.name, ev.args)
+            : extractClaudeToolFileChanges(ev.name, ev.args, patchInfo?.structuredPatch);
+        if (!fileChanges.length && patchInfo?.filePath && patchInfo?.structuredPatch) {
+            fileChanges = extractClaudeToolFileChanges(ev.name, { file_path: patchInfo.filePath }, patchInfo.structuredPatch);
+        }
+        if (!fileChanges.length) {
+            continue;
+        }
+        if (patchInfo?.structuredPatch) {
+            addFileChangeRisks(snapshot, fileChanges, found.turn.turn || 1);
+        }
+        found.turn.fileChanges = redact ? redactFileChanges(fileChanges, redactText) : fileChanges;
+    }
+}
+function findNextToolTurn(turns, startIndex, ev) {
+    for (let index = Math.max(0, startIndex); index < turns.length; index += 1) {
+        const turn = turns[index];
+        if (turn.kind !== "tool") {
+            continue;
+        }
+        if (ev.name && turn.name && turn.name !== ev.name) {
+            continue;
+        }
+        if (ev.ts && turn.timestamp && turn.timestamp !== ev.ts) {
+            continue;
+        }
+        return { turn, index };
+    }
+    return null;
+}
+function readClaudeStructuredPatches(filePath) {
+    const patches = new Map();
+    if (!filePath) {
+        return patches;
+    }
+    let text = "";
+    try {
+        text = readFileSync(filePath, "utf8");
+    }
+    catch {
+        return patches;
+    }
+    for (const line of text.split(/\r?\n/)) {
+        if (!line.trim()) {
+            continue;
+        }
+        let row;
+        try {
+            row = JSON.parse(line);
+        }
+        catch {
+            continue;
+        }
+        const result = row?.toolUseResult;
+        if (!result || typeof result !== "object" || !result.structuredPatch) {
+            continue;
+        }
+        const toolUseId = claudeToolResultId(row);
+        if (!toolUseId) {
+            continue;
+        }
+        patches.set(toolUseId, {
+            filePath: result.filePath || result.file_path || result.file?.filePath || "",
+            structuredPatch: result.structuredPatch,
+        });
+    }
+    return patches;
+}
+function claudeToolResultId(row) {
+    const content = row?.message?.content;
+    if (!Array.isArray(content)) {
+        return "";
+    }
+    for (const item of content) {
+        if (item?.type === "tool_result" && item.tool_use_id) {
+            return String(item.tool_use_id);
+        }
+    }
+    return "";
+}
+function addFileChangeRisks(snapshot, fileChanges, turnNumber) {
+    const risks = new Map();
+    for (const risk of snapshot.risks || []) {
+        risks.set(risk.id, { ...risk, turns: Array.isArray(risk.turns) ? risk.turns.slice() : [] });
+    }
+    addRisks(risks, rawFileChangeText(fileChanges), turnNumber || 1);
+    snapshot.risks = [...risks.values()].sort((a, b) => severityRank(b.severity) - severityRank(a.severity));
 }
 // ---------------------------------------------------------------------------
 // listSessions
