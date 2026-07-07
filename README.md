@@ -1,8 +1,8 @@
 # Agent Snapshots
 
-面向 Codex、Claude Code 和 Trae 的本地优先、只读会话快照工具。
+面向 Codex、Claude Code 和 Trae 的本地优先、只读会话查看器与桌面应用。
 
-它会把你电脑上的 agent 会话整理成可以浏览、导出、脱敏和分享的快照。适合用来复盘一次调试过程、沉淀问题排查记录，或者把一段 agent 协作过程发给同事看。
+它会把你电脑上的 agent 会话整理成可以浏览、搜索、导出、脱敏和分享的快照。适合复盘一次调试过程、沉淀问题排查记录，或者把一段 agent 协作过程发给同事看。
 
 - 官网：<https://ffffhx.github.io/agent-snapshots/>
 - npm：<https://www.npmjs.com/package/agent-snapshots>
@@ -10,14 +10,15 @@
 
 ## 它能做什么
 
-- 读取本地 Codex、Claude Code、Trae 会话历史。
-- 在浏览器里用只读界面查看会话内容。
-- 默认隐藏 system/developer/bootstrap 消息和工具输出。
-- 支持自动脱敏常见 token、密钥、Cookie、本地 home 路径等敏感信息。
-- 支持导出 HTML / Markdown 快照。
-- 支持在页面里一键发布已脱敏分享链接。
+- 读取本地 Codex、Claude Code、Trae 会话历史，并在浏览器里用只读界面查看。
+- 按来源和项目组织会话，支持 Codex / Claude Code / Trae 标签页、正在进行的会话标记和实时跟随。
+- 默认隐藏 system/developer/bootstrap 消息和工具输出，可在标准、详细、摘要视图之间切换。
+- 支持全文搜索、语义搜索、会话内语义搜索、图片图库、使用统计和 Codex 配额仪表。
+- 自动脱敏常见 token、密钥、Cookie、本地 home 路径等敏感信息。
+- 支持导出 HTML / Markdown、本地发布到 GitHub secret Gist，或发布到配置好的分享服务。
+- Electron 桌面应用提供托盘菜单、Alt+Space 启动器、完成通知、开机自启、自动更新和 `agent-snapshots://` 深链接。
 
-Agent Snapshots 默认不会上传你的本地会话。只有你在页面里主动点击 `发布分享` 时，才会把当前快照发送到配置好的分享服务。
+Agent Snapshots 默认不会上传你的本地会话。只有你主动点击 `Gist` 或 `发布分享` 时，才会把已脱敏的当前快照发送到 GitHub Gist 或配置好的分享服务。
 
 ## 截图
 
@@ -52,15 +53,15 @@ npm install -g agent-snapshots@latest
 agent-snapshot serve --port 4321
 ```
 
-> 注：npm 包 `agent-snapshots` 将随下一个版本发布；在那之前请安装旧包名 `codex-snapshots@latest`（命令为 `codex-snapshot`）。
+旧命令 `codex-snapshot` / `codex-snapshots` 仍作为兼容别名保留。
 
 ## 怎么使用
 
 1. 打开本地查看器：<http://127.0.0.1:4321/>。
-2. 在左侧选择 Codex、Claude Code 或 Trae 会话。
-3. 查看会话内容，按需打开或关闭 `工具`、`输出`、`脱敏`。
-4. 点击 `导出 HTML` 或 `导出 Markdown` 生成只读快照。
-5. 如果需要发给别人，确认脱敏后点击 `发布分享`。
+2. 在左侧选择 Codex、Claude Code 或 Trae 标签页，再按项目选择会话。
+3. 查看会话内容，按需切换 `脱敏`、主题、阅读字号、密度、视图详略和大纲。
+4. 用 `⌘K` 搜索全部历史，或在当前会话里输入大意做语义搜索。
+5. 点击 `导出 HTML`、`导出 Markdown`、`Gist` 或 `发布分享` 输出只读快照。
 
 命令行也可以导出：
 
@@ -78,7 +79,8 @@ agent-snapshot export <session-id> --gist
 这会调用 GitHub CLI 创建默认 secret gist，并打印 Gist 地址和 `gistpreview.github.io` 查看地址。需要先安装并登录：
 
 ```bash
-brew install gh && gh auth login
+brew install gh
+gh auth login
 ```
 
 加 `--gist-public` 会创建 public gist。`--gist` 默认脱敏；如果同时传 `--no-redact`，必须再显式传 `--allow-unredacted`。
@@ -89,6 +91,36 @@ brew install gh && gh auth login
 - Claude Code：`$CLAUDE_HOME` 或 `~/.claude`
 - Trae：`$TRAE_HOME` 或 `~/.trae-cn`
 - Trae 应用数据：`$TRAE_APP_HOME` 或 `~/Library/Application Support/Trae CN`
+- Trae 本地录制：`$TRAE_RECORDINGS_DIR` 或 `~/.agent-snapshot/trae-recordings`
+
+## 桌面应用
+
+桌面应用复用同一个本地查看器，但外面包了一层 Electron：
+
+- 托盘菜单可显示/隐藏启动器、打开最近会话、切换失焦自动隐藏、开机自启、完成提示音、有会话运行时防休眠、检查更新和退出。
+- 全局快捷键 `Alt+Space` 打开或隐藏启动器；启动器关闭和失焦默认隐藏，不会退出应用。
+- 启动器支持 全部 / Codex / Claude / Trae 范围和 `⌘1` 到 `⌘4` 切换，点击 Codex / Claude 会话会优先在 Orca 继续，Orca 不可用时在 macOS Terminal / iTerm2 回退打开。
+- 支持 `agent-snapshots://launcher` 和 `agent-snapshots://session/<ref>` 深链接。
+- 打包版本会通过 GitHub Releases 检查更新。
+
+更多桌面端、启动器、查看器能力和本地 API 说明见 [docs/desktop-app.md](docs/desktop-app.md)。
+
+## 常用快捷键
+
+| 快捷键 | 位置 | 作用 |
+| --- | --- | --- |
+| `Alt+Space` | 桌面应用 | 显示/隐藏启动器 |
+| `⌘1` - `⌘4` | 启动器 | 切换 全部 / Codex / Claude / Trae |
+| `↑` / `↓` | 启动器、搜索弹层 | 移动选择 |
+| 点击会话 | 启动器 | 在 Orca 继续 Codex / Claude 会话 |
+| `⌘↵` | 启动器 | 打开完整视图 |
+| `⌘/` | 启动器、查看器 | 打开快捷键说明 |
+| `⌘K` | 查看器 | 搜索会话正文 |
+| `Ctrl+O` | 查看器 | 在标准 / 详细 / 摘要视图之间切换 |
+| `Ctrl+M` | 查看器 | 打开/收起大纲 |
+| `[` / `]` | 查看器 | 跳到上一个/下一个用户回合 |
+| 点击文件路径 | 查看器 | 复制绝对路径 |
+| `⌘` + 点击文件路径 | 查看器 | 在 Finder 中显示 |
 
 ## 开发者运行
 
@@ -103,13 +135,20 @@ pnpm dev
 
 官网静态站点默认运行在 <http://127.0.0.1:4322/>。
 
+桌面应用开发模式：
+
+```bash
+pnpm app:dev
+```
+
 ## 安全说明
 
-- 默认只展示用户和助手消息。
+- 默认以用户和助手消息为主展示。
 - 默认跳过 developer、system 和 bootstrap 消息。
-- 默认隐藏工具调用和工具输出。
+- 默认不加载完整工具输出；工具/过程详情可按视图详略折叠或展开。
 - 默认开启常见敏感信息脱敏。
 - 导出的快照是静态、只读内容，接收方不能操作原始 agent 线程。
+- 本地查看器 API 只面向本机使用；会限制来源，写操作还需要页面内的 CSRF token。
 
 脱敏不是绝对可靠。发布或发送快照前，请先在页面里快速复核正文和风险提示。
 
