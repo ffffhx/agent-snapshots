@@ -12,8 +12,9 @@ export function renderServerApp(csrfToken, shareConfig = {}) {
   <style>${serverCss()}</style>
 </head>
 <body>
+  <a class="skip-link" href="#turns">跳到正文</a>
   <main class="app">
-    <aside class="sidebar">
+    <aside class="sidebar" aria-label="会话列表">
       <div class="sidebar-top">
         <div class="brand">
           <svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#c33f28"/><g transform="rotate(-5 32 32)"><rect x="18.5" y="16" width="27" height="33" rx="3" fill="#5c160c" opacity="0.22"/><rect x="18.5" y="15" width="27" height="33" rx="3" fill="#f6ecd6"/><g fill="#c9bb98"><rect x="22.5" y="21" width="19" height="2" rx="1"/><rect x="22.5" y="25.5" width="17" height="2" rx="1"/><rect x="22.5" y="30" width="19" height="2" rx="1"/><rect x="22.5" y="34.5" width="13.5" height="2" rx="1"/></g><circle cx="40.5" cy="42.5" r="6.2" fill="#a82f1c"/><circle cx="40.5" cy="42.5" r="6.2" fill="none" stroke="#fff3df" stroke-width="0.9" stroke-opacity="0.85"/><circle cx="40.5" cy="42.5" r="1.4" fill="#fff3df"/></g></svg>
@@ -29,7 +30,7 @@ export function renderServerApp(csrfToken, shareConfig = {}) {
           <button id="reload" type="button" title="刷新会话列表">刷新</button>
         </div>
       </div>
-      <div id="sessions" class="sessions"></div>
+      <div id="sessions" class="sessions" role="navigation" aria-label="会话列表"></div>
     </aside>
     <div id="splitter" class="splitter" role="separator" aria-label="调整项目列表宽度" aria-orientation="vertical" aria-valuemin="240" aria-valuemax="460" aria-valuenow="0" tabindex="0"></div>
     <section class="viewer">
@@ -47,7 +48,7 @@ export function renderServerApp(csrfToken, shareConfig = {}) {
             </div>
             <div class="settings-shell">
               <button id="settingsToggle" class="appx settings-button" type="button" title="设置" aria-label="设置" aria-haspopup="dialog" aria-expanded="false" aria-controls="settingsPopover">⚙</button>
-              <div id="settingsPopover" class="settings-popover" role="dialog" aria-label="设置" hidden>
+              <div id="settingsPopover" class="settings-popover" role="dialog" aria-modal="true" aria-label="设置" hidden>
                 <div class="settings-head">
                   <b>设置</b>
                   <button id="settingsClose" class="settings-close" type="button" title="关闭设置">关闭</button>
@@ -63,9 +64,9 @@ export function renderServerApp(csrfToken, shareConfig = {}) {
                 <section class="settings-section" aria-label="阅读字号">
                   <span class="settings-label">阅读字号</span>
                   <div class="settings-control-row">
-                    <button class="appx" type="button" data-font-step="-1" title="缩小正文字号">A－</button>
+                    <button class="appx" type="button" data-font-step="-1" title="缩小正文字号" aria-label="缩小正文字号">A－</button>
                     <span id="readScaleValue" class="settings-value">100%</span>
-                    <button class="appx" type="button" data-font-step="1" title="放大正文字号">A＋</button>
+                    <button class="appx" type="button" data-font-step="1" title="放大正文字号" aria-label="放大正文字号">A＋</button>
                   </div>
                 </section>
                 <section class="settings-section" aria-label="密度">
@@ -103,14 +104,14 @@ export function renderServerApp(csrfToken, shareConfig = {}) {
             </div>
           </div>
           <div class="reading-tools" role="group" aria-label="阅读工具">
-            <button id="openShortcuts" class="appx" type="button" title="快捷键（⌘/）">⌘/</button>
+            <button id="openShortcuts" class="appx" type="button" title="快捷键（⌘/）" aria-label="打开快捷键">⌘/</button>
           </div>
           <div id="exports" class="exports"></div>
         </div>
         <div id="meta" class="meta empty">还没有选择会话。</div>
         <div id="sessionSearch" class="session-search">
           <div class="session-search-bar">
-            <input id="sessionSearchInput" type="search" placeholder="在当前 Session 里搜大意" disabled>
+            <input id="sessionSearchInput" type="search" placeholder="在当前 Session 里搜大意" aria-label="在当前 Session 里语义搜索" autocomplete="off" disabled>
             <button id="sessionSearchRun" type="button" disabled>语义搜索</button>
             <span id="sessionSearchStatus" class="session-search-status"></span>
           </div>
@@ -119,7 +120,7 @@ export function renderServerApp(csrfToken, shareConfig = {}) {
       </div>
       <div id="goal" class="goal"></div>
       <div id="risks" class="risks"></div>
-      <div id="turns" class="turns"></div>
+      <div id="turns" class="turns" tabindex="-1" aria-label="正文记录"></div>
       <button id="followLatest" class="follow-latest" type="button" hidden>↓ 跟随最新</button>
     </section>
   </main>
@@ -131,7 +132,7 @@ export function renderServerApp(csrfToken, shareConfig = {}) {
     <div id="outlineList" class="outline-list"></div>
   </aside>
   <div id="searchOverlay" class="search-overlay" hidden>
-    <section class="search-dialog" role="dialog" aria-modal="true" aria-labelledby="searchTitle">
+    <section class="search-dialog" role="dialog" aria-modal="true" aria-label="搜索会话正文" aria-labelledby="searchTitle">
       <div class="search-bar">
         <div>
           <p class="eyebrow">Session search</p>
@@ -139,12 +140,12 @@ export function renderServerApp(csrfToken, shareConfig = {}) {
         </div>
         <button id="closeSearch" class="search-close" type="button" title="关闭搜索">关闭</button>
       </div>
-      <input id="globalSearch" class="global-search-input" type="search" placeholder="关键词，可加 source: role: project: before: after: -排除" title="支持过滤语法：source:codex/claude/trae、role:user/assistant、project:名称、before:2026-01-01、after:2026-01-01、-排除词" role="combobox" aria-expanded="true" aria-autocomplete="list" aria-controls="searchResults" autocomplete="off" spellcheck="false">
+      <input id="globalSearch" class="global-search-input" type="search" placeholder="关键词，可加 source: role: project: before: after: -排除" title="支持过滤语法：source:codex/claude/trae、role:user/assistant、project:名称、before:2026-01-01、after:2026-01-01、-排除词" role="combobox" aria-label="搜索关键词" aria-expanded="true" aria-autocomplete="list" aria-controls="searchResults" autocomplete="off" spellcheck="false">
       <div class="search-controls" role="group" aria-label="搜索范围">
         <button class="search-mode active" type="button" data-search-mode="keyword">关键词</button>
         <button class="search-mode" type="button" data-search-mode="semantic">语义</button>
-        <button class="search-flag" type="button" data-search-flag="caseSensitive" aria-pressed="false" title="区分大小写">Aa</button>
-        <button class="search-flag" type="button" data-search-flag="wholeWord" aria-pressed="false" title="整词匹配">词</button>
+        <button class="search-flag" type="button" data-search-flag="caseSensitive" aria-pressed="false" title="区分大小写" aria-label="区分大小写">Aa</button>
+        <button class="search-flag" type="button" data-search-flag="wholeWord" aria-pressed="false" title="整词匹配" aria-label="整词匹配">词</button>
         <span id="searchScopeLabel" class="search-scope-label">全部历史</span>
         <button id="prewarmIndex" class="search-prewarm" type="button" title="提前生成语义索引">预热索引</button>
         <span id="searchStatus" class="search-status"></span>
@@ -152,13 +153,13 @@ export function renderServerApp(csrfToken, shareConfig = {}) {
       <div id="searchFacets" class="search-facets" aria-label="按来源和项目筛选"></div>
       <div id="searchResults" class="search-results" role="listbox" aria-label="搜索结果"></div>
       <div class="search-foot">
-        <span class="search-hints"><kbd>↑</kbd><kbd>↓</kbd> 导航 · <kbd>↵</kbd> 打开 · <kbd>Tab</kbd> 切换关键词/语义 · <kbd>esc</kbd> 关闭</span>
+        <span class="search-hints"><kbd>↑</kbd><kbd>↓</kbd> 导航 · <kbd>↵</kbd> 打开 · <kbd>Tab</kbd> 切换焦点 · <kbd>esc</kbd> 关闭</span>
         <span id="searchCount" class="search-count"></span>
       </div>
     </section>
   </div>
   <div id="statsOverlay" class="stats-overlay" hidden>
-    <section class="stats-dialog" role="dialog" aria-modal="true" aria-labelledby="statsTitle">
+    <section class="stats-dialog" role="dialog" aria-modal="true" aria-label="使用统计" aria-labelledby="statsTitle">
       <div class="stats-bar">
         <div>
           <p class="eyebrow">Usage &amp; tokens</p>
@@ -173,7 +174,7 @@ export function renderServerApp(csrfToken, shareConfig = {}) {
     </section>
   </div>
   <div id="galleryOverlay" class="gallery-overlay" hidden>
-    <section class="gallery-dialog" role="dialog" aria-modal="true" aria-labelledby="galleryTitle">
+    <section class="gallery-dialog" role="dialog" aria-modal="true" aria-label="图库" aria-labelledby="galleryTitle">
       <div class="gallery-bar">
         <div>
           <p class="eyebrow">Image archive</p>
@@ -185,16 +186,16 @@ export function renderServerApp(csrfToken, shareConfig = {}) {
       <div id="galleryBody" class="gallery-body"></div>
     </section>
   </div>
-  <div id="galleryLightbox" class="gallery-lightbox" hidden>
-    <button class="gallery-lightbox-nav prev" type="button" data-lightbox-prev title="上一张">‹</button>
+  <div id="galleryLightbox" class="gallery-lightbox" role="dialog" aria-modal="true" aria-label="图片预览" tabindex="-1" hidden>
+    <button class="gallery-lightbox-nav prev" type="button" data-lightbox-prev title="上一张" aria-label="上一张">‹</button>
     <figure class="gallery-lightbox-figure">
       <img id="galleryLightboxImage" alt="">
       <figcaption id="galleryLightboxCaption"></figcaption>
     </figure>
-    <button class="gallery-lightbox-nav next" type="button" data-lightbox-next title="下一张">›</button>
+    <button class="gallery-lightbox-nav next" type="button" data-lightbox-next title="下一张" aria-label="下一张">›</button>
   </div>
   <div id="shortcutOverlay" class="shortcut-overlay" hidden>
-    <section class="shortcut-dialog" role="dialog" aria-modal="true" aria-labelledby="shortcutTitle">
+    <section class="shortcut-dialog" role="dialog" aria-modal="true" aria-label="快捷键" aria-labelledby="shortcutTitle">
       <div class="shortcut-bar">
         <div>
           <p class="eyebrow">快捷键</p>
@@ -206,13 +207,19 @@ export function renderServerApp(csrfToken, shareConfig = {}) {
         <div><kbd>⌘K</kbd><span>全局搜索</span></div>
         <div><kbd>Ctrl+O</kbd><span>视图详略</span></div>
         <div><kbd>Ctrl+M</kbd><span>大纲</span></div>
+        <div><kbd>j</kbd><kbd>k</kbd><span>上下个记录</span></div>
+        <div><kbd>g</kbd><kbd>g</kbd><span>跳到顶部</span></div>
+        <div><kbd>G</kbd><span>跳到底部</span></div>
+        <div><kbd>u</kbd><span>上个用户回合</span></div>
         <div><kbd>[</kbd><kbd>]</kbd><span>上下个用户回合</span></div>
+        <div><kbd>/</kbd><span>会话内搜索</span></div>
+        <div><kbd>s</kbd><span>收起侧栏</span></div>
         <div><kbd>⌘/</kbd><span>快捷键</span></div>
         <div><kbd>Esc</kbd><span>关闭弹层</span></div>
       </div>
     </section>
   </div>
-  <div id="toast" class="toast" hidden></div>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
   <script>window.AGENT_SNAPSHOT_SHARE_CONFIG=${inlineJson(shareConfig || {})}; window.AGENT_SNAPSHOT_CSRF_TOKEN=${inlineJson(csrfToken)};</script>
   <script>${serverJs()}</script>
 </body>
@@ -358,6 +365,26 @@ body {
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
+.skip-link {
+  position: fixed;
+  top: 10px;
+  left: 12px;
+  z-index: 100;
+  transform: translateY(-140%);
+  border: 1px solid var(--seal);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--seal-deep);
+  padding: 8px 12px;
+  font: 700 12px/1 var(--mono);
+  text-decoration: none;
+  box-shadow: var(--shadow-panel);
+}
+.skip-link:focus-visible {
+  transform: none;
+  outline: 2px solid var(--focus, var(--seal));
+  outline-offset: 2px;
+}
 body::before {
   content: "";
   position: fixed;
@@ -443,10 +470,9 @@ input[type="search"] {
   padding: 0 13px;
   color: var(--ink);
   font: 500 13px/1 var(--sans);
-  outline: 0;
 }
 input[type="search"]::placeholder { color: var(--faint); }
-input[type="search"]:focus {
+input[type="search"]:focus-visible {
   border-color: var(--seal);
   box-shadow: 0 0 0 3px rgba(177, 56, 42, 0.13);
 }
@@ -532,9 +558,11 @@ button:disabled { cursor: wait; opacity: 0.55; transform: none; box-shadow: none
   border: 2px solid rgba(33, 27, 16, 0.16);
   border-top-color: var(--seal);
   border-radius: 999px;
-  animation: snapshot-spin 0.8s linear infinite;
 }
 @keyframes snapshot-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: no-preference) {
+  .loading-spinner { animation: snapshot-spin 0.8s linear infinite; }
+}
 @keyframes turn-rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 .sessions {
   display: grid;
@@ -677,7 +705,6 @@ button:disabled { cursor: wait; opacity: 0.55; transform: none; box-shadow: none
   border-radius: 50%;
   background: var(--live);
   box-shadow: 0 0 0 0 rgba(63, 143, 98, 0.32);
-  animation: live-pulse 2.4s ease-out infinite;
 }
 .session-badge {
   border: 1px solid rgba(177, 56, 42, 0.42);
@@ -701,6 +728,9 @@ button:disabled { cursor: wait; opacity: 0.55; transform: none; box-shadow: none
   0% { box-shadow: 0 0 0 0 rgba(63, 143, 98, 0.32); }
   70% { box-shadow: 0 0 0 7px rgba(63, 143, 98, 0); }
   100% { box-shadow: 0 0 0 0 rgba(63, 143, 98, 0); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .session-live-dot { animation: live-pulse 2.4s ease-out infinite; }
 }
 .project-more {
   justify-self: start;
@@ -807,7 +837,9 @@ button:disabled { cursor: wait; opacity: 0.55; transform: none; box-shadow: none
   border-radius: 50%;
   background: var(--live);
   box-shadow: 0 0 0 0 rgba(63, 143, 98, 0.32);
-  animation: live-pulse 2.4s ease-out infinite;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .live-indicator .live-dot { animation: live-pulse 2.4s ease-out infinite; }
 }
 .switches { display: inline-flex; flex: 0 0 auto; gap: 2px; padding: 3px; border: 1px solid var(--line-2); border-radius: 9px; background: var(--panel); }
 .switches label {
@@ -999,7 +1031,7 @@ button:disabled { cursor: wait; opacity: 0.55; transform: none; box-shadow: none
   padding: 0 12px;
   font: 500 13px/1.2 var(--sans);
 }
-.session-search input:focus {
+.session-search input:focus-visible {
   outline: 2px solid rgba(177, 56, 42, 0.24);
   border-color: rgba(177, 56, 42, 0.48);
   background: var(--panel);
@@ -1486,7 +1518,7 @@ pre {
 .stats-skeleton-line {
   height: 12px; border-radius: 999px;
   background: linear-gradient(90deg, rgba(127,110,80,0.08), rgba(127,110,80,0.16), rgba(127,110,80,0.08));
-  background-size: 220% 100%; animation: skeleton-shift 1.2s ease-in-out infinite;
+  background-size: 220% 100%;
 }
 .stats-skeleton-line.short { width: 42%; }
 .stats-skeleton-line.mid { width: 70%; }
@@ -1875,10 +1907,12 @@ html[data-theme="dark"]{--scroll-thumb:rgba(233,220,196,0.18);--scroll-thumb-hov
 :root{--focus-ring:rgba(177,56,42,0.55);--focus-glow:rgba(177,56,42,0.14);}
 html[data-theme="sepia"]{--focus-ring:rgba(167,51,31,0.58);--focus-glow:rgba(167,51,31,0.16);}
 html[data-theme="dark"]{--focus-ring:rgba(210,76,55,0.66);--focus-glow:rgba(210,76,55,0.24);}
-button:focus-visible,.source-tab:focus-visible,.session:focus-visible,.search-result:focus-visible,.project-header:focus-visible,.appx:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px;}
+button:focus-visible,.source-tab:focus-visible,.session:focus-visible,.search-result:focus-visible,.project-header:focus-visible,.project-search:focus-visible,.project-more:focus-visible,.sessions-load-more:focus-visible,.gallery-chip:focus-visible,.gallery-thumb:focus-visible,.gallery-card-meta:focus-visible,.gallery-more:focus-visible,.stats-chip:focus-visible,.facet-chip:focus-visible,.search-flag:focus-visible,.search-prewarm:focus-visible,.sr-act:focus-visible,.session-search-result:focus-visible,.appx:focus-visible,.exports a:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px;}
 .splitter:focus-visible{outline:2px solid var(--focus-ring);outline-offset:-2px;}
-input[type="search"]:focus{border-color:var(--seal);box-shadow:0 0 0 1px var(--seal),0 0 0 3px var(--focus-glow);}
-.session-search input:focus{outline:0;border-color:var(--seal);box-shadow:0 0 0 1px var(--seal),0 0 0 3px var(--focus-glow);background:var(--panel);}
+input[type="search"]:focus{border-color:var(--seal);}
+input[type="search"]:focus-visible,.session-search input:focus-visible,.stats-cost-inputs input:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px;box-shadow:0 0 0 3px var(--focus-glow);}
+.session-search input:focus{border-color:var(--seal);background:var(--panel);}
+.stats-cost-inputs input:focus{border-color:var(--seal);}
 .switches label:has(input:focus-visible){outline:2px solid var(--focus-ring);outline-offset:2px;border-radius:6px;}
 .process-summary:focus-visible,.tool-details summary:focus-visible,.subagent > .subagent-summary:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px;border-radius:6px;}
 
@@ -2018,7 +2052,23 @@ body[data-outline-open="true"] .outline-panel{opacity:1;pointer-events:auto;tran
 .shortcut-list kbd{display:inline-flex;align-items:center;justify-content:center;min-width:34px;min-height:24px;border:1px solid var(--line-2);border-radius:6px;background:var(--panel);color:var(--muted);padding:0 7px;font:700 11px/1 var(--mono);}
 .shortcut-list div:has(kbd + kbd){grid-template-columns:auto auto minmax(0,1fr);}
 
+/* Accessibility + keyboard polish */
+:where(a[href],button,input,select,textarea,summary,[tabindex]:not([tabindex="-1"]),.file-path-action):focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px;}
+body[data-sidebar-collapsed="true"] .app{grid-template-columns:0 var(--splitter-width) minmax(0,1fr);}
+body[data-sidebar-collapsed="true"] .sidebar{border-right:0;overflow:hidden;pointer-events:none;}
+body[data-sidebar-collapsed="true"] .sidebar > *{visibility:hidden;}
+body[data-sidebar-collapsed="true"] .splitter::before{background:var(--seal);}
+.turn-keyboard-current .message-card,
+.turn-keyboard-current.process-entry,
+.turn-keyboard-current.commit-card .commit-body{outline:2px solid var(--focus-ring);outline-offset:5px;border-radius:10px;}
+.gallery-lightbox:focus-visible{outline:2px solid rgba(255,245,222,0.72);outline-offset:-6px;}
+@media (prefers-reduced-motion: no-preference){
+  .stats-skeleton-line{animation:skeleton-shift 1.2s ease-in-out infinite;}
+}
+
 @media (max-width:900px){
+  body[data-sidebar-collapsed="true"] .app{grid-template-columns:1fr;grid-template-rows:0 minmax(0,1fr);}
+  body[data-sidebar-collapsed="true"] .sidebar{border-bottom:0;}
   .reading-tools{order:4;flex-wrap:wrap;}
   .outline-panel{top:auto;right:10px;bottom:10px;left:10px;width:auto;max-height:min(420px,58dvh);transform:translateY(calc(100% + 18px));}
   body[data-outline-open="true"] .outline-panel{transform:none;}
@@ -2055,7 +2105,7 @@ const state = {
   statsRequestToken: 0,
   statsRate: { in: 0, out: 0 },
   gallery: { open: false, source: "all", items: [], offset: 0, limit: 36, loading: false, hasMore: true, error: "", requestToken: 0, lightboxOpen: false, lightboxIndex: 0 },
-  reading: { verbosity: "standard", outlineOpen: false, outlineItems: [], outlineVisible: new Set(), outlineTargets: new Map(), outlineActiveId: "", shortcutsOpen: false, settingsOpen: false },
+  reading: { verbosity: "standard", outlineOpen: false, outlineItems: [], outlineVisible: new Set(), outlineTargets: new Map(), outlineActiveId: "", shortcutsOpen: false, settingsOpen: false, sidebarCollapsed: false },
   liveTail: { active: false, ref: "", timer: 0, token: 0, head: null, polling: false, following: true, needsFollowPrompt: false },
 };
 const SOURCE_MODULES = [
@@ -2073,6 +2123,7 @@ const SEMANTIC_PREWARM_SCAN_LIMIT = 1200;
 const SEMANTIC_PREWARM_UPDATE_LIMIT = 120;
 const SAFETY_CHECKS_ENABLED = false;
 const SIDEBAR_WIDTH_KEY = "agent-snapshot.sidebar-width.v2";
+const SIDEBAR_COLLAPSED_KEY = "agent-snapshot.sidebar-collapsed.v1";
 const SIDEBAR_MIN = 240;
 const SIDEBAR_MAX = 460;
 const THEME_KEY = "agent-snapshot.theme.v1";
@@ -2162,6 +2213,7 @@ function openSearchDialog(context = {}) {
   $("searchOverlay").hidden = false;
   document.body.classList.add("search-open");
   renderSearch();
+  beginFocusTrap("search", $("searchOverlay"), { initialFocus: () => $("globalSearch"), close: () => closeSearchDialog(false) });
   if ($("globalSearch").value.trim()) {
     scheduleSearch(0);
   }
@@ -2175,6 +2227,7 @@ function closeSearchDialog(commit = false) {
   state.search.open = false;
   $("searchOverlay").hidden = true;
   document.body.classList.remove("search-open");
+  endFocusTrap("search");
   if (previewTimer) {
     clearTimeout(previewTimer);
     previewTimer = 0;
@@ -2194,6 +2247,139 @@ function closeSearchDialog(commit = false) {
 function isKeyboardActivation(event) {
   return event.key === "Enter" || event.key === " ";
 }
+
+const FOCUSABLE_SELECTOR = [
+  "a[href]",
+  "button:not([disabled])",
+  "input:not([disabled])",
+  "select:not([disabled])",
+  "textarea:not([disabled])",
+  "summary",
+  "[tabindex]:not([tabindex='-1'])",
+  "[contenteditable='true']",
+  "[contenteditable='']",
+].join(",");
+const focusTraps = new Map();
+let focusTrapStack = [];
+
+function isVisibleElement(element) {
+  return Boolean(element && element.isConnected && !element.closest("[hidden]") && (element.offsetWidth || element.offsetHeight || element.getClientRects().length));
+}
+
+function focusableWithin(container) {
+  if (!container || typeof container.querySelectorAll !== "function") {
+    return [];
+  }
+  return Array.from(container.querySelectorAll(FOCUSABLE_SELECTOR)).filter((element) => {
+    if (!(element instanceof HTMLElement) || element.getAttribute("aria-hidden") === "true") {
+      return false;
+    }
+    return isVisibleElement(element);
+  });
+}
+
+function safeFocus(element) {
+  if (!(element instanceof HTMLElement) || !element.isConnected) {
+    return false;
+  }
+  try {
+    element.focus({ preventScroll: true });
+  } catch (_error) {
+    element.focus();
+  }
+  return document.activeElement === element;
+}
+
+function activeFocusTrap() {
+  for (let index = focusTrapStack.length - 1; index >= 0; index -= 1) {
+    const name = focusTrapStack[index];
+    const trap = focusTraps.get(name);
+    if (trap && trap.container && isVisibleElement(trap.container)) {
+      return { name, ...trap };
+    }
+  }
+  return null;
+}
+
+function beginFocusTrap(name, container, options = {}) {
+  if (!container) {
+    return;
+  }
+  endFocusTrap(name, { restore: false });
+  const restoreFocus = options.restoreFocus === undefined ? document.activeElement : options.restoreFocus;
+  focusTraps.set(name, {
+    container,
+    close: typeof options.close === "function" ? options.close : null,
+    initialFocus: options.initialFocus || null,
+    restoreFocus: restoreFocus instanceof HTMLElement && restoreFocus !== document.body ? restoreFocus : null,
+  });
+  focusTrapStack = focusTrapStack.filter((item) => item !== name).concat(name);
+  window.setTimeout(() => {
+    const trap = activeFocusTrap();
+    if (!trap || trap.name !== name) {
+      return;
+    }
+    const initial = typeof trap.initialFocus === "function" ? trap.initialFocus() : trap.initialFocus;
+    const target = initial instanceof HTMLElement && isVisibleElement(initial)
+      ? initial
+      : focusableWithin(trap.container)[0];
+    if (target) {
+      safeFocus(target);
+    } else {
+      safeFocus(trap.container);
+    }
+  }, 0);
+}
+
+function endFocusTrap(name, options = {}) {
+  const trap = focusTraps.get(name);
+  focusTraps.delete(name);
+  focusTrapStack = focusTrapStack.filter((item) => item !== name);
+  if (!trap) {
+    return;
+  }
+  if (options.restore === false) {
+    return;
+  }
+  const restore = trap?.restoreFocus;
+  if (restore && isVisibleElement(restore)) {
+    safeFocus(restore);
+    return;
+  }
+  safeFocus($("turns"));
+}
+
+function isOverlayOpen() {
+  return Boolean(activeFocusTrap());
+}
+
+document.addEventListener("keydown", (event) => {
+  const trap = activeFocusTrap();
+  if (!trap) {
+    return;
+  }
+  if (event.key === "Escape") {
+    event.preventDefault();
+    event.stopPropagation();
+    trap.close?.();
+    return;
+  }
+  if (event.key !== "Tab") {
+    return;
+  }
+  const focusable = focusableWithin(trap.container);
+  event.preventDefault();
+  event.stopPropagation();
+  if (!focusable.length) {
+    safeFocus(trap.container);
+    return;
+  }
+  const currentIndex = focusable.indexOf(document.activeElement);
+  const nextIndex = event.shiftKey
+    ? (currentIndex <= 0 ? focusable.length - 1 : currentIndex - 1)
+    : (currentIndex < 0 || currentIndex >= focusable.length - 1 ? 0 : currentIndex + 1);
+  safeFocus(focusable[nextIndex]);
+}, true);
 
 const STATS_RATE_KEY = "agent-snapshot.stats-rate.v1";
 const STATS_FILTERS = [
@@ -2224,12 +2410,14 @@ function loadStatsRate() {
 async function openStats() {
   $("statsOverlay").hidden = false;
   document.body.classList.add("stats-open");
+  beginFocusTrap("stats", $("statsOverlay"), { initialFocus: () => $("closeStats"), close: closeStats });
   loadStats();
 }
 
 function closeStats() {
   $("statsOverlay").hidden = true;
   document.body.classList.remove("stats-open");
+  endFocusTrap("stats");
 }
 
 function openGallery() {
@@ -2237,17 +2425,18 @@ function openGallery() {
   $("galleryOverlay").hidden = false;
   document.body.classList.add("gallery-open");
   renderGallery();
+  beginFocusTrap("gallery", $("galleryOverlay"), { initialFocus: () => $("closeGallery"), close: closeGallery });
   if (!state.gallery.items.length && !state.gallery.loading) {
     loadGallery(true);
   }
-  window.setTimeout(() => $("closeGallery")?.focus(), 0);
 }
 
 function closeGallery() {
-  closeGalleryLightbox();
+  closeGalleryLightbox({ restoreFocus: false });
   state.gallery.open = false;
   $("galleryOverlay").hidden = true;
   document.body.classList.remove("gallery-open");
+  endFocusTrap("gallery");
 }
 
 async function setGallerySource(source) {
@@ -2389,14 +2578,19 @@ function openGalleryLightbox(index) {
   state.gallery.lightboxIndex = itemIndex;
   $("galleryLightbox").hidden = false;
   updateGalleryLightbox();
+  beginFocusTrap("lightbox", $("galleryLightbox"), {
+    initialFocus: () => document.querySelector("[data-lightbox-next]:not(:disabled), [data-lightbox-prev]:not(:disabled)") || $("galleryLightbox"),
+    close: closeGalleryLightbox,
+  });
 }
 
-function closeGalleryLightbox() {
+function closeGalleryLightbox(options = {}) {
   state.gallery.lightboxOpen = false;
   const overlay = $("galleryLightbox");
   if (overlay) {
     overlay.hidden = true;
   }
+  endFocusTrap("lightbox", { restore: options.restoreFocus !== false });
   const image = $("galleryLightboxImage");
   if (image) {
     image.removeAttribute("src");
@@ -3799,9 +3993,13 @@ function focusTurn(turnNumber) {
   }
   document.querySelectorAll(".semantic-hit-current").forEach((item) => item.classList.remove("semantic-hit-current"));
   target.classList.add("semantic-hit-current");
-  target.scrollIntoView({ behavior: "smooth", block: "center" });
+  target.scrollIntoView({ behavior: preferredScrollBehavior(), block: "center" });
   window.setTimeout(() => target.classList.remove("semantic-hit-current"), 2400);
   return true;
+}
+
+function preferredScrollBehavior() {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
 }
 
 function findTurnNode(turnNumber) {
@@ -3881,6 +4079,34 @@ function setSidebarWidth(value, persist) {
   }
 }
 
+function currentSidebarCollapsed() {
+  return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1";
+}
+
+function setSidebarCollapsed(collapsed, persist = true) {
+  state.reading.sidebarCollapsed = Boolean(collapsed);
+  document.body.setAttribute("data-sidebar-collapsed", state.reading.sidebarCollapsed ? "true" : "false");
+  const sidebar = document.querySelector(".sidebar");
+  if (sidebar) {
+    sidebar.setAttribute("aria-hidden", state.reading.sidebarCollapsed ? "true" : "false");
+    if (state.reading.sidebarCollapsed && sidebar.contains(document.activeElement)) {
+      safeFocus($("turns"));
+    }
+  }
+  const splitter = $("splitter");
+  if (splitter) {
+    splitter.setAttribute("aria-label", state.reading.sidebarCollapsed ? "项目列表已收起，按 s 展开" : "调整项目列表宽度");
+  }
+  if (persist) {
+    localStorage.setItem(SIDEBAR_COLLAPSED_KEY, state.reading.sidebarCollapsed ? "1" : "0");
+  }
+}
+
+function toggleSidebarCollapsed() {
+  setSidebarCollapsed(!state.reading.sidebarCollapsed);
+  showToast(state.reading.sidebarCollapsed ? "已收起侧栏" : "已展开侧栏", false);
+}
+
 function currentTheme() {
   const stored = localStorage.getItem(THEME_KEY);
   return THEMES.includes(stored) ? stored : "light";
@@ -3899,8 +4125,12 @@ function setSettingsOpen(open, options = {}) {
   }
   if (state.reading.settingsOpen) {
     syncSettingsControls();
+    beginFocusTrap("settings", popover, { initialFocus: () => $("settingsClose"), close: closeSettingsPopover });
   } else if (options.focus !== false) {
+    endFocusTrap("settings");
     toggle?.focus();
+  } else {
+    endFocusTrap("settings");
   }
 }
 
@@ -4391,7 +4621,7 @@ function jumpToOutlineItem(id) {
   if (!item || !item.target || !item.target.isConnected) {
     return false;
   }
-  item.target.scrollIntoView({ behavior: "smooth", block: "center" });
+  item.target.scrollIntoView({ behavior: preferredScrollBehavior(), block: "center" });
   setActiveOutlineItem(id, true);
   return true;
 }
@@ -4413,13 +4643,100 @@ function jumpUserTurn(direction) {
   jumpToOutlineItem(users[nextIndex].id);
 }
 
+function transcriptNavigationItems() {
+  const container = $("turns");
+  if (!container) {
+    return [];
+  }
+  return Array.from(container.children).filter((node) => {
+    return node instanceof HTMLElement
+      && node.classList.contains("turn")
+      && !node.classList.contains("turns-hydrating")
+      && !node.classList.contains("subagents");
+  });
+}
+
+function nearestTranscriptItem(items) {
+  const viewer = document.querySelector(".viewer");
+  const rect = viewer ? viewer.getBoundingClientRect() : { top: 0, height: window.innerHeight };
+  const center = rect.top + rect.height * 0.42;
+  let best = null;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (const item of items) {
+    const itemRect = item.getBoundingClientRect();
+    const distance = Math.abs(itemRect.top - center);
+    if (distance < bestDistance) {
+      best = item;
+      bestDistance = distance;
+    }
+  }
+  return best;
+}
+
+function flashTranscriptItem(node) {
+  document.querySelectorAll(".turn-keyboard-current").forEach((item) => item.classList.remove("turn-keyboard-current"));
+  node.classList.add("turn-keyboard-current");
+  window.setTimeout(() => node.classList.remove("turn-keyboard-current"), 1600);
+}
+
+function scrollTranscriptItem(node, block = "center") {
+  if (!node) {
+    return false;
+  }
+  const details = node.closest("details");
+  if (details) {
+    details.open = true;
+  }
+  node.scrollIntoView({ behavior: preferredScrollBehavior(), block });
+  flashTranscriptItem(node);
+  return true;
+}
+
+function jumpTranscriptTurn(direction) {
+  const items = transcriptNavigationItems();
+  if (!items.length) {
+    showToast("当前会话没有可导航记录", true);
+    return;
+  }
+  const current = document.querySelector(".turn-keyboard-current") || nearestTranscriptItem(items);
+  let index = current ? items.indexOf(current) : -1;
+  if (index < 0) {
+    index = direction > 0 ? -1 : items.length;
+  }
+  const nextIndex = clampNumber(index + direction, 0, items.length - 1);
+  scrollTranscriptItem(items[nextIndex]);
+}
+
+function jumpTranscriptBoundary(edge) {
+  if (edge === "top") {
+    flushTranscriptHydration();
+  }
+  const items = transcriptNavigationItems();
+  if (!items.length) {
+    showToast("当前会话没有可导航记录", true);
+    return;
+  }
+  const node = edge === "bottom" ? items[items.length - 1] : items[0];
+  scrollTranscriptItem(node, edge === "bottom" ? "end" : "start");
+}
+
+function focusSessionSearchInput() {
+  const input = $("sessionSearchInput");
+  if (!input || input.disabled) {
+    showToast("选择会话后可用会话内搜索", true);
+    return;
+  }
+  safeFocus(input);
+  input.select?.();
+}
+
 function openShortcuts() {
   state.reading.shortcutsOpen = true;
   const overlay = $("shortcutOverlay");
   if (overlay) {
     overlay.hidden = false;
   }
-  window.setTimeout(() => $("closeShortcuts")?.focus(), 0);
+  beginFocusTrap("shortcuts", overlay, { initialFocus: () => $("closeShortcuts"), close: closeShortcuts });
 }
 
 function closeShortcuts() {
@@ -4428,13 +4745,14 @@ function closeShortcuts() {
   if (overlay) {
     overlay.hidden = true;
   }
+  endFocusTrap("shortcuts");
 }
 
 function isTypingTarget(target) {
   if (!target || typeof target.closest !== "function") {
     return false;
   }
-  return Boolean(target.closest("input, textarea, select, [contenteditable='true']"));
+  return Boolean(target.closest("input, textarea, select, [contenteditable='true'], [contenteditable='']"));
 }
 
 function initReadingExperience() {
@@ -4488,6 +4806,7 @@ function initSplitter() {
   }
   const saved = Number(localStorage.getItem(SIDEBAR_WIDTH_KEY));
   setSidebarWidth(Number.isFinite(saved) ? saved : currentSidebarWidth(), false);
+  setSidebarCollapsed(currentSidebarCollapsed(), false);
 
   const widthFromPointer = (event) => event.clientX - app.getBoundingClientRect().left;
   const stopResize = (event) => {
@@ -4975,7 +5294,7 @@ function renderProjectGroup(group) {
   const note = !collapsed && noisy && expanded && group.sessions.length > noisyExpandedLimit
     ? "<div class='project-note'>仅显示最近 " + noisyExpandedLimit + " / " + esc(group.sessions.length) + "，可搜索标题定位更多</div>"
     : "";
-  const sessionList = collapsed ? "" : "<div class='session-list'>" + visible.map(renderSessionRow).join("") + "</div>";
+  const sessionList = collapsed ? "" : "<div class='session-list' role='list' aria-label='" + esc(group.label) + " 会话'>" + visible.map((session) => "<div role='listitem'>" + renderSessionRow(session) + "</div>").join("") + "</div>";
   const sectionClass = "project-group" + (group.isNoProject ? " no-project" : "") + (collapsed ? " collapsed" : "");
   const projectSearch = group.searchCwd
     ? "<button class='project-search' type='button' data-project-search='" + esc(group.key) + "' data-project-cwd='" + esc(group.searchCwd) + "' data-project-label='" + esc(group.label) + "' title='搜索 " + esc(group.displayPath) + "' aria-label='搜索 " + esc(group.label) + "'>搜索</button>"
@@ -5002,7 +5321,7 @@ function renderSessionRow(session) {
   const liveDot = live ? "<span class='session-live-dot' aria-hidden='true'></span>" : "";
   const liveBadge = live ? "<span class='session-badge live'>进行中</span>" : "";
   const historyBadge = session.historyOnly ? "<span class='session-badge'>history</span>" : "";
-  return "<button class='session" + active + (live ? " live" : "") + "' data-id='" + esc(ref) + "' title='" + esc(session.title) + "'>" +
+  return "<button class='session" + active + (live ? " live" : "") + "' data-id='" + esc(ref) + "' title='" + esc(session.title) + "'" + (active ? " aria-current='page'" : "") + ">" +
     liveDot +
     "<strong>" + esc(session.title) + "</strong>" +
     liveBadge +
@@ -5672,7 +5991,7 @@ function renderSnapshotMeta(snapshot) {
     parts.push("<span class='sep'>·</span><span class='tag'><span class='dot'></span>已脱敏</span>");
   }
   if (isLiveSessionItem(snapshot) || (state.liveTail.active && (snapshot.ref || state.selected) === state.liveTail.ref)) {
-    parts.push("<span class='sep'>·</span><span class='live-indicator'><span class='live-dot' aria-hidden='true'></span>实时</span>");
+    parts.push("<span class='sep'>·</span><span class='live-indicator' aria-live='off' title='实时会话，自动跟随最新内容'><span class='live-dot' aria-hidden='true'></span>实时</span>");
   }
   return "<div class='dossier'>" + parts.join("") + "</div>";
 }
@@ -6209,14 +6528,6 @@ $("globalSearch").addEventListener("keydown", async (event) => {
     moveSearchActive(-1);
     return;
   }
-  if (event.key === "Tab" && !event.shiftKey) {
-    event.preventDefault();
-    setSearchMode(state.search.mode === "semantic" ? "keyword" : "semantic");
-    if ($("globalSearch").value.trim()) {
-      scheduleSearch(0);
-    }
-    return;
-  }
   if (event.key === "Enter") {
     const result = state.search.results[state.search.active];
     if (result?.ref) {
@@ -6308,15 +6619,32 @@ $("searchFacets").addEventListener("click", (event) => {
   }
   toggleQueryToken(chip.dataset.facetKey, chip.dataset.facetValue, chip.dataset.facetKey === "source");
 });
+let pendingTopJumpTimer = 0;
+let pendingTopJump = false;
+
+function clearPendingTopJump() {
+  if (pendingTopJumpTimer) {
+    clearTimeout(pendingTopJumpTimer);
+    pendingTopJumpTimer = 0;
+  }
+  pendingTopJump = false;
+}
+
+function handleGotoTopKey() {
+  if (pendingTopJump) {
+    clearPendingTopJump();
+    jumpTranscriptBoundary("top");
+    return;
+  }
+  pendingTopJump = true;
+  pendingTopJumpTimer = window.setTimeout(clearPendingTopJump, 700);
+}
+
 document.addEventListener("keydown", (event) => {
-  const key = String(event.key || "").toLowerCase();
+  const rawKey = String(event.key || "");
+  const key = rawKey.toLowerCase();
   const typing = isTypingTarget(event.target);
   if (state.gallery.lightboxOpen) {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      closeGalleryLightbox();
-      return;
-    }
     if (event.key === "ArrowLeft") {
       event.preventDefault();
       moveGalleryLightbox(-1);
@@ -6328,9 +6656,7 @@ document.addEventListener("keydown", (event) => {
       return;
     }
   }
-  if (state.gallery.open && event.key === "Escape") {
-    event.preventDefault();
-    closeGallery();
+  if (isOverlayOpen()) {
     return;
   }
   if ((event.metaKey || event.ctrlKey) && key === "k") {
@@ -6353,33 +6679,57 @@ document.addEventListener("keydown", (event) => {
     toggleOutline();
     return;
   }
-  if (!typing && !event.metaKey && !event.ctrlKey && !event.altKey && event.key === "[") {
+  if (typing || event.metaKey || event.ctrlKey || event.altKey) {
+    clearPendingTopJump();
+    return;
+  }
+  if (event.key === "[") {
+    event.preventDefault();
+    clearPendingTopJump();
+    jumpUserTurn(-1);
+    return;
+  }
+  if (event.key === "]") {
+    event.preventDefault();
+    clearPendingTopJump();
+    jumpUserTurn(1);
+    return;
+  }
+  if (event.key === "G") {
+    event.preventDefault();
+    clearPendingTopJump();
+    jumpTranscriptBoundary("bottom");
+    return;
+  }
+  if (!event.shiftKey && key === "g") {
+    event.preventDefault();
+    handleGotoTopKey();
+    return;
+  }
+  clearPendingTopJump();
+  if (!event.shiftKey && key === "j") {
+    event.preventDefault();
+    jumpTranscriptTurn(1);
+    return;
+  }
+  if (!event.shiftKey && key === "k") {
+    event.preventDefault();
+    jumpTranscriptTurn(-1);
+    return;
+  }
+  if (!event.shiftKey && key === "u") {
     event.preventDefault();
     jumpUserTurn(-1);
     return;
   }
-  if (!typing && !event.metaKey && !event.ctrlKey && !event.altKey && event.key === "]") {
+  if (!event.shiftKey && key === "s") {
     event.preventDefault();
-    jumpUserTurn(1);
+    toggleSidebarCollapsed();
     return;
   }
-  if (event.key === "Escape" && state.reading.shortcutsOpen) {
+  if (!event.shiftKey && event.key === "/") {
     event.preventDefault();
-    closeShortcuts();
-    return;
-  }
-  if (event.key === "Escape" && state.reading.settingsOpen) {
-    event.preventDefault();
-    closeSettingsPopover();
-    return;
-  }
-  if (event.key === "Escape" && state.search.open) {
-    event.preventDefault();
-    closeSearchDialog(false);
-  }
-  if (event.key === "Escape" && !$("statsOverlay").hidden) {
-    event.preventDefault();
-    closeStats();
+    focusSessionSearchInput();
   }
 });
 $("exports").addEventListener("click", (event) => {
@@ -6419,6 +6769,12 @@ $("turns").addEventListener("keydown", (event) => {
   event.preventDefault();
   event.stopPropagation();
   handleFilePathAction(filePath, event);
+});
+document.querySelector(".skip-link")?.addEventListener("click", (event) => {
+  event.preventDefault();
+  const target = $("turns");
+  safeFocus(target);
+  target?.scrollIntoView({ behavior: preferredScrollBehavior(), block: "start" });
 });
 for (const id of ["redact"]) {
   $(id).addEventListener("change", () => {
