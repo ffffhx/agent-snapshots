@@ -1,0 +1,115 @@
+// @ts-nocheck
+
+export const themeCss = `
+:root {
+  --ink: #211b10;
+  --ink-soft: #4a4030;
+  --muted: #857862;
+  --soft: #a99c84;
+  --faint: #a99c84;
+  --paper: #f3eee1;
+  --paper-deep: #ece4d0;
+  --panel: #fbf7ec;
+  --panel-2: #f6f0e1;
+  --panel-wash: rgba(251, 247, 236, 0.86);
+  --line: rgba(33, 27, 16, 0.10);
+  --line-2: rgba(33, 27, 16, 0.16);
+  --hairline: rgba(33, 27, 16, 0.12);
+  --seal: #b1382a;
+  --seal-deep: #8c2b1f;
+  --seal-soft: rgba(177, 56, 42, 0.10);
+  --pine: #2f5d49;
+  --pine-soft: rgba(47, 93, 73, 0.10);
+  --live: #3f8f62;
+  --live-soft: rgba(63, 143, 98, 0.12);
+  --amber: #9a6a1b;
+  --amber-soft: rgba(160, 112, 30, 0.12);
+  --blue: #8c2b1f;
+  --teal: #2f5d49;
+  --green: #2f5d49;
+  --red: #b1382a;
+  --focus: #b1382a;
+  --code-bg: #211b12;
+  --code-line: #3a3322;
+  --code-ink: #efe7d4;
+  --sidebar-width: clamp(280px, 22vw, 330px);
+  --splitter-width: 12px;
+  --serif: ui-serif, "New York", "Iowan Old Style", Palatino, "Songti SC", "Noto Serif SC", Georgia, serif;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "PingFang SC", "Microsoft YaHei", monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Avenir Next", "Segoe UI", "PingFang SC", "Hiragino Sans GB", system-ui, sans-serif;
+  --shadow-soft: 0 18px 44px -38px rgba(64, 44, 14, 0.5);
+  --shadow-panel: 0 28px 70px -50px rgba(64, 44, 14, 0.6);
+  /* Themeable surfaces (retrofitted so dark/sepia stay coherent). */
+  --masthead-bg: linear-gradient(180deg, var(--paper) 82%, rgba(243, 238, 225, 0.88));
+  --field-bg: rgba(251, 247, 236, 0.72);
+  --field-bg-hover: rgba(253, 247, 234, 0.94);
+  --result-active-bg: #fdf7ea;
+  --user-card-bg: linear-gradient(180deg, #fbf4e2, #f6edd7);
+  --user-card-border: rgba(160, 112, 30, 0.26);
+  --tool-card-bg: rgba(250, 243, 224, 0.5);
+  --read-scale: 1;
+  color-scheme: light;
+}
+html[data-theme="sepia"] {
+  --ink: #3a2f1d;
+  --ink-soft: #574833;
+  --muted: #8a795d;
+  --soft: #a3906f;
+  --faint: #a3906f;
+  --paper: #efe2c8;
+  --paper-deep: #e6d6b6;
+  --panel: #f6ebd4;
+  --panel-2: #f0e3c8;
+  --panel-wash: rgba(246, 235, 212, 0.88);
+  --line: rgba(58, 47, 29, 0.12);
+  --line-2: rgba(58, 47, 29, 0.2);
+  --hairline: rgba(58, 47, 29, 0.14);
+  --masthead-bg: linear-gradient(180deg, var(--paper) 82%, rgba(230, 214, 182, 0.9));
+  --field-bg: rgba(246, 235, 212, 0.75);
+  --field-bg-hover: rgba(249, 240, 220, 0.96);
+  --result-active-bg: #f6ecd2;
+  --user-card-bg: linear-gradient(180deg, #f4e7c6, #eeddb8);
+  --tool-card-bg: rgba(240, 227, 200, 0.55);
+  color-scheme: light;
+}
+html[data-theme="dark"] {
+  --ink: #ece3d0;
+  --ink-soft: #cebf9f;
+  --muted: #9c8f74;
+  --soft: #837657;
+  --faint: #837657;
+  --paper: #17130c;
+  --paper-deep: #100d08;
+  --panel: #221b11;
+  --panel-2: #1c160d;
+  --panel-wash: rgba(34, 27, 17, 0.86);
+  --line: rgba(233, 220, 196, 0.11);
+  --line-2: rgba(233, 220, 196, 0.19);
+  --hairline: rgba(233, 220, 196, 0.14);
+  --seal: #d24c37;
+  --seal-deep: #b23a2b;
+  --seal-soft: rgba(210, 76, 55, 0.16);
+  --pine: #5aa383;
+  --pine-soft: rgba(90, 163, 131, 0.14);
+  --live: #73c797;
+  --live-soft: rgba(115, 199, 151, 0.14);
+  --amber: #c79242;
+  --amber-soft: rgba(199, 146, 66, 0.16);
+  --red: #d24c37;
+  --focus: #d24c37;
+  --code-bg: #100d07;
+  --code-line: #2c2417;
+  --code-ink: #efe7d4;
+  --masthead-bg: linear-gradient(180deg, var(--paper) 82%, rgba(16, 13, 8, 0.9));
+  --field-bg: rgba(233, 220, 196, 0.05);
+  --field-bg-hover: rgba(233, 220, 196, 0.09);
+  --result-active-bg: rgba(210, 76, 55, 0.12);
+  --user-card-bg: linear-gradient(180deg, #2a2114, #241b10);
+  --user-card-border: rgba(199, 146, 66, 0.28);
+  --tool-card-bg: rgba(233, 220, 196, 0.04);
+  --tool-card-border: rgba(199, 146, 66, 0.34);
+  --shadow-soft: 0 18px 44px -38px rgba(0, 0, 0, 0.7);
+  --shadow-panel: 0 28px 70px -50px rgba(0, 0, 0, 0.8);
+  color-scheme: dark;
+}
+`;
