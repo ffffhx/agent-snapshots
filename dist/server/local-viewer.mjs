@@ -13,6 +13,8 @@ import { prewarmSemanticIndex, semanticSearchSessions } from "./semantic-index.m
 import { semanticSearchSnapshot } from "./semantic-search.mjs";
 import { searchIndexed, syncSearchIndexInBackground, searchIndexStats, indexRowCount } from "./search-index.mjs";
 import { resumeSessionInOrca } from "./orca-bridge.mjs";
+import { readCodexQuotaSnapshot } from "./quota-meter.mjs";
+import { buildUsageAnalytics } from "./usage-analytics.mjs";
 const execFileAsync = promisify(execFile);
 export async function serveLocalViewer({ codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir, host, port, defaultServerLimit, snapshotLogoSvg, shareConfig, listSessions, loadSnapshot, searchSessions, applySafetyChecksOption, snapshotApiResponse, publishAllSnapshots, publishSnapshot, createShareRequestPayload, stableSnapshotShareId, renderMarkdown, renderHtml, readPositiveInteger, readNonNegativeInteger, safeFileName, }) {
     const csrfToken = createMutationCsrfToken();
@@ -133,6 +135,35 @@ export async function serveLocalViewer({ codexHome, claudeHome, traeHome, traeAp
                     pricePerMTokOut: Number(url.searchParams.get("priceOut") || "0") || 0,
                 });
                 sendJson(response, stats);
+                return;
+            }
+            if (url.pathname === "/api/quota") {
+                const quota = await readCodexQuotaSnapshot({ codexHome });
+                sendJson(response, quota);
+                return;
+            }
+            if (url.pathname === "/api/activity") {
+                syncSearchIndexInBackground({
+                    codexHome,
+                    claudeHome,
+                    traeHome,
+                    traeAppHome,
+                    traeRecordingsDir,
+                    source: "all",
+                    scanLimit: 20000,
+                    updateLimit: 20000,
+                });
+                const limit = readPositiveInteger(url.searchParams.get("limit") || "20000", "limit");
+                const analytics = await buildUsageAnalytics({
+                    codexHome,
+                    claudeHome,
+                    traeHome,
+                    traeAppHome,
+                    traeRecordingsDir,
+                    listSessions,
+                    limit,
+                });
+                sendJson(response, analytics);
                 return;
             }
             if (url.pathname === "/api/session-commits") {

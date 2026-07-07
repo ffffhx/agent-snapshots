@@ -1217,7 +1217,7 @@ pre {
 }
 .stats-overlay[hidden] { display: none; }
 .stats-dialog {
-  display: flex; flex-direction: column; gap: 16px; width: min(720px, 96vw);
+  display: flex; flex-direction: column; gap: 16px; width: min(1060px, 96vw);
   max-height: calc(100dvh - 40px); overflow: auto;
   border: 1px solid var(--line-2); border-top: 3px solid var(--seal);
   border-radius: 12px; background: linear-gradient(180deg, var(--panel), var(--panel-2));
@@ -1229,13 +1229,42 @@ pre {
 .stats-bar-actions { display: inline-flex; gap: 8px; }
 .stats-refresh { min-height: 34px; border-color: var(--line-2); background: transparent; color: var(--muted); }
 .stats-refresh:hover { border-color: var(--seal); background: transparent; color: var(--seal); }
-.stats-body { display: flex; flex-direction: column; gap: 18px; }
+.stats-body { display: flex; flex-direction: column; gap: 16px; }
+.stats-shell { display: flex; flex-direction: column; gap: 14px; }
+.stats-filterbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-top: 2px; }
+.stats-chip-group { display: inline-flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.stats-chip {
+  min-height: 30px; border: 1px solid var(--line-2); border-radius: 999px;
+  background: transparent; color: var(--ink-soft);
+  padding: 0 11px; font: 700 11px/1 var(--mono);
+}
+.stats-chip:hover { border-color: var(--seal); color: var(--seal-deep); background: transparent; transform: none; }
+.stats-chip.active { border-color: var(--seal); background: var(--seal-soft); color: var(--seal-deep); }
+.stats-chip b { color: var(--faint); font-weight: 700; }
+.stats-chip.active b { color: var(--seal-deep); }
+.stats-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 16px 18px; }
+.stats-section { min-width: 0; border-top: 1px solid var(--line); padding-top: 12px; }
+.stats-section-quota, .stats-section-usage { grid-column: span 5; }
+.stats-section-activity, .stats-section-projects { grid-column: span 7; }
+.stats-section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.stats-section h3 { margin: 0; color: var(--ink-soft); font: 700 13px/1.2 var(--sans); }
+.stats-section-meta { color: var(--faint); font: 700 10.5px/1.2 var(--mono); white-space: nowrap; }
+.stats-subsection { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
+.stats-subsection .stats-section-head { margin-bottom: 8px; }
+.stats-skeleton { display: grid; gap: 8px; }
+.stats-skeleton-line {
+  height: 12px; border-radius: 999px;
+  background: linear-gradient(90deg, rgba(127,110,80,0.08), rgba(127,110,80,0.16), rgba(127,110,80,0.08));
+  background-size: 220% 100%; animation: skeleton-shift 1.2s ease-in-out infinite;
+}
+.stats-skeleton-line.short { width: 42%; }
+.stats-skeleton-line.mid { width: 70%; }
+@keyframes skeleton-shift { from { background-position: 100% 0; } to { background-position: -100% 0; } }
 .stat-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
 .stat-tile { display: flex; flex-direction: column; gap: 3px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-wash); padding: 12px 14px; }
 .stat-tile-k { color: var(--faint); font: 700 10.5px/1.2 var(--mono); letter-spacing: 0.05em; text-transform: uppercase; }
 .stat-tile-v { color: var(--ink); font: 700 24px/1.1 var(--serif); }
 .stat-tile-sub { color: var(--muted); font: 600 11px/1.3 var(--mono); }
-.stats-section h3 { margin: 0 0 8px; color: var(--ink-soft); font: 600 13px/1.2 var(--sans); }
 .stat-rows { display: flex; flex-direction: column; gap: 6px; }
 .stat-row { display: grid; grid-template-columns: minmax(80px, 150px) 1fr auto; gap: 10px; align-items: center; }
 .stat-row-name { overflow: hidden; color: var(--ink-soft); font: 600 12px/1.3 var(--sans); text-overflow: ellipsis; white-space: nowrap; }
@@ -1244,6 +1273,37 @@ pre {
 .stat-row-val { color: var(--ink); font: 700 11.5px/1.2 var(--mono); white-space: nowrap; }
 .stat-row-val b { color: var(--faint); font-weight: 600; }
 .stats-muted { color: var(--faint); font: 600 12px/1.4 var(--mono); }
+.quota-list { display: grid; gap: 12px; }
+.quota-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 5px; }
+.quota-label { color: var(--ink-soft); font: 700 12px/1.2 var(--sans); }
+.quota-value { color: var(--ink); font: 800 12px/1 var(--mono); }
+.quota-track { height: 12px; border-radius: 999px; background: rgba(127, 110, 80, 0.14); overflow: hidden; box-shadow: inset 0 0 0 1px rgba(33, 27, 16, 0.05); }
+.quota-fill { display: block; height: 100%; min-width: 2px; border-radius: inherit; transition: width 0.25s ease; }
+.quota-meta { display: flex; justify-content: space-between; gap: 10px; margin-top: 5px; color: var(--faint); font: 650 10.5px/1.3 var(--mono); }
+.activity-panel { display: grid; gap: 14px; }
+.heatmap-frame { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 7px; align-items: start; overflow-x: auto; padding-bottom: 2px; }
+.heatmap-weekdays { display: grid; grid-template-rows: repeat(7, 10px); gap: 3px; color: var(--faint); font: 700 9px/10px var(--mono); }
+.activity-heatmap { display: grid; grid-auto-flow: column; grid-auto-columns: 10px; grid-template-rows: repeat(7, 10px); gap: 3px; min-width: max-content; }
+.activity-day { width: 10px; height: 10px; border: 1px solid rgba(33, 27, 16, 0.06); border-radius: 2px; background: rgba(127, 110, 80, 0.10); }
+.activity-day.level-1 { background: rgba(47, 93, 73, 0.28); }
+.activity-day.level-2 { background: rgba(47, 93, 73, 0.48); }
+.activity-day.level-3 { background: rgba(154, 106, 27, 0.62); }
+.activity-day.level-4 { background: rgba(177, 56, 42, 0.76); }
+.hour-panel { display: grid; gap: 5px; }
+.hour-bars { height: 54px; display: grid; grid-template-columns: repeat(24, minmax(4px, 1fr)); align-items: end; gap: 3px; }
+.hour-bar { min-height: 2px; border-radius: 3px 3px 0 0; background: linear-gradient(180deg, var(--seal), var(--amber)); opacity: 0.88; }
+.hour-axis { display: grid; grid-template-columns: repeat(4, 1fr); color: var(--faint); font: 700 9.5px/1 var(--mono); }
+.hour-axis span:nth-child(2), .hour-axis span:nth-child(3) { text-align: center; }
+.hour-axis span:last-child { text-align: right; }
+.project-ranks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.rank-title { margin: 0 0 8px; color: var(--muted); font: 800 10.5px/1 var(--mono); letter-spacing: 0.04em; }
+.rank-list { display: grid; gap: 7px; }
+.rank-row { display: grid; grid-template-columns: minmax(86px, 1fr) minmax(72px, 0.8fr) auto; gap: 8px; align-items: center; }
+.rank-name { overflow: hidden; color: var(--ink-soft); font: 650 12px/1.25 var(--sans); text-overflow: ellipsis; white-space: nowrap; }
+.rank-track { height: 7px; border-radius: 999px; background: rgba(127, 110, 80, 0.14); overflow: hidden; }
+.rank-fill { display: block; height: 100%; min-width: 2px; border-radius: inherit; background: linear-gradient(90deg, var(--pine), var(--amber)); }
+.rank-val { color: var(--ink); font: 800 10.5px/1.2 var(--mono); white-space: nowrap; text-align: right; }
+.rank-val b { display: block; color: var(--faint); font: 650 9.5px/1.2 var(--mono); }
 .stats-cost-inputs { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 8px; }
 .stats-cost-inputs label { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font: 600 12px/1 var(--mono); }
 .stats-cost-inputs input { width: 82px; height: 32px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--field-bg); color: var(--ink); padding: 0 8px; font: 600 12px/1 var(--mono); }
@@ -1251,6 +1311,12 @@ pre {
 .stats-cost-out b { color: var(--seal-deep); font-weight: 700; font-size: 18px; }
 .stats-cost-out span { color: var(--faint); font: 500 11px/1.3 var(--mono); }
 .stats-note { margin: 0; color: var(--faint); font: 500 11px/1.5 var(--mono); }
+@media (max-width: 900px) {
+  .stats-filterbar { align-items: flex-start; flex-direction: column; }
+  .stats-chip-group { justify-content: flex-start; }
+  .stats-section-quota, .stats-section-usage, .stats-section-activity, .stats-section-projects { grid-column: 1 / -1; }
+  .project-ranks { grid-template-columns: 1fr; }
+}
 .exports .resume-orca { border-color: var(--pine); background: var(--pine); color: #eef5ef; }
 .exports .resume-orca:hover { border-color: var(--pine); background: #26483a; color: #fff; }
 .sr-act-orca { border-color: var(--pine); color: var(--pine); }
@@ -1450,7 +1516,7 @@ html[data-theme="dark"]{--sink-shadow:0 16px 26px -20px rgba(0,0,0,0.72);}
 :root{--ease-rise:cubic-bezier(0.2,0.7,0.3,1);--dur-rise:0.28s;}
 .toolbar button:active,.exports a:active,.appx:active,.source-tab:active,.search-mode:active,.search-flag:active,.facet-chip:active,.sr-act:active,.session-search button:active{transform:translateY(0) scale(0.97);transition-duration:60ms;}
 @media (prefers-reduced-motion: reduce){
-  .turn,.search-dialog,.stats-dialog,.toast,.goal,.risk,.notice,.search-overlay,.stats-overlay,.stat-row-fill,.search-results > .search-result{animation:none !important;}
+  .turn,.search-dialog,.stats-dialog,.toast,.goal,.risk,.notice,.search-overlay,.stats-overlay,.stat-row-fill,.quota-fill,.rank-fill,.hour-bar,.stats-skeleton-line,.search-results > .search-result{animation:none !important;}
   *{transition-property:color,background-color,border-color,opacity,box-shadow !important;}
 }
 
@@ -1557,6 +1623,10 @@ const state = {
   snapshotCache: new Map(),
   previewToken: 0,
   stats: null,
+  statsQuota: null,
+  statsActivity: null,
+  statsFilter: "all",
+  statsRequestToken: 0,
   statsRate: { in: 0, out: 0 },
   reading: { verbosity: "standard", outlineOpen: false, outlineItems: [], outlineVisible: new Set(), outlineTargets: new Map(), outlineActiveId: "", shortcutsOpen: false },
 };
@@ -1692,6 +1762,13 @@ function isKeyboardActivation(event) {
 }
 
 const STATS_RATE_KEY = "agent-snapshot.stats-rate.v1";
+const STATS_FILTERS = [
+  { key: "all", label: "全部" },
+  { key: "codex", label: "Codex" },
+  { key: "claude", label: "Claude" },
+  { key: "trae", label: "Trae" },
+];
+const STATS_ENGINE_LABELS = { all: "全部", codex: "Codex", claude: "Claude Code", trae: "Trae" };
 
 function loadStatsRate() {
   try {
@@ -1707,7 +1784,7 @@ function loadStatsRate() {
 async function openStats() {
   $("statsOverlay").hidden = false;
   document.body.classList.add("stats-open");
-  await loadStats();
+  loadStats();
 }
 
 function closeStats() {
@@ -1716,21 +1793,136 @@ function closeStats() {
 }
 
 async function loadStats() {
-  $("statsBody").innerHTML = renderLoading("正在统计本机会话（首次会在后台建索引）...");
+  const requestToken = state.statsRequestToken + 1;
+  state.statsRequestToken = requestToken;
+  renderStatsShell();
+  loadStatsQuota(requestToken);
+  loadStatsActivity(requestToken);
+  loadStatsUsage(requestToken);
+}
+
+function renderStatsShell() {
+  $("statsBody").innerHTML =
+    "<div class='stats-shell'>" +
+      "<div class='stats-filterbar'>" +
+        "<p class='stats-note'>各区块独立加载；项目 token 来自本机搜索索引，首次打开会后台补齐。</p>" +
+        "<div id='statsEngineFilters' class='stats-chip-group' role='group' aria-label='统计来源筛选'></div>" +
+      "</div>" +
+      "<div class='stats-grid'>" +
+        statsSectionShell("quota", "配额", "Codex CLI") +
+        statsSectionShell("activity", "活跃度", "最近 26 周") +
+        statsSectionShell("projects", "项目", "Top 项目") +
+        statsSectionShell("usage", "用量", "Token / 成本") +
+      "</div>" +
+      "<p class='stats-note'>数据来自本机日志。Codex 的 token 为各轮累计（含缓存/重复上下文），成本仅按当前填写单价粗估。</p>" +
+    "</div>";
+  renderStatsFilter();
+}
+
+function statsSectionShell(kind, title, meta) {
+  return "<section class='stats-section stats-section-" + esc(kind) + "'>" +
+    "<div class='stats-section-head'><h3>" + esc(title) + "</h3><span class='stats-section-meta'>" + esc(meta) + "</span></div>" +
+    "<div id='stats" + kind[0].toUpperCase() + kind.slice(1) + "Panel'>" + renderStatsSkeleton() + "</div>" +
+  "</section>";
+}
+
+function renderStatsSkeleton() {
+  return "<div class='stats-skeleton' aria-busy='true'>" +
+    "<span class='stats-skeleton-line mid'></span>" +
+    "<span class='stats-skeleton-line'></span>" +
+    "<span class='stats-skeleton-line short'></span>" +
+  "</div>";
+}
+
+async function loadStatsQuota(requestToken) {
+  try {
+    const response = await fetch("/api/quota");
+    const quota = await response.json();
+    if (!response.ok) {
+      throw new Error(quota.error || "配额读取失败");
+    }
+    if (requestToken !== state.statsRequestToken) {
+      return;
+    }
+    state.statsQuota = quota;
+    renderStatsQuota();
+  } catch (error) {
+    if (requestToken === state.statsRequestToken) {
+      $("statsQuotaPanel").innerHTML = statsError(error, "配额读取失败");
+    }
+  }
+}
+
+async function loadStatsActivity(requestToken) {
+  try {
+    const response = await fetch("/api/activity");
+    const activity = await response.json();
+    if (!response.ok) {
+      throw new Error(activity.error || "活动统计失败");
+    }
+    if (requestToken !== state.statsRequestToken) {
+      return;
+    }
+    state.statsActivity = activity;
+    renderStatsFilter();
+    renderStatsActivity();
+    renderStatsProjects();
+  } catch (error) {
+    if (requestToken === state.statsRequestToken) {
+      $("statsActivityPanel").innerHTML = statsError(error, "活动统计失败");
+      $("statsProjectsPanel").innerHTML = statsError(error, "项目排行失败");
+    }
+  }
+}
+
+async function loadStatsUsage(requestToken) {
   try {
     const response = await fetch("/api/search-stats");
     const stats = await response.json();
     if (!response.ok) {
       throw new Error(stats.error || "统计失败");
     }
+    if (requestToken !== state.statsRequestToken) {
+      return;
+    }
     state.stats = stats;
-    renderStats();
+    renderStatsUsage();
   } catch (error) {
-    $("statsBody").innerHTML = "<div class='search-empty'>" + esc(error instanceof Error ? error.message : String(error)) + "</div>";
+    if (requestToken === state.statsRequestToken) {
+      $("statsUsagePanel").innerHTML = statsError(error, "用量统计失败");
+    }
   }
 }
 
-const STATS_ENGINE_LABELS = { codex: "Codex", claude: "Claude Code", trae: "Trae" };
+function statsError(error, fallback) {
+  return "<div class='search-empty'>" + esc(error instanceof Error ? error.message : (error || fallback)) + "</div>";
+}
+
+function renderStatsFilter() {
+  const target = $("statsEngineFilters");
+  if (!target) {
+    return;
+  }
+  const counts = statsEngineCounts();
+  target.innerHTML = STATS_FILTERS.map((item) => {
+    const active = item.key === state.statsFilter;
+    const count = counts[item.key] || 0;
+    return "<button type='button' class='stats-chip" + (active ? " active" : "") + "' data-stats-filter='" + esc(item.key) + "' aria-pressed='" + (active ? "true" : "false") + "'>" +
+      esc(item.label) + " <b>" + esc(count) + "</b>" +
+    "</button>";
+  }).join("");
+}
+
+function statsEngineCounts() {
+  const activity = state.statsActivity;
+  const engines = activity && activity.engines ? activity.engines : {};
+  return {
+    all: Number(engines.total || 0),
+    codex: Number(engines.codex || 0),
+    claude: Number(engines.claude || 0),
+    trae: Number(engines.trae || 0),
+  };
+}
 
 function statsTile(label, value, sub) {
   return "<div class='stat-tile'><span class='stat-tile-k'>" + esc(label) + "</span>" +
@@ -1748,7 +1940,202 @@ function statsBar(label, count, total, max, sub) {
   "</div>";
 }
 
-function renderStats() {
+function renderStatsQuota() {
+  const quota = state.statsQuota;
+  if (!quota || !quota.available) {
+    $("statsQuotaPanel").innerHTML =
+      "<div class='stats-muted'>未找到 Codex CLI 配额快照。Claude Code / Trae 没有对应的本地配额文件。</div>";
+    return;
+  }
+  const freshness = quota.updatedAt ? relativePast(quota.updatedAt) + "的快照" : "快照时间未知";
+  const plan = quota.planType ? " · " + quota.planType : "";
+  $("statsQuotaPanel").innerHTML =
+    "<div class='quota-list'>" +
+      quotaMeter("5 小时窗口", quota.primary) +
+      quotaMeter("周配额", quota.secondary) +
+      "<div class='stats-muted'>Codex" + esc(plan) + " · " + esc(freshness) + "</div>" +
+    "</div>";
+}
+
+function quotaMeter(label, data) {
+  if (!data) {
+    return "<div class='stats-muted'>" + esc(label) + " 暂无数据</div>";
+  }
+  const pct = Math.max(0, Math.min(100, Number(data.usedPercent || 0)));
+  const color = quotaColor(pct);
+  return "<div class='quota-row'>" +
+    "<div class='quota-head'><span class='quota-label'>" + esc(label) + "</span><span class='quota-value'>" + esc(formatPercent(pct)) + "</span></div>" +
+    "<div class='quota-track'><span class='quota-fill' style='width:" + pct.toFixed(1) + "%;background:" + esc(color) + "'></span></div>" +
+    "<div class='quota-meta'><span>" + esc(resetCountdown(data.resetsAt)) + "</span><span>" + esc(formatWindow(data.windowMinutes)) + "</span></div>" +
+  "</div>";
+}
+
+function quotaColor(percent) {
+  const pct = Math.max(0, Math.min(100, Number(percent || 0)));
+  const hue = pct < 70 ? Math.round(138 - (pct / 70) * 90) : Math.round(48 - ((pct - 70) / 30) * 40);
+  return "hsl(" + Math.max(8, hue) + " 55% 38%)";
+}
+
+function resetCountdown(value) {
+  const time = new Date(value).getTime();
+  if (!Number.isFinite(time)) {
+    return "重置时间未知";
+  }
+  const diff = time - Date.now();
+  if (diff <= 0) {
+    return "已到重置时间";
+  }
+  const minute = 60 * 1000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+  if (diff >= day) {
+    return Math.ceil(diff / day) + " 天后重置";
+  }
+  if (diff >= hour) {
+    return Math.ceil(diff / hour) + " 小时后重置";
+  }
+  return Math.max(1, Math.ceil(diff / minute)) + " 分钟后重置";
+}
+
+function formatWindow(minutes) {
+  const n = Number(minutes || 0);
+  if (!n) {
+    return "";
+  }
+  if (n >= 60 * 24) {
+    return Math.round(n / 60 / 24) + " 天窗口";
+  }
+  if (n >= 60) {
+    return Math.round(n / 60) + " 小时窗口";
+  }
+  return n + " 分钟窗口";
+}
+
+function renderStatsActivity() {
+  const activity = state.statsActivity;
+  if (!activity) {
+    return;
+  }
+  const filter = state.statsFilter;
+  const days = activity.days || [];
+  const hours = activity.hours || [];
+  const total = days.reduce((sum, day) => sum + filteredCount(day, filter), 0);
+  const maxDay = Math.max(1, ...days.map((day) => filteredCount(day, filter)));
+  const weekdayLabels = ["日", "一", "二", "三", "四", "五", "六"].map((label) => "<span>" + label + "</span>").join("");
+  const cells = days.map((day) => {
+    const count = filteredCount(day, filter);
+    const level = heatLevel(count, maxDay);
+    const title = day.date + " · " + count + " 次会话";
+    return "<span class='activity-day level-" + level + "' title='" + esc(title) + "' aria-label='" + esc(title) + "'></span>";
+  }).join("");
+  const maxHour = Math.max(1, ...hours.map((hour) => filteredCount(hour, filter)));
+  const hourBars = hours.map((hour) => {
+    const count = filteredCount(hour, filter);
+    const height = count ? Math.max(4, Math.round((count / maxHour) * 54)) : 2;
+    const title = String(hour.hour).padStart(2, "0") + ":00 · " + count + " 次会话";
+    return "<span class='hour-bar' style='height:" + height + "px' title='" + esc(title) + "'></span>";
+  }).join("");
+  $("statsActivityPanel").innerHTML =
+    "<div class='activity-panel'>" +
+      "<div class='stats-muted'>" + esc(STATS_ENGINE_LABELS[filter] || filter) + " · " + esc(total) + " 次会话</div>" +
+      "<div class='heatmap-frame'>" +
+        "<div class='heatmap-weekdays' aria-hidden='true'>" + weekdayLabels + "</div>" +
+        "<div class='activity-heatmap' role='img' aria-label='最近 26 周活动热力图'>" + cells + "</div>" +
+      "</div>" +
+      "<div class='hour-panel'>" +
+        "<div class='stats-section-head'><h3>按小时分布</h3><span class='stats-section-meta'>本地时间</span></div>" +
+        "<div class='hour-bars' role='img' aria-label='按小时分布'>" + hourBars + "</div>" +
+        "<div class='hour-axis'><span>00</span><span>06</span><span>12</span><span>23</span></div>" +
+      "</div>" +
+    "</div>";
+}
+
+function heatLevel(count, max) {
+  if (!count) {
+    return 0;
+  }
+  return Math.max(1, Math.min(4, Math.ceil((count / Math.max(1, max)) * 4)));
+}
+
+function filteredCount(row, filter) {
+  if (!row) {
+    return 0;
+  }
+  if (filter === "all") {
+    return Number(row.total || 0);
+  }
+  return Number(row[filter] || 0);
+}
+
+function renderStatsProjects() {
+  const activity = state.statsActivity;
+  if (!activity) {
+    return;
+  }
+  const projects = aggregateProjects(activity.projects || [], state.statsFilter);
+  const bySessions = projects.slice().sort((a, b) => (b.sessions - a.sessions) || (b.totalTokens - a.totalTokens)).slice(0, 8);
+  const rate = state.statsRate;
+  const hasRate = Boolean(rate.in || rate.out);
+  const byTokens = projects.slice().sort((a, b) => {
+    const av = hasRate ? estimatedCost(a.inputTokens, a.outputTokens) : a.totalTokens;
+    const bv = hasRate ? estimatedCost(b.inputTokens, b.outputTokens) : b.totalTokens;
+    return (bv - av) || (b.sessions - a.sessions);
+  }).filter((entry) => entry.totalTokens > 0).slice(0, 8);
+  const sessionMax = Math.max(1, ...bySessions.map((entry) => entry.sessions));
+  const tokenMax = Math.max(1, ...byTokens.map((entry) => hasRate ? estimatedCost(entry.inputTokens, entry.outputTokens) : entry.totalTokens));
+  const sessionRows = bySessions.map((entry) =>
+    rankRow(entry.name, entry.path, entry.sessions, sessionMax, formatTokenCount(entry.sessions), entry.totalTokens ? formatTokenShort(entry.totalTokens) + " token" : "")
+  ).join("") || "<div class='stats-muted'>暂无项目数据</div>";
+  const tokenRows = byTokens.map((entry) => {
+    const cost = estimatedCost(entry.inputTokens, entry.outputTokens);
+    const metric = hasRate ? cost : entry.totalTokens;
+    return rankRow(entry.name, entry.path, metric, tokenMax, formatTokenShort(entry.totalTokens), hasRate ? "≈ " + formatCost(cost) : entry.sessions + " 会话");
+  }).join("") || "<div class='stats-muted'>暂无 token 数据</div>";
+  $("statsProjectsPanel").innerHTML =
+    "<div class='project-ranks'>" +
+      "<div><p class='rank-title'>按会话数</p><div class='rank-list'>" + sessionRows + "</div></div>" +
+      "<div><p class='rank-title'>按 token / 成本</p><div class='rank-list'>" + tokenRows + "</div></div>" +
+    "</div>";
+}
+
+function aggregateProjects(projects, filter) {
+  const map = new Map();
+  for (const entry of projects) {
+    const engine = entry.engine || "codex";
+    if (filter !== "all" && engine !== filter) {
+      continue;
+    }
+    const key = entry.key || entry.path || entry.name || "(无项目)";
+    const item = map.get(key) || {
+      key,
+      name: entry.name || "(无项目)",
+      path: entry.path || "",
+      sessions: 0,
+      indexedSessions: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+    };
+    item.sessions += Number(entry.sessions || 0);
+    item.indexedSessions += Number(entry.indexedSessions || 0);
+    item.inputTokens += Number(entry.inputTokens || 0);
+    item.outputTokens += Number(entry.outputTokens || 0);
+    item.totalTokens += Number(entry.totalTokens || 0);
+    map.set(key, item);
+  }
+  return Array.from(map.values()).filter((entry) => entry.sessions || entry.totalTokens);
+}
+
+function rankRow(name, path, value, max, valueText, subText) {
+  const pct = max > 0 ? Math.max(2, Math.round((Number(value || 0) / max) * 100)) : 0;
+  return "<div class='rank-row'>" +
+    "<span class='rank-name' title='" + esc(path || name) + "'>" + esc(name) + "</span>" +
+    "<span class='rank-track'><span class='rank-fill' style='width:" + pct + "%'></span></span>" +
+    "<span class='rank-val'>" + esc(valueText) + (subText ? "<b>" + esc(subText) + "</b>" : "") + "</span>" +
+  "</div>";
+}
+
+function renderStatsUsage() {
   const stats = state.stats;
   if (!stats) {
     return;
@@ -1767,36 +2154,69 @@ function renderStats() {
     statsBar(STATS_ENGINE_LABELS[entry.key] || entry.key, entry.sessions, Number(entry.total || 0), engineMax, " · " + entry.sessions + " 会话")
   ).join("") || "<div class='stats-muted'>暂无数据</div>";
 
-  const projectMax = Math.max(1, ...(stats.byProject || []).map((entry) => Number(entry.total || 0)));
-  const projectRows = (stats.byProject || []).map((entry) =>
-    statsBar(entry.name, entry.sessions, Number(entry.total || 0), projectMax, " · " + entry.sessions + " 会话")
-  ).join("") || "<div class='stats-muted'>暂无数据</div>";
-
   const costLine = (rate.in || rate.out)
     ? "<div class='stats-cost-out'>≈ <b>" + esc(cost >= 1 ? cost.toFixed(2) : cost.toFixed(4)) + "</b> <span>（按 输入 " + esc(rate.in || 0) + " / 输出 " + esc(rate.out || 0) + " 每百万 token，粗略上限，含各轮重复上下文）</span></div>"
     : "<div class='stats-cost-out stats-muted'>填入单价即可估算成本（token 计数为准）</div>";
 
-  $("statsBody").innerHTML =
+  $("statsUsagePanel").innerHTML =
     "<div class='stat-tiles'>" + tiles + "</div>" +
-    "<div class='stats-section'><h3>按来源</h3><div class='stat-rows'>" + engineRows + "</div></div>" +
-    "<div class='stats-section'><h3>按项目 · Top " + (stats.byProject || []).length + "</h3><div class='stat-rows'>" + projectRows + "</div></div>" +
-    "<div class='stats-section'><h3>成本估算</h3>" +
+    "<div class='stats-subsection'><div class='stats-section-head'><h3>按来源</h3></div><div class='stat-rows'>" + engineRows + "</div></div>" +
+    "<div class='stats-subsection'><div class='stats-section-head'><h3>成本估算</h3></div>" +
       "<div class='stats-cost-inputs'>" +
         "<label>输入 <input id='statsPriceIn' type='number' min='0' step='0.1' value='" + esc(rate.in || "") + "' placeholder='0'> /1M</label>" +
         "<label>输出 <input id='statsPriceOut' type='number' min='0' step='0.1' value='" + esc(rate.out || "") + "' placeholder='0'> /1M</label>" +
       "</div>" + costLine +
-    "</div>" +
-    "<p class='stats-note'>索引在后台增量构建；数据来自本机日志，Codex 的 token 为各轮累计（含缓存/重复上下文），仅供参考。</p>";
+    "</div>";
 
   const priceIn = $("statsPriceIn");
   const priceOut = $("statsPriceOut");
   const onRate = () => {
     state.statsRate = { in: Number(priceIn.value) || 0, out: Number(priceOut.value) || 0 };
     localStorage.setItem(STATS_RATE_KEY, JSON.stringify(state.statsRate));
-    renderStats();
+    renderStatsUsage();
+    renderStatsProjects();
   };
   if (priceIn) priceIn.addEventListener("change", onRate);
   if (priceOut) priceOut.addEventListener("change", onRate);
+}
+
+function estimatedCost(input, output) {
+  const rate = state.statsRate;
+  return (Number(input || 0) / 1000000) * (rate.in || 0) + (Number(output || 0) / 1000000) * (rate.out || 0);
+}
+
+function formatCost(value) {
+  const number = Number(value || 0);
+  if (!Number.isFinite(number)) {
+    return "0";
+  }
+  return number >= 1 ? number.toFixed(2) : number.toFixed(4);
+}
+
+function formatPercent(value) {
+  const number = Number(value || 0);
+  return (number >= 10 ? number.toFixed(0) : number.toFixed(1)).replace(/\\.0$/, "") + "%";
+}
+
+function relativePast(value) {
+  const time = new Date(value).getTime();
+  if (!Number.isFinite(time)) {
+    return "";
+  }
+  const diff = Math.max(0, Date.now() - time);
+  const minute = 60 * 1000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+  if (diff < minute) {
+    return "刚刚";
+  }
+  if (diff < hour) {
+    return Math.max(1, Math.floor(diff / minute)) + " 分钟前";
+  }
+  if (diff < day) {
+    return Math.max(1, Math.floor(diff / hour)) + " 小时前";
+  }
+  return Math.max(1, Math.floor(diff / day)) + " 天前";
 }
 
 function resetSearchResultsState() {
@@ -4358,6 +4778,14 @@ $("openStats").addEventListener("click", openStats);
 $("closeStats").addEventListener("click", closeStats);
 $("statsRefresh").addEventListener("click", loadStats);
 $("statsOverlay").addEventListener("click", (event) => {
+  const filterButton = event.target.closest("[data-stats-filter]");
+  if (filterButton) {
+    state.statsFilter = STATS_FILTERS.some((item) => item.key === filterButton.dataset.statsFilter) ? filterButton.dataset.statsFilter : "all";
+    renderStatsFilter();
+    renderStatsActivity();
+    renderStatsProjects();
+    return;
+  }
   if (event.target === $("statsOverlay")) {
     closeStats();
   }
