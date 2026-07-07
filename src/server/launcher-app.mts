@@ -25,6 +25,7 @@ export function renderLauncherApp(csrfToken) {
         <button class="scope active" data-scope="all" type="button">全部</button>
         <button class="scope" data-scope="codex" type="button">Codex</button>
         <button class="scope" data-scope="claude" type="button">Claude</button>
+        <button class="scope" data-scope="trae" type="button">Trae</button>
       </div>
     </header>
     <div id="list" class="list" role="listbox" aria-label="会话"></div>
@@ -37,6 +38,19 @@ export function renderLauncherApp(csrfToken) {
     </footer>
   </main>
   <div id="toast" class="toast" hidden></div>
+  <div id="shortcuts" class="shortcuts" hidden>
+    <div class="shortcuts-card" role="dialog" aria-modal="true" aria-labelledby="shortcutsTitle">
+      <div id="shortcutsTitle" class="shortcuts-title">快捷键</div>
+      <div class="shortcut-list">
+        <span>点击</span><b>在 Orca 继续</b>
+        <span>⌘↵</span><b>完整视图</b>
+        <span>↑↓</span><b>选择</b>
+        <span>⌘1-4</span><b>切换范围</b>
+        <span>⌘/</span><b>快捷键</b>
+        <span>esc</span><b>关闭</b>
+      </div>
+    </div>
+  </div>
   <script>window.CSRF=${JSON.stringify(String(csrfToken || ""))};</script>
   <script>${launcherJs()}</script>
 </body>
@@ -48,6 +62,7 @@ function launcherCss() {
 :root{
   --ink:#efe6d3; --dim:#a4977c; --faint:#7f7358;
   --seal:#d94f39; --seal-soft:rgba(217,79,57,0.16);
+  --live:#7ccf88; --live-soft:rgba(124,207,136,0.14);
   --panel:rgba(26,20,13,0.66); --row-hover:rgba(233,220,196,0.05);
   --line:rgba(233,220,196,0.09); --line-2:rgba(233,220,196,0.14);
   --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,"PingFang SC",monospace;
@@ -62,40 +77,62 @@ html,body{height:100%;background:transparent;color:var(--ink);font-family:var(--
 .q{flex:1 1 auto;min-width:0;height:100%;border:0;background:transparent;color:var(--ink);font:400 20px/1 var(--sans);outline:0;-webkit-app-region:no-drag}
 .q::placeholder{color:var(--faint)}
 .scopes{display:inline-flex;gap:2px;padding:3px;border-radius:8px;background:rgba(233,220,196,0.05);-webkit-app-region:no-drag}
-.scope{border:0;border-radius:6px;background:transparent;color:var(--dim);padding:5px 9px;font:700 10.5px/1 var(--mono);letter-spacing:0.04em;cursor:pointer}
+.scope{border:0;border-radius:6px;background:transparent;color:var(--dim);padding:5px 9px;font:700 10.5px/1 var(--mono);letter-spacing:0.04em;cursor:pointer;transition:background-color .12s ease,color .12s ease}
 .scope:hover{color:var(--ink)}
 .scope.active{background:rgba(233,220,196,0.1);color:var(--ink)}
 .list{flex:1 1 auto;min-height:0;overflow-y:auto;padding:8px;scrollbar-width:thin;scrollbar-color:rgba(233,220,196,0.2) transparent}
 .list::-webkit-scrollbar{width:10px}
 .list::-webkit-scrollbar-thumb{background:rgba(233,220,196,0.16);background-clip:content-box;border:3px solid transparent;border-radius:99px}
 .sectlabel{padding:8px 12px 6px;color:var(--faint);font:700 10px/1 var(--mono);letter-spacing:0.14em;text-transform:uppercase}
-.row{display:grid;grid-template-columns:26px minmax(0,1fr) auto;align-items:center;gap:12px;padding:9px 12px;border-radius:9px;cursor:pointer}
+.row{display:grid;grid-template-columns:26px minmax(0,1fr) max-content;align-items:center;gap:12px;padding:9px 12px;border-radius:9px;cursor:pointer;transition:background-color .12s ease,box-shadow .12s ease}
 .row:hover{background:var(--row-hover)}
 .row.sel{background:var(--seal-soft);box-shadow:inset 3px 0 0 var(--seal)}
 .badge{display:grid;place-items:center;width:26px;height:26px;border-radius:7px;font:800 11px/1 var(--mono);color:#fff}
 .badge.codex{background:linear-gradient(180deg,#3a2f1d,#2a2214);color:#e6d9bd;border:1px solid rgba(233,220,196,0.18)}
 .badge.claude{background:linear-gradient(180deg,#7a3a1f,#5e2c17);color:#f4dcc4}
 .badge.trae{background:#2f5d49;color:#dbeee5}
-.rc{min-width:0}
+.rc{min-width:0;overflow:hidden}
 .rt{overflow:hidden;color:var(--ink);font:500 14px/1.3 var(--sans);text-overflow:ellipsis;white-space:nowrap}
 .rs{overflow:hidden;margin-top:2px;color:var(--dim);font:500 11.5px/1.3 var(--mono);text-overflow:ellipsis;white-space:nowrap}
 .rs mark{color:#ffd7a0;font-weight:700;background:rgba(217,79,57,0.26);border-radius:3px;padding:0 2px;box-decoration-break:clone;-webkit-box-decoration-break:clone}
-.racc{display:flex;align-items:center;gap:10px;flex:0 0 auto;color:var(--faint);font:600 11px/1 var(--mono);white-space:nowrap}
-.rowhint{color:var(--seal);opacity:0;font-weight:700}
+.racc{display:flex;align-items:center;justify-content:flex-end;gap:8px;min-width:0;color:var(--faint);font:600 11px/1 var(--mono);white-space:nowrap}
+.age{color:var(--faint)}
+.rowhint{max-width:118px;overflow:hidden;color:var(--seal);opacity:0;font-weight:700;text-overflow:ellipsis;transition:opacity .12s ease}
 .row.sel .rowhint,.row:hover .rowhint{opacity:1}
-.empty{display:grid;place-items:center;height:100%;min-height:180px;color:var(--faint);font:600 13px/1.5 var(--mono);text-align:center}
+.live-chip{display:inline-flex;align-items:center;gap:5px;height:19px;padding:0 7px;border:1px solid rgba(124,207,136,0.24);border-radius:99px;background:var(--live-soft);color:#bfe6c4;font:800 10px/1 var(--mono)}
+.live-dot{width:6px;height:6px;border-radius:50%;background:var(--live);box-shadow:0 0 0 0 rgba(124,207,136,0.36);animation:livepulse 2.2s ease-out infinite}
+@keyframes livepulse{0%{box-shadow:0 0 0 0 rgba(124,207,136,0.32)}70%{box-shadow:0 0 0 6px rgba(124,207,136,0)}100%{box-shadow:0 0 0 0 rgba(124,207,136,0)}}
+.actions{display:inline-flex;align-items:center;gap:5px;opacity:0;pointer-events:none;transform:translateX(3px);transition:opacity .12s ease,transform .12s ease}
+.row.sel .actions,.row:hover .actions{opacity:1;pointer-events:auto;transform:translateX(0)}
+.qact{display:grid;place-items:center;width:24px;height:24px;border:1px solid rgba(233,220,196,0.12);border-radius:7px;background:rgba(233,220,196,0.06);color:#d7caa9;cursor:pointer}
+.qact:hover{border-color:rgba(233,220,196,0.24);background:rgba(233,220,196,0.11);color:var(--ink)}
+.qact:focus-visible{outline:2px solid rgba(217,79,57,0.5);outline-offset:2px}
+.qact svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.empty{display:grid;place-items:center;height:100%;min-height:180px;padding:28px;color:var(--faint);font:600 13px/1.5 var(--mono);text-align:center}
 .spin{width:15px;height:15px;border:2px solid rgba(233,220,196,0.2);border-top-color:var(--seal);border-radius:99px;animation:sp .8s linear infinite;margin-right:8px;display:inline-block;vertical-align:-2px}
 @keyframes sp{to{transform:rotate(360deg)}}
 .foot{display:flex;align-items:center;justify-content:space-between;gap:12px;height:42px;flex:0 0 auto;padding:0 14px;border-top:1px solid var(--line-2);background:linear-gradient(0deg,rgba(14,10,6,0.62),rgba(14,10,6,0.16));-webkit-app-region:drag}
-.brand{display:inline-flex;align-items:center;gap:8px;color:#c3b596;font:700 11px/1 var(--mono);letter-spacing:0.03em}
+.brand{display:inline-flex;align-items:center;gap:8px;flex:0 0 auto;color:#c3b596;font:700 11px/1 var(--mono);letter-spacing:0.03em}
 .mark{width:18px;height:18px;border-radius:5px}
-.hint{color:#cdc0a1;font:600 11.5px/1 var(--mono);white-space:nowrap}
+.hint{display:flex;align-items:center;justify-content:flex-end;min-width:0;overflow:hidden;color:#cdc0a1;font:600 11.5px/1 var(--mono);white-space:nowrap}
+.hint .stat{min-width:0;overflow:hidden;color:var(--dim);text-overflow:ellipsis}
 .hint .sep{color:rgba(233,220,196,0.26);margin:0 7px;font-style:normal}
 .hint .act{color:var(--seal);font-weight:800}
 .hint kbd{display:inline-flex;align-items:center;justify-content:center;min-width:19px;height:20px;margin-right:6px;padding:0 6px;border:1px solid rgba(233,220,196,0.24);border-top-color:rgba(255,255,255,0.28);border-radius:6px;background:linear-gradient(180deg,rgba(233,220,196,0.16),rgba(233,220,196,0.08));color:#efe3c5;font:700 11px/1 var(--mono);box-shadow:inset 0 1px 0 rgba(255,255,255,0.12),0 1px 2px rgba(0,0,0,0.4);vertical-align:-4px}
 .toast{position:fixed;left:50%;bottom:52px;transform:translateX(-50%);z-index:9;max-width:86vw;border:1px solid var(--line-2);border-left:3px solid var(--seal);border-radius:9px;background:rgba(30,23,15,0.95);color:var(--ink);padding:10px 14px;font:600 12.5px/1.4 var(--sans);box-shadow:0 20px 50px -24px #000}
 .toast[hidden]{display:none}
 .toast.err{border-left-color:#e0563b}
+.shortcuts{position:fixed;inset:0;z-index:8;display:grid;place-items:center;background:rgba(5,4,3,0.18);backdrop-filter:blur(1.5px)}
+.shortcuts[hidden]{display:none}
+.shortcuts-card{width:min(360px,calc(100vw - 42px));border:1px solid var(--line-2);border-radius:12px;background:rgba(30,23,15,0.96);box-shadow:0 26px 70px -32px #000;padding:16px 18px 18px}
+.shortcuts-title{margin-bottom:12px;color:var(--ink);font:800 12px/1 var(--mono);letter-spacing:0.12em}
+.shortcut-list{display:grid;grid-template-columns:72px minmax(0,1fr);gap:9px 16px;align-items:center}
+.shortcut-list span{display:inline-flex;align-items:center;justify-content:center;min-height:22px;border:1px solid rgba(233,220,196,0.2);border-radius:7px;background:rgba(233,220,196,0.07);color:#eadfc6;font:800 11px/1 var(--mono)}
+.shortcut-list b{min-width:0;color:var(--dim);font:700 12px/1.25 var(--sans)}
+@media (prefers-reduced-motion:reduce){
+  .spin,.live-dot{animation:none}
+  .row,.scope,.rowhint,.actions{transition:none}
+}
 `;
 }
 
@@ -103,7 +140,9 @@ function launcherJs() {
   return `
 const $=(id)=>document.getElementById(id);
 const esc=(v)=>String(v==null?"":v).replace(/[&<>"']/g,(c)=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const state={items:[],sel:0,scope:"all",query:"",mode:"recent",token:0};
+const SCOPES=["all","codex","claude","trae"];
+const SCOPE_LABELS={all:"全部",codex:"Codex",claude:"Claude",trae:"Trae"};
+const state={items:[],sel:0,scope:"all",query:"",mode:"recent",token:0,loading:false,searchMs:0,matched:0,liveCount:0,recentCount:0,shortcutsOpen:false};
 let timer=0;
 
 function relTime(v){
@@ -118,6 +157,38 @@ function relTime(v){
 }
 function engineKey(it){ const e=(it.engine||"").toLowerCase(); return e==="claude"||e==="trae"?e:"codex"; }
 function badgeChar(k){ return k==="codex"?"C":k==="claude"?"◇":"T"; }
+function bareSessionId(it){
+  const id=String(it&&it.id||"").trim();
+  if(id) return id;
+  return String(it&&it.ref||"").replace(/^(codex|claude|trae):/,"");
+}
+function sessionKey(it){
+  const ref=String(it&&it.ref||"").trim();
+  if(ref) return ref;
+  const id=bareSessionId(it);
+  return id?engineKey(it)+":"+id:"";
+}
+function isCompleteItem(it){
+  if(!it) return true;
+  if(it.complete===true) return true;
+  if(it.complete===false) return false;
+  const k=engineKey(it);
+  if(k==="trae") return it.sourceKind==="recorded";
+  const count=Number(it.messageCount);
+  if(Number.isFinite(count)) return count>0;
+  if(k==="claude") return it.sourceKind==="transcript" && it.historyOnly!==true;
+  return true;
+}
+function isLiveCandidate(it){
+  if(!it) return false;
+  if(it.live===true) return true;
+  if(it.live===false) return false;
+  if(it.complete===false) return true;
+  if(it.complete===true) return false;
+  if(engineKey(it)==="trae") return false;
+  return !isCompleteItem(it);
+}
+function isRunning(it){ return !!(it && (it._live===true || it.live===true || it.complete===false)); }
 
 function showToast(msg,err){
   const el=$("toast"); el.textContent=msg; el.classList.toggle("err",!!err); el.hidden=false;
@@ -133,46 +204,112 @@ async function run(){
   const q=$("q").value.trim();
   state.query=q;
   const token=++state.token;
+  state.loading=true;
+  state.searchMs=0;
+  state.matched=0;
+  state.liveCount=0;
+  state.recentCount=0;
   if(!q){
     state.mode="recent";
     render(true);
     try{
       const src=state.scope==="all"?"all":state.scope;
-      const r=await fetch("/api/sessions?limit=40&completeOnly=1&source="+src).then(x=>x.json());
+      const liveParams=new URLSearchParams({limit:"40",completeOnly:"0",liveOnly:"1",source:src});
+      const recentParams=new URLSearchParams({limit:"40",completeOnly:"1",source:src});
+      const [liveResult,recentResult]=await Promise.allSettled([
+        fetch("/api/sessions?"+liveParams.toString()).then(x=>x.json()),
+        fetch("/api/sessions?"+recentParams.toString()).then(x=>x.json())
+      ]);
       if(token!==state.token) return;
-      state.items=Array.isArray(r)?r:[];
+      if(liveResult.status==="rejected" && recentResult.status==="rejected") throw liveResult.reason || recentResult.reason;
+      const liveRows=liveResult.status==="fulfilled" && Array.isArray(liveResult.value)?liveResult.value:[];
+      const recentRows=recentResult.status==="fulfilled" && Array.isArray(recentResult.value)?recentResult.value:[];
+      const merged=mergeRecent(liveRows,recentRows);
+      state.items=merged.items;
+      state.liveCount=merged.liveCount;
+      state.recentCount=merged.recentCount;
     }catch(e){ if(token===state.token) state.items=[]; }
-    if(token===state.token){ state.sel=0; render(); }
+    if(token===state.token){ state.loading=false; state.sel=0; render(); }
     return;
   }
   state.mode="search";
   render(true);
   try{
+    const started=performance.now();
     const p=new URLSearchParams({q,source:state.scope,limit:"40",includeTools:"1"});
     const r=await fetch("/api/search?"+p.toString()).then(x=>x.json());
     if(token!==state.token) return;
     state.items=Array.isArray(r.results)?r.results:[];
+    state.matched=Number(r.matched||state.items.length)||state.items.length;
+    state.searchMs=Math.max(0,Math.round(performance.now()-started));
   }catch(e){ if(token===state.token) state.items=[]; }
-  if(token===state.token){ state.sel=0; render(); }
+  if(token===state.token){ state.loading=false; state.sel=0; render(); }
+}
+
+function mergeRecent(liveRows,recentRows){
+  const seen=new Set();
+  const items=[];
+  let liveCount=0;
+  let recentCount=0;
+  for(const item of liveRows){
+    if(!isLiveCandidate(item)) continue;
+    const key=sessionKey(item); if(key && seen.has(key)) continue;
+    if(key) seen.add(key);
+    items.push(Object.assign({},item,{_live:true}));
+    liveCount+=1;
+  }
+  for(const item of recentRows){
+    const key=sessionKey(item); if(key && seen.has(key)) continue;
+    if(key) seen.add(key);
+    items.push(item);
+    recentCount+=1;
+  }
+  return {items,liveCount,recentCount};
 }
 
 function render(loading){
+  state.loading=!!loading;
   const list=$("list");
   if(loading && !state.items.length){
-    list.innerHTML="<div class='empty'><span class='spin'></span> 正在搜索…</div>";
+    const text=state.mode==="search"?"正在搜索…":"正在载入…";
+    list.innerHTML="<div class='empty'><span class='spin'></span> "+text+"</div>";
     updateHint(); return;
   }
+  if(state.sel>=state.items.length) state.sel=Math.max(0,state.items.length-1);
   if(!state.items.length){
-    list.innerHTML="<div class='empty'>"+(state.query?"没有匹配的会话":"暂无会话")+"</div>";
+    list.innerHTML="<div class='empty'>"+emptyMessage()+"</div>";
     updateHint(); return;
   }
-  const label=state.mode==="recent"?"最近":"结果 · "+state.items.length;
-  let html="<div class='sectlabel'>"+esc(label)+"</div>";
-  html+=state.items.map((it,i)=>row(it,i)).join("");
+  let html="";
+  if(state.mode==="recent" && state.liveCount>0){
+    html+="<div class='sectlabel'>进行中 · "+state.liveCount+"</div>";
+    for(let i=0;i<state.items.length;i++){
+      if(i===state.liveCount && state.recentCount>0) html+="<div class='sectlabel'>最近 · "+state.recentCount+"</div>";
+      html+=row(state.items[i],i);
+    }
+  }else{
+    const label=state.mode==="recent"?"最近 · "+state.items.length:searchLabel();
+    html+="<div class='sectlabel'>"+esc(label)+"</div>";
+    html+=state.items.map((it,i)=>row(it,i)).join("");
+  }
   list.innerHTML=html;
-  const sel=list.querySelector(".row.sel");
-  if(sel) sel.scrollIntoView({block:"nearest"});
+  scrollSelected();
   updateHint();
+}
+
+function searchLabel(){
+  const shown=state.items.length;
+  const matched=state.matched||shown;
+  return matched>shown?"结果 · "+shown+" / "+matched:"结果 · "+shown;
+}
+
+function emptyMessage(){
+  const label=SCOPE_LABELS[state.scope]||"当前范围";
+  if(state.query) return "没有匹配的 "+label+" 会话";
+  if(state.scope==="trae") return "暂无 Trae 会话 · Trae 会话仅支持查看，按 ⌘↵ 打开完整视图";
+  if(state.scope==="codex") return "暂无 Codex 会话";
+  if(state.scope==="claude") return "暂无 Claude 会话";
+  return "暂无会话";
 }
 
 function row(it,i){
@@ -183,12 +320,21 @@ function row(it,i){
   const sub=[proj,relTime(it.mtime)].filter(Boolean).join(" · ");
   const subLine=state.mode==="search"&&snip?snip:esc(sub);
   const hint=k==="trae"?"⌘↵ 查看":"点击 Orca 继续";
+  const live=isRunning(it)?"<span class='live-chip'><span class='live-dot'></span>进行中</span>":"";
+  const copy=k==="trae"?"":actionButton("copy","复制恢复命令",iconCopy());
+  const actions="<span class='actions'>"+copy+actionButton("open","完整视图",iconOpen())+"</span>";
   return "<div class='row"+(i===state.sel?" sel":"")+"' data-i='"+i+"'>"+
     "<span class='badge "+k+"'>"+badgeChar(k)+"</span>"+
     "<div class='rc'><div class='rt'>"+esc(title)+"</div><div class='rs'>"+subLine+"</div></div>"+
-    "<div class='racc'><span>"+esc(relTime(it.mtime))+"</span><span class='rowhint'>"+hint+"</span></div>"+
+    "<div class='racc'>"+live+"<span class='age'>"+esc(relTime(it.mtime))+"</span><span class='rowhint'>"+hint+"</span>"+actions+"</div>"+
   "</div>";
 }
+
+function actionButton(action,title,icon){
+  return "<button class='qact' data-action='"+action+"' type='button' title='"+esc(title)+"' aria-label='"+esc(title)+"'>"+icon+"</button>";
+}
+function iconCopy(){ return "<svg viewBox='0 0 24 24' aria-hidden='true'><rect x='8' y='8' width='10' height='10' rx='2'></rect><path d='M6 16H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1'></path></svg>"; }
+function iconOpen(){ return "<svg viewBox='0 0 24 24' aria-hidden='true'><path d='M14 4h6v6'></path><path d='M10 14 20 4'></path><path d='M20 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h4'></path></svg>"; }
 
 function highlight(text,terms){
   const full=String(text||"");
@@ -216,25 +362,78 @@ function highlight(text,terms){
 
 function updateHint(){
   const it=state.items[state.sel];
-  const k=it?engineKey(it):"codex";
+  const k=it?engineKey(it):(state.scope==="trae"?"trae":"codex");
   const sep="<span class='sep'>·</span>";
+  const status="<span class='stat'>"+esc(statusText())+"</span>";
   const primary=k==="trae"
     ? "Trae 无法恢复"+sep+"<kbd>⌘↵</kbd> <span class='act'>完整视图</span>"
     : "<span class='act'>点击 在 Orca 继续</span>"+sep+"<kbd>⌘↵</kbd> 完整视图";
-  $("hint").innerHTML=primary+sep+"<kbd>↑↓</kbd> 选择"+sep+"<kbd>esc</kbd> 关闭";
+  $("hint").innerHTML=status+sep+primary+sep+"<kbd>↑↓</kbd> 选择"+sep+"<kbd>⌘/</kbd> 快捷键"+sep+"<kbd>esc</kbd> 清除";
+}
+
+function statusText(){
+  if(state.loading) return state.mode==="search"?"正在搜索":"正在载入";
+  if(state.mode==="search"){
+    const shown=state.items.length;
+    const matched=state.matched||shown;
+    const count=matched>shown?shown+"/"+matched+" 条结果":shown+" 条结果";
+    return state.searchMs?count+" · "+state.searchMs+" ms":count;
+  }
+  if(state.liveCount) return "共 "+state.items.length+" 条 · "+state.liveCount+" 进行中";
+  return state.items.length+" 条最近";
 }
 
 function move(d){
   if(!state.items.length) return;
   state.sel=(state.sel+d+state.items.length)%state.items.length;
   for(const el of document.querySelectorAll(".row")){ el.classList.toggle("sel", Number(el.dataset.i)===state.sel); }
-  const sel=document.querySelector(".row.sel"); if(sel) sel.scrollIntoView({block:"nearest"});
+  scrollSelected();
   updateHint();
+}
+
+function scrollSelected(){
+  const sel=document.querySelector(".row.sel");
+  if(sel) sel.scrollIntoView({block:"nearest",behavior:"smooth"});
 }
 
 function openFull(it){
   if(!it) return;
   window.open("/?session="+encodeURIComponent(it.ref||""),"_blank");
+}
+
+function resumeCommand(it){
+  const k=engineKey(it);
+  const id=bareSessionId(it);
+  if(!id || k==="trae") return "";
+  return k==="claude"?"claude --resume "+id:"codex resume "+id;
+}
+
+async function copyResumeCommand(it){
+  const cmd=resumeCommand(it);
+  if(!cmd) return;
+  try{
+    await copyText(cmd);
+    showToast("已复制",false);
+  }catch(e){
+    showToast("复制失败",true);
+  }
+}
+
+async function copyText(text){
+  if(navigator.clipboard && window.isSecureContext){
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const ta=document.createElement("textarea");
+  ta.value=text;
+  ta.setAttribute("readonly","");
+  ta.style.position="fixed";
+  ta.style.left="-9999px";
+  document.body.appendChild(ta);
+  ta.select();
+  const ok=document.execCommand("copy");
+  ta.remove();
+  if(!ok) throw new Error("copy failed");
 }
 
 async function resumeOrOpen(it){
@@ -251,14 +450,66 @@ async function resumeOrOpen(it){
   }catch(e){ showToast(String(e&&e.message||e),true); }
 }
 
+function setScope(scope){
+  if(!SCOPES.includes(scope)) return;
+  const changed=state.scope!==scope;
+  state.scope=scope;
+  for(const el of document.querySelectorAll(".scope")) el.classList.toggle("active",el.dataset.scope===scope);
+  if(changed) run();
+}
+
+function openShortcuts(){
+  state.shortcutsOpen=true;
+  $("shortcuts").hidden=false;
+}
+
+function closeShortcuts(){
+  state.shortcutsOpen=false;
+  $("shortcuts").hidden=true;
+}
+
+function toggleShortcuts(){
+  if(state.shortcutsOpen) closeShortcuts(); else openShortcuts();
+}
+
+function handleCommandKey(e){
+  if(!(e.metaKey||e.ctrlKey)) return false;
+  if(e.key==="/"){
+    e.preventDefault();
+    toggleShortcuts();
+    return true;
+  }
+  if(/^[1-4]$/.test(e.key)){
+    e.preventDefault();
+    setScope(SCOPES[Number(e.key)-1]);
+    return true;
+  }
+  return false;
+}
+
 $("q").addEventListener("input",schedule);
 $("q").addEventListener("keydown",(e)=>{
+  if(state.shortcutsOpen && e.key==="Escape"){ e.preventDefault(); closeShortcuts(); return; }
+  if(handleCommandKey(e)) return;
   if(e.key==="ArrowDown"){ e.preventDefault(); move(1); }
   else if(e.key==="ArrowUp"){ e.preventDefault(); move(-1); }
   else if(e.key==="Enter"){ e.preventDefault(); if(e.metaKey||e.ctrlKey) openFull(state.items[state.sel]); }
   else if(e.key==="Escape"){ e.preventDefault(); if($("q").value){ $("q").value=""; schedule(); } }
 });
 $("list").addEventListener("click",(e)=>{
+  const action=e.target.closest("[data-action]");
+  if(action){
+    e.preventDefault();
+    e.stopPropagation();
+    const r=action.closest("[data-i]"); if(!r) return;
+    state.sel=Number(r.dataset.i);
+    for(const el of document.querySelectorAll(".row")){ el.classList.toggle("sel", el===r); }
+    updateHint();
+    const it=state.items[state.sel];
+    if(action.dataset.action==="copy") copyResumeCommand(it);
+    else if(action.dataset.action==="open") openFull(it);
+    return;
+  }
   const r=e.target.closest("[data-i]"); if(!r) return;
   state.sel=Number(r.dataset.i);
   for(const el of document.querySelectorAll(".row")){ el.classList.toggle("sel", el===r); }
@@ -267,9 +518,13 @@ $("list").addEventListener("click",(e)=>{
 });
 $("scopes").addEventListener("click",(e)=>{
   const b=e.target.closest("[data-scope]"); if(!b) return;
-  state.scope=b.dataset.scope;
-  for(const el of document.querySelectorAll(".scope")) el.classList.toggle("active",el===b);
-  run();
+  setScope(b.dataset.scope);
+});
+$("shortcuts").addEventListener("click",(e)=>{ if(e.target===$("shortcuts")) closeShortcuts(); });
+document.addEventListener("keydown",(e)=>{
+  if(e.defaultPrevented) return;
+  if(handleCommandKey(e)) return;
+  if(state.shortcutsOpen && e.key==="Escape"){ e.preventDefault(); closeShortcuts(); }
 });
 $("q").focus();
 run();
