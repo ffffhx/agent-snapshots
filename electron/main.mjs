@@ -37,6 +37,8 @@ const APP_ROOT = path.resolve(__dirname, "..");
 const HOST = "127.0.0.1";
 const PREFERRED_PORT = 4321;
 const DEEP_LINK_PROTOCOL = "agent-snapshots";
+const MAX_SESSION_REF_LENGTH = 4096;
+const SETTINGS_VERSION = 1;
 const isMac = process.platform === "darwin";
 const isWindows = process.platform === "win32";
 const supportsOpenAtLogin = isMac || isWindows;
@@ -54,6 +56,7 @@ const GLOBAL_SHORTCUT_PRESETS = [
 const POLL_INTERVAL_MS = 5000;
 const TRAY_RECENT_REFRESH_MS = 30000;
 const DEFAULT_SETTINGS = {
+  settingsVersion: SETTINGS_VERSION,
   hideOnBlur: true,
   openAtLogin: false,
   completionSound: true,
@@ -93,6 +96,8 @@ let globalShortcutIneffective = false;
 let updater = null;
 let updaterConfigured = false;
 const pendingDeepLinks = [];
+const appTimeouts = new Set();
+const appIntervals = new Set();
 
 /** Path to the built CLI entrypoint, resolved for both dev and packaged runs. */
 function cliEntry() {
@@ -150,10 +155,58 @@ function waitForServer(port, timeoutMs = 20000) {
         reject(new Error("local viewer server did not start in time"));
         return;
       }
-      setTimeout(attempt, 250);
+      setTrackedTimeout(attempt, 250);
     };
     attempt();
   });
+}
+
+function setTrackedTimeout(callback, delayMs) {
+  let handle = null;
+  handle = setTimeout(() => {
+    appTimeouts.delete(handle);
+    callback();
+  }, delayMs);
+  appTimeouts.add(handle);
+  handle.unref?.();
+  return handle;
+}
+
+function clearTrackedTimeout(handle) {
+  if (!handle) {
+    return;
+  }
+  clearTimeout(handle);
+  appTimeouts.delete(handle);
+}
+
+function setTrackedInterval(callback, delayMs) {
+  const handle = setInterval(callback, delayMs);
+  appIntervals.add(handle);
+  handle.unref?.();
+  return handle;
+}
+
+function clearTrackedInterval(handle) {
+  if (!handle) {
+    return;
+  }
+  clearInterval(handle);
+  appIntervals.delete(handle);
+}
+
+function clearTrackedTimers() {
+  for (const handle of appTimeouts) {
+    clearTimeout(handle);
+  }
+  appTimeouts.clear();
+  for (const handle of appIntervals) {
+    clearInterval(handle);
+  }
+  appIntervals.clear();
+  launcherBoundsTimer = null;
+  recentTrayTimer = null;
+  pollTimer = null;
 }
 
 /** Launch the local viewer server as a child process and wait until it's ready. */
@@ -191,7 +244,11 @@ function stopServer() {
 }
 
 function setting(key) {
-  return settings?.get(key, DEFAULT_SETTINGS[key]) ?? DEFAULT_SETTINGS[key];
+  const value = settings?.get(key, DEFAULT_SETTINGS[key]) ?? DEFAULT_SETTINGS[key];
+  if (typeof DEFAULT_SETTINGS[key] === "boolean" && typeof value !== "boolean") {
+    return DEFAULT_SETTINGS[key];
+  }
+  return value;
 }
 
 function writeSetting(key, value) {
@@ -454,6 +511,23 @@ function safeDecodeURIComponent(value) {
   }
 }
 
+function normalizeSessionRef(value) {
+  const text = String(value || "").trim();
+  if (!text || text.length > MAX_SESSION_REF_LENGTH || /[\u0000-\u001f\u007f]/.test(text)) {
+    return "";
+  }
+  const match = /^(codex|claude|trae):(.+)$/i.exec(text);
+  if (!match) {
+    return /^[A-Za-z0-9._-]+$/.test(text) ? `codex:${text}` : "";
+  }
+  const engine = match[1].toLowerCase();
+  const id = String(match[2] || "").trim();
+  if (!id || engine.length + 1 + id.length > MAX_SESSION_REF_LENGTH) {
+    return "";
+  }
+  return `${engine}:${id}`;
+}
+
 function truncateMenuText(value, maxLength = 40) {
   const text = String(value || "").replace(/\s+/g, " ").trim() || "未命名会话";
   const chars = Array.from(text);
@@ -512,13 +586,12 @@ function saveLauncherBoundsNow() {
 
 function scheduleLauncherBoundsSave() {
   if (launcherBoundsTimer) {
-    clearTimeout(launcherBoundsTimer);
+    clearTrackedTimeout(launcherBoundsTimer);
   }
-  launcherBoundsTimer = setTimeout(() => {
+  launcherBoundsTimer = setTrackedTimeout(() => {
     launcherBoundsTimer = null;
     saveLauncherBoundsNow();
   }, 250);
-  launcherBoundsTimer.unref?.();
 }
 
 function centerWindowOnCursor(window) {
@@ -608,7 +681,7 @@ function createLauncherWindow() {
   });
 
   mainWindow.on("blur", () => {
-    setTimeout(() => {
+    setTrackedTimeout(() => {
       if (
         setting("hideOnBlur")
         && mainWindow
@@ -621,7 +694,7 @@ function createLauncherWindow() {
         saveLauncherBoundsNow();
         mainWindow.hide();
       }
-    }, 160).unref?.();
+    }, 160);
   });
 
   mainWindow.on("will-move", () => {
@@ -653,6 +726,9 @@ function createViewerWindow() {
 }
 
 function openViewerUrl(url) {
+  if (quitting) {
+    return;
+  }
   if (!startUrl) {
     pendingDeepLinks.push(url);
     return;
@@ -665,24 +741,44 @@ function openViewerUrl(url) {
   if (window.isMinimized()) {
     window.restore();
   }
-  window.loadURL(url);
+  void window.loadURL(url).catch((error) => {
+    if (!quitting) {
+      console.warn("Failed to load viewer URL:", error);
+    }
+  });
   window.show();
   window.focus();
+  clearUnseenCompletions();
 }
 
 function openViewerForSession(ref = "") {
+  if (quitting) {
+    return;
+  }
+  const normalizedRef = normalizeSessionRef(ref);
+  if (String(ref || "").trim() && !normalizedRef) {
+    console.warn("Ignoring invalid session ref.");
+    return;
+  }
   if (!startUrl) {
-    pendingDeepLinks.push(`${DEEP_LINK_PROTOCOL}://session/${encodeURIComponent(ref)}`);
+    pendingDeepLinks.push(
+      normalizedRef
+        ? `${DEEP_LINK_PROTOCOL}://session/${encodeURIComponent(normalizedRef)}`
+        : `${DEEP_LINK_PROTOCOL}://launcher`,
+    );
     return;
   }
   const url = new URL(startUrl);
-  if (ref) {
-    url.searchParams.set("session", ref);
+  if (normalizedRef) {
+    url.searchParams.set("session", normalizedRef);
   }
   openViewerUrl(url.toString());
 }
 
 function showLauncherWindow({ centerOnCursor = true } = {}) {
+  if (quitting) {
+    return;
+  }
   if (!app.isReady() || !startUrl) {
     pendingDeepLinks.push(`${DEEP_LINK_PROTOCOL}://launcher`);
     return;
@@ -699,9 +795,13 @@ function showLauncherWindow({ centerOnCursor = true } = {}) {
     app.focus({ steal: true });
   }
   window.focus();
+  clearUnseenCompletions();
 }
 
 function toggleLauncherWindow() {
+  if (quitting) {
+    return;
+  }
   if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && mainWindow.isFocused()) {
     saveLauncherBoundsNow();
     mainWindow.hide();
@@ -794,6 +894,7 @@ function createTray() {
       openLauncher: () => showLauncherWindow({ centerOnCursor: true }),
       openSession: openViewerForSession,
       openViewer: () => openViewerForSession(),
+      normalizeSessionRef,
       preloadPath: path.join(__dirname, "quicklook-preload.cjs"),
     });
     tray.on("click", async () => {
@@ -863,13 +964,12 @@ async function refreshRecentTraySessions() {
 function startRecentTrayRefresh() {
   stopRecentTrayRefresh();
   refreshRecentTraySessions();
-  recentTrayTimer = setInterval(refreshRecentTraySessions, TRAY_RECENT_REFRESH_MS);
-  recentTrayTimer.unref?.();
+  recentTrayTimer = setTrackedInterval(refreshRecentTraySessions, TRAY_RECENT_REFRESH_MS);
 }
 
 function stopRecentTrayRefresh() {
   if (recentTrayTimer) {
-    clearInterval(recentTrayTimer);
+    clearTrackedInterval(recentTrayTimer);
     recentTrayTimer = null;
   }
 }
@@ -989,7 +1089,8 @@ function handleDeepLink(rawUrl) {
     return;
   }
   if (parsed.hostname === "session") {
-    const ref = safeDecodeURIComponent(parsed.pathname.replace(/^\/+/, "")) || parsed.searchParams.get("ref") || "";
+    const rawRef = safeDecodeURIComponent(parsed.pathname.replace(/^\/+/, "")) || parsed.searchParams.get("ref") || "";
+    const ref = normalizeSessionRef(rawRef);
     if (ref) {
       openViewerForSession(ref);
     } else {
@@ -1009,6 +1110,7 @@ function anyAppWindowFocused() {
 }
 
 function updateDockBadge() {
+  unseenCompletionCount = Math.max(0, unseenCompletionCount);
   if (isMac && app.dock) {
     app.dock.setBadge(unseenCompletionCount > 0 ? String(unseenCompletionCount) : "");
   }
@@ -1022,7 +1124,9 @@ function clearUnseenCompletions() {
 }
 
 function sessionRef(session) {
-  return session?.ref || (session?.engine && session?.id ? `${session.engine}:${session.id}` : String(session?.id || ""));
+  const rawRef = session?.ref
+    || (session?.engine && session?.id ? `${session.engine}:${session.id}` : `codex:${session?.id || ""}`);
+  return normalizeSessionRef(rawRef);
 }
 
 function isArchivedSessionSummary(session) {
@@ -1141,13 +1245,12 @@ async function pollSessionCompletions() {
 function startCompletionPoller() {
   stopCompletionPoller();
   pollSessionCompletions();
-  pollTimer = setInterval(pollSessionCompletions, POLL_INTERVAL_MS);
-  pollTimer.unref?.();
+  pollTimer = setTrackedInterval(pollSessionCompletions, POLL_INTERVAL_MS);
 }
 
 function stopCompletionPoller() {
   if (pollTimer) {
-    clearInterval(pollTimer);
+    clearTrackedInterval(pollTimer);
     pollTimer = null;
   }
   releaseSleepBlocker();
@@ -1336,9 +1439,11 @@ if (!app.requestSingleInstanceLock()) {
 
   app.on("before-quit", () => {
     quitting = true;
+    saveLauncherBoundsNow();
     quickLook?.destroy();
     stopRecentTrayRefresh();
     stopCompletionPoller();
+    clearTrackedTimers();
     stopServer();
   });
 

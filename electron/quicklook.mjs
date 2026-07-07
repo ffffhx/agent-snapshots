@@ -18,6 +18,27 @@ function dataUrlForHtml(html) {
   return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
 }
 
+function cspForBaseUrl(baseUrl) {
+  let connectSrc = "'none'";
+  try {
+    connectSrc = new URL(baseUrl).origin;
+  } catch {
+    // Keep the page locked down if the local viewer URL is not available.
+  }
+  return [
+    "default-src 'none'",
+    `connect-src ${connectSrc}`,
+    "script-src 'unsafe-inline'",
+    "style-src 'unsafe-inline'",
+    "img-src 'none'",
+    "font-src 'none'",
+    "object-src 'none'",
+    "base-uri 'none'",
+    "form-action 'none'",
+    "frame-ancestors 'none'",
+  ].join("; ");
+}
+
 function clamp(value, min, max) {
   if (max < min) {
     return min;
@@ -85,13 +106,22 @@ function configurePopoverApiRequests(window, baseUrl) {
   );
 }
 
+function configurePopoverNavigation(window) {
+  window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  window.webContents.on("will-navigate", (event) => {
+    event.preventDefault();
+  });
+}
+
 function renderQuickLookHtml(baseUrl) {
   const safeBase = String(baseUrl || "").replace(/\/+$/, "");
+  const csp = cspForBaseUrl(safeBase);
   return `<!doctype html>
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="${escapeHtml(csp)}">
   <title>Agent Snapshots Quick Look</title>
   <style>
     :root {
@@ -652,6 +682,7 @@ export function createQuickLookController({
   openLauncher,
   openSession,
   openViewer,
+  normalizeSessionRef = (value) => String(value || "").trim(),
   preloadPath,
 } = {}) {
   let popoverWindow = null;
@@ -672,8 +703,12 @@ export function createQuickLookController({
       if (!ownsEvent(event)) {
         return false;
       }
+      const safeRef = normalizeSessionRef(ref);
+      if (!safeRef) {
+        return false;
+      }
       hide();
-      openSession?.(String(ref || ""));
+      openSession?.(safeRef);
       return true;
     });
     ipcMain.handle("quicklook:open-launcher", (event) => {
@@ -692,6 +727,16 @@ export function createQuickLookController({
       openViewer?.();
       return true;
     });
+  }
+
+  function unregisterIpc() {
+    if (!ipcRegistered) {
+      return;
+    }
+    ipcMain.removeHandler("quicklook:open-session");
+    ipcMain.removeHandler("quicklook:open-launcher");
+    ipcMain.removeHandler("quicklook:open-viewer");
+    ipcRegistered = false;
   }
 
   function createWindow(baseUrl) {
@@ -724,6 +769,7 @@ export function createQuickLookController({
     });
     popoverWindow.setMenuBarVisibility(false);
     configurePopoverApiRequests(popoverWindow, baseUrl);
+    configurePopoverNavigation(popoverWindow);
     popoverWindow.on("blur", () => hide());
     popoverWindow.on("closed", () => {
       popoverWindow = null;
@@ -757,6 +803,9 @@ export function createQuickLookController({
       const window = createWindow(baseUrl);
       window.setBounds(popoverBoundsForTray(trayBounds), false);
       await window.loadURL(dataUrlForHtml(renderQuickLookHtml(baseUrl)), { baseURLForDataURL: baseUrl });
+      if (window.isDestroyed()) {
+        return false;
+      }
       window.show();
       window.focus();
       return true;
@@ -779,6 +828,7 @@ export function createQuickLookController({
       popoverWindow.destroy();
     }
     popoverWindow = null;
+    unregisterIpc();
   }
 
   return {
