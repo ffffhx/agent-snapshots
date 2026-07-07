@@ -462,7 +462,7 @@ test("ephemeral temp-dir agent runs collapse to one group per prefix", async () 
     }
     throw new Error(`unbalanced ${name}`);
   }
-  const names = ["ephemeralAgentInfo", "projectKey", "isNoProjectSession", "isCodexStandaloneConversationPath", "isStandaloneConversationPath", "projectDisplayPath", "projectPath", "normalizeProjectPath", "projectLabel", "sortProjectGroups", "projectGroupTier", "sessionHaystack", "groupSessions", "sessionEngine"];
+  const names = ["ephemeralAgentInfo", "projectKey", "isNoProjectSession", "isCodexStandaloneConversationPath", "isStandaloneConversationPath", "projectDisplayPath", "projectPath", "normalizeProjectPath", "projectLabel", "sortProjectGroups", "projectGroupTier", "sessionEngineKey", "normalizedSessionPath", "isLiveSessionItem", "sortGroupSessionRows", "sessionHaystack", "groupSessions", "sessionEngine"];
   const { groupSessions } = new Function(names.map(extract).join("\n") + "\n return { groupSessions };")();
   const sessions = [
     { engine: "claude", cwd: "/private/var/folders/pk/xy/T/eval-AAAAAA", title: "a", mtime: "2026-06-01T00:00:00Z" },
