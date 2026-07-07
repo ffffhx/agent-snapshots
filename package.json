@@ -82,6 +82,11 @@
       "output": "release",
       "buildResources": "build"
     },
+    "publish": {
+      "provider": "github",
+      "owner": "ffffhx",
+      "repo": "agent-snapshots"
+    },
     "extraMetadata": {
       "main": "electron/main.mjs"
     },
@@ -118,6 +123,7 @@
   "license": "MIT",
   "dependencies": {
     "agent-session-core": "file:../agent-session-core",
+    "electron-updater": "^6.8.9",
     "highlight.js": "^11.11.1",
     "markdown-it": "^14.1.1",
     "react": "^19.2.6",

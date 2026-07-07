@@ -6,8 +6,21 @@
 // free localhost port, then point a native BrowserWindow at it. This keeps
 // 100% of the web app's behaviour while giving it a real desktop window.
 
-import { app, BrowserWindow, Menu, shell, dialog, nativeImage, Tray, globalShortcut, screen, Notification } from "electron";
+import {
+  app,
+  BrowserWindow,
+  Menu,
+  shell,
+  dialog,
+  nativeImage,
+  Tray,
+  globalShortcut,
+  screen,
+  Notification,
+  powerSaveBlocker,
+} from "electron";
 import { spawn } from "node:child_process";
+import { createRequire } from "node:module";
 import net from "node:net";
 import http from "node:http";
 import path from "node:path";
@@ -25,14 +38,18 @@ const PREFERRED_PORT = 4321;
 const DEEP_LINK_PROTOCOL = "agent-snapshots";
 const GLOBAL_SHORTCUT = "Alt+Space";
 const POLL_INTERVAL_MS = 5000;
+const TRAY_RECENT_REFRESH_MS = 30000;
 const DEFAULT_SETTINGS = {
   hideOnBlur: true,
   openAtLogin: false,
+  completionSound: true,
+  preventSleepWithLiveSessions: false,
   launcherBounds: null,
 };
 // The app logo, so the dev-mode window/dock shows our mark instead of the
 // default Electron atom (the packaged .app already embeds build/icon.icns).
 const APP_ICON = nativeImage.createFromPath(path.join(APP_ROOT, "build", "icon.png"));
+const require = createRequire(import.meta.url);
 
 let serverProcess = null;
 let serverPort = 0;
@@ -46,10 +63,16 @@ let launcherBoundsTimer = null;
 let launcherDragUntil = 0;
 let pollTimer = null;
 let pollInFlight = false;
+let recentTrayTimer = null;
+let recentTrayRefreshInFlight = false;
 let hasPollBaseline = false;
 let liveSessionIds = new Set();
 let liveSessionById = new Map();
+let recentTraySessions = [];
 let unseenCompletionCount = 0;
+let sleepBlockerId = null;
+let updater = null;
+let updaterConfigured = false;
 const pendingDeepLinks = [];
 
 /** Path to the built CLI entrypoint, resolved for both dev and packaged runs. */
@@ -162,6 +185,78 @@ function writeSetting(key, value) {
   }
 }
 
+function getAutoUpdater() {
+  if (!updater) {
+    ({ autoUpdater: updater } = require("electron-updater"));
+  }
+  return updater;
+}
+
+function configureAutoUpdater() {
+  const autoUpdater = getAutoUpdater();
+  if (!updaterConfigured) {
+    autoUpdater.autoDownload = true;
+    autoUpdater.setFeedURL({ provider: "github", owner: "ffffhx", repo: "agent-snapshots" });
+    autoUpdater.on("error", (error) => {
+      console.warn("Auto update error:", error);
+    });
+    updaterConfigured = true;
+  }
+  return autoUpdater;
+}
+
+function errorMessage(error) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function formatUpdateVersion(version) {
+  const text = String(version || "").trim();
+  if (!text) {
+    return "";
+  }
+  return text.toLowerCase().startsWith("v") ? text : `v${text}`;
+}
+
+async function showUpdateDialog(options) {
+  await dialog.showMessageBox({
+    title: "检查更新",
+    buttons: ["好"],
+    ...options,
+  });
+}
+
+async function checkForUpdatesManually() {
+  if (!app.isPackaged) {
+    await showUpdateDialog({ type: "info", message: "开发模式不支持检查更新。" });
+    return;
+  }
+  try {
+    const result = await configureAutoUpdater().checkForUpdates();
+    if (!result?.isUpdateAvailable) {
+      await showUpdateDialog({ type: "info", message: "已是最新版本。" });
+      return;
+    }
+    const version = formatUpdateVersion(result.updateInfo?.version);
+    await showUpdateDialog({ type: "info", message: `发现新版本${version ? ` ${version}` : ""} 正在下载。` });
+  } catch (error) {
+    console.warn("Manual update check failed:", error);
+    await showUpdateDialog({ type: "error", message: `检查失败：${errorMessage(error)}` });
+  }
+}
+
+function startAutomaticUpdateCheck() {
+  if (!app.isPackaged) {
+    return;
+  }
+  try {
+    configureAutoUpdater().checkForUpdatesAndNotify().catch((error) => {
+      console.warn("Automatic update check failed:", error);
+    });
+  } catch (error) {
+    console.warn("Automatic update check failed:", error);
+  }
+}
+
 function appOrigin() {
   if (!startUrl) {
     return "";
@@ -187,6 +282,26 @@ function safeDecodeURIComponent(value) {
   } catch {
     return value;
   }
+}
+
+function truncateMenuText(value, maxLength = 40) {
+  const text = String(value || "").replace(/\s+/g, " ").trim() || "未命名会话";
+  const chars = Array.from(text);
+  return chars.length > maxLength ? `${chars.slice(0, maxLength - 1).join("")}…` : text;
+}
+
+function engineBadge(session) {
+  const engine = String(session?.engine || "codex").toLowerCase();
+  if (engine === "claude") {
+    return "Claude";
+  }
+  if (engine === "trae") {
+    return "Trae";
+  }
+  if (engine === "codex") {
+    return "Codex";
+  }
+  return String(session?.engineLabel || session?.engine || "Codex").trim() || "Codex";
 }
 
 function rectIntersects(a, b) {
@@ -431,6 +546,11 @@ function setHideOnBlur(enabled) {
   rebuildTrayMenu();
 }
 
+function setCompletionSound(enabled) {
+  writeSetting("completionSound", Boolean(enabled));
+  rebuildTrayMenu();
+}
+
 function setOpenAtLogin(enabled, { persist = true } = {}) {
   const openAtLogin = Boolean(enabled);
   try {
@@ -444,6 +564,41 @@ function setOpenAtLogin(enabled, { persist = true } = {}) {
   rebuildTrayMenu();
 }
 
+function releaseSleepBlocker() {
+  if (sleepBlockerId === null) {
+    return;
+  }
+  try {
+    if (powerSaveBlocker.isStarted(sleepBlockerId)) {
+      powerSaveBlocker.stop(sleepBlockerId);
+    }
+  } catch (error) {
+    console.warn("Failed to stop power save blocker:", error);
+  }
+  sleepBlockerId = null;
+}
+
+function syncSleepBlocker(hasLiveSessions = liveSessionIds.size > 0) {
+  if (!setting("preventSleepWithLiveSessions") || !hasLiveSessions) {
+    releaseSleepBlocker();
+    return;
+  }
+  try {
+    if (sleepBlockerId === null || !powerSaveBlocker.isStarted(sleepBlockerId)) {
+      sleepBlockerId = powerSaveBlocker.start("prevent-app-suspension");
+    }
+  } catch (error) {
+    console.warn("Failed to start power save blocker:", error);
+    sleepBlockerId = null;
+  }
+}
+
+function setPreventSleepWithLiveSessions(enabled) {
+  writeSetting("preventSleepWithLiveSessions", Boolean(enabled));
+  syncSleepBlocker();
+  rebuildTrayMenu();
+}
+
 function createTray() {
   try {
     const trayIcon = APP_ICON.resize({ width: 18, height: 18 });
@@ -454,9 +609,56 @@ function createTray() {
     tray.setToolTip("Agent Snapshots");
     tray.on("click", toggleLauncherWindow);
     rebuildTrayMenu();
+    startRecentTrayRefresh();
   } catch (error) {
     tray = null;
     console.warn("Failed to create tray icon:", error);
+  }
+}
+
+function recentTraySubmenu() {
+  if (!recentTraySessions.length) {
+    return [{ label: "暂无会话", enabled: false }];
+  }
+  return recentTraySessions.map((session) => {
+    const ref = sessionRef(session);
+    return {
+      label: `${engineBadge(session)} ${truncateMenuText(session?.title)}`,
+      enabled: Boolean(ref),
+      click: () => openViewerForSession(ref),
+    };
+  });
+}
+
+async function refreshRecentTraySessions() {
+  if (!tray || !serverPort || recentTrayRefreshInFlight) {
+    return;
+  }
+  recentTrayRefreshInFlight = true;
+  try {
+    const result = await getJson("/api/sessions?limit=8");
+    if (Array.isArray(result)) {
+      recentTraySessions = result;
+      rebuildTrayMenu();
+    }
+  } catch {
+    // Keep the current tray contents if the local server is temporarily busy.
+  } finally {
+    recentTrayRefreshInFlight = false;
+  }
+}
+
+function startRecentTrayRefresh() {
+  stopRecentTrayRefresh();
+  refreshRecentTraySessions();
+  recentTrayTimer = setInterval(refreshRecentTraySessions, TRAY_RECENT_REFRESH_MS);
+  recentTrayTimer.unref?.();
+}
+
+function stopRecentTrayRefresh() {
+  if (recentTrayTimer) {
+    clearInterval(recentTrayTimer);
+    recentTrayTimer = null;
   }
 }
 
@@ -468,12 +670,27 @@ function rebuildTrayMenu() {
     { label: "显示/隐藏启动器 (⌥Space)", click: toggleLauncherWindow },
     { label: "打开完整视图", click: () => openViewerForSession() },
     { label: "在浏览器打开", click: () => startUrl && shell.openExternal(startUrl) },
+    { label: "检查更新…", click: checkForUpdatesManually },
+    { type: "separator" },
+    { label: "最近会话", submenu: recentTraySubmenu() },
     { type: "separator" },
     {
       label: "失焦自动隐藏",
       type: "checkbox",
       checked: Boolean(setting("hideOnBlur")),
       click: (item) => setHideOnBlur(item.checked),
+    },
+    {
+      label: "完成提示音",
+      type: "checkbox",
+      checked: Boolean(setting("completionSound")),
+      click: (item) => setCompletionSound(item.checked),
+    },
+    {
+      label: "有会话运行时防止休眠",
+      type: "checkbox",
+      checked: Boolean(setting("preventSleepWithLiveSessions")),
+      click: (item) => setPreventSleepWithLiveSessions(item.checked),
     },
     {
       label: "开机自启",
@@ -591,6 +808,7 @@ function notifySessionCompletion(session, ref) {
   const notification = new Notification({
     title: "会话完成",
     body: `${title} · ${sessionProject(session)}`,
+    silent: !Boolean(setting("completionSound")),
   });
   notification.on("click", () => openViewerForSession(ref));
   notification.show();
@@ -658,6 +876,7 @@ async function pollSessionCompletions() {
       liveSessionIds = nextIds;
       liveSessionById = nextById;
       hasPollBaseline = true;
+      syncSleepBlocker(nextIds.size > 0);
       return;
     }
     for (const ref of liveSessionIds) {
@@ -667,6 +886,7 @@ async function pollSessionCompletions() {
     }
     liveSessionIds = nextIds;
     liveSessionById = nextById;
+    syncSleepBlocker(nextIds.size > 0);
   } catch {
     // The local server may restart while the app stays alive; try again later.
   } finally {
@@ -686,6 +906,7 @@ function stopCompletionPoller() {
     clearInterval(pollTimer);
     pollTimer = null;
   }
+  releaseSleepBlocker();
 }
 
 function requestQuit() {
@@ -701,6 +922,7 @@ function buildMenu(getStartUrl) {
         label: "Agent Snapshots",
         submenu: [
           { role: "about", label: "关于 Agent Snapshots" },
+          { label: "检查更新…", click: checkForUpdatesManually },
           { type: "separator" },
           { role: "services", label: "服务" },
           { type: "separator" },
@@ -715,6 +937,12 @@ function buildMenu(getStartUrl) {
     {
       label: "文件",
       submenu: [
+        ...(!isMac
+          ? [
+            { label: "检查更新…", click: checkForUpdatesManually },
+            { type: "separator" },
+          ]
+          : []),
         {
           label: "在浏览器打开",
           accelerator: "CmdOrCtrl+Shift+O",
@@ -815,6 +1043,7 @@ async function bootstrap() {
   registerGlobalShortcut();
   createLauncherWindow();
   startCompletionPoller();
+  startAutomaticUpdateCheck();
   flushPendingDeepLinks();
 
   app.on("activate", () => {
@@ -858,6 +1087,7 @@ if (!app.requestSingleInstanceLock()) {
 
   app.on("before-quit", () => {
     quitting = true;
+    stopRecentTrayRefresh();
     stopCompletionPoller();
     stopServer();
   });
