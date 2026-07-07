@@ -37,7 +37,12 @@ const APP_ROOT = path.resolve(__dirname, "..");
 const HOST = "127.0.0.1";
 const PREFERRED_PORT = 4321;
 const DEEP_LINK_PROTOCOL = "agent-snapshots";
-const GLOBAL_SHORTCUT = "Alt+Space";
+const isMac = process.platform === "darwin";
+const isWindows = process.platform === "win32";
+const supportsOpenAtLogin = isMac || isWindows;
+const supportsNotificationSilent = isMac || isWindows;
+const GLOBAL_SHORTCUT = isMac ? "Alt+Space" : "Ctrl+Shift+Space";
+const GLOBAL_SHORTCUT_LABEL = isMac ? "⌥Space" : "Ctrl+Shift+Space";
 const POLL_INTERVAL_MS = 5000;
 const TRAY_RECENT_REFRESH_MS = 30000;
 const DEFAULT_SETTINGS = {
@@ -174,8 +179,6 @@ function stopServer() {
   }
 }
 
-const isMac = process.platform === "darwin";
-
 function setting(key) {
   return settings?.get(key, DEFAULT_SETTINGS[key]) ?? DEFAULT_SETTINGS[key];
 }
@@ -198,10 +201,11 @@ function getAutoUpdater() {
 function configureAutoUpdater() {
   const autoUpdater = getAutoUpdater();
   if (!updaterConfigured) {
+    autoUpdater.logger = null;
     autoUpdater.autoDownload = true;
     autoUpdater.setFeedURL({ provider: "github", owner: "ffffhx", repo: "agent-snapshots" });
     autoUpdater.on("error", (error) => {
-      console.warn("Auto update error:", error);
+      console.warn("Auto update error:", compactErrorMessage(error));
     });
     updaterConfigured = true;
   }
@@ -210,6 +214,11 @@ function configureAutoUpdater() {
 
 function errorMessage(error) {
   return error instanceof Error ? error.message : String(error);
+}
+
+function compactErrorMessage(error) {
+  const message = errorMessage(error).split(/\r?\n/, 1)[0]?.trim() || "Unknown error";
+  return message.length > 240 ? `${message.slice(0, 237)}...` : message;
 }
 
 function formatUpdateVersion(version) {
@@ -242,8 +251,9 @@ async function checkForUpdatesManually() {
     const version = formatUpdateVersion(result.updateInfo?.version);
     await showUpdateDialog({ type: "info", message: `发现新版本${version ? ` ${version}` : ""} 正在下载。` });
   } catch (error) {
-    console.warn("Manual update check failed:", error);
-    await showUpdateDialog({ type: "error", message: `检查失败：${errorMessage(error)}` });
+    const message = compactErrorMessage(error);
+    console.warn("Manual update check failed:", message);
+    await showUpdateDialog({ type: "error", message: `检查失败：${message}` });
   }
 }
 
@@ -252,11 +262,9 @@ function startAutomaticUpdateCheck() {
     return;
   }
   try {
-    configureAutoUpdater().checkForUpdatesAndNotify().catch((error) => {
-      console.warn("Automatic update check failed:", error);
-    });
+    configureAutoUpdater().checkForUpdatesAndNotify().catch(() => {});
   } catch (error) {
-    console.warn("Automatic update check failed:", error);
+    console.warn("Automatic update check failed:", compactErrorMessage(error));
   }
 }
 
@@ -379,7 +387,7 @@ function viewerWindowOptions() {
     backgroundColor: "#231d12",
     icon: APP_ICON,
     title: "Agent Snapshots",
-    titleBarStyle: isMac ? "hiddenInset" : "default",
+    ...(isMac ? { titleBarStyle: "hiddenInset" } : {}),
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
   };
 }
@@ -391,12 +399,11 @@ function launcherWindowOptions() {
     minWidth: 560,
     minHeight: 380,
     resizable: true,
-    backgroundColor: isMac ? "#00000000" : "#1c150e",
-    vibrancy: isMac ? "under-window" : undefined,
-    visualEffectState: "active",
+    ...(isMac
+      ? { backgroundColor: "#00000000", titleBarStyle: "hiddenInset", vibrancy: "under-window", visualEffectState: "active" }
+      : { backgroundColor: "#1c150e" }),
     icon: APP_ICON,
     title: "Agent Snapshots",
-    titleBarStyle: isMac ? "hiddenInset" : "default",
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -556,6 +563,16 @@ function setCompletionSound(enabled) {
 
 function setOpenAtLogin(enabled, { persist = true } = {}) {
   const openAtLogin = Boolean(enabled);
+  if (!supportsOpenAtLogin) {
+    if (openAtLogin) {
+      console.warn("Open at login is not supported on this platform.");
+    }
+    if (persist) {
+      writeSetting("openAtLogin", false);
+    }
+    rebuildTrayMenu();
+    return;
+  }
   try {
     app.setLoginItemSettings({ openAtLogin });
   } catch (error) {
@@ -621,6 +638,10 @@ function createTray() {
       preloadPath: path.join(__dirname, "quicklook-preload.cjs"),
     });
     tray.on("click", async () => {
+      if (!isMac) {
+        showLauncherWindow({ centerOnCursor: false });
+        return;
+      }
       const shown = await quickLook?.toggle();
       if (!shown) {
         showTrayMenu();
@@ -688,7 +709,7 @@ function rebuildTrayMenu() {
     return;
   }
   trayMenu = Menu.buildFromTemplate([
-    { label: "显示/隐藏启动器 (⌥Space)", click: toggleLauncherWindow },
+    { label: `显示/隐藏启动器 (${GLOBAL_SHORTCUT_LABEL})`, click: toggleLauncherWindow },
     { label: "打开完整视图", click: () => openViewerForSession() },
     { label: "在浏览器打开", click: () => startUrl && shell.openExternal(startUrl) },
     { label: "检查更新…", click: checkForUpdatesManually },
@@ -713,12 +734,14 @@ function rebuildTrayMenu() {
       checked: Boolean(setting("preventSleepWithLiveSessions")),
       click: (item) => setPreventSleepWithLiveSessions(item.checked),
     },
-    {
-      label: "开机自启",
-      type: "checkbox",
-      checked: Boolean(setting("openAtLogin")),
-      click: (item) => setOpenAtLogin(item.checked),
-    },
+    ...(supportsOpenAtLogin
+      ? [{
+        label: "开机自启",
+        type: "checkbox",
+        checked: Boolean(setting("openAtLogin")),
+        click: (item) => setOpenAtLogin(item.checked),
+      }]
+      : []),
     { type: "separator" },
     { label: "退出", click: requestQuit },
   ]);
@@ -731,6 +754,9 @@ function rebuildTrayMenu() {
 
 function showTrayMenu() {
   if (!tray || !trayMenu) {
+    return;
+  }
+  if (!isMac) {
     return;
   }
   tray.popUpContextMenu(trayMenu);
@@ -838,11 +864,14 @@ function notifySessionCompletion(session, ref) {
     return;
   }
   const title = String(session?.title || ref || "未命名会话").trim() || "未命名会话";
-  const notification = new Notification({
+  const notificationOptions = {
     title: "会话完成",
     body: `${title} · ${sessionProject(session)}`,
-    silent: !Boolean(setting("completionSound")),
-  });
+  };
+  if (supportsNotificationSilent) {
+    notificationOptions.silent = !Boolean(setting("completionSound"));
+  }
+  const notification = new Notification(notificationOptions);
   notification.on("click", () => openViewerForSession(ref));
   notification.show();
 }
@@ -1053,7 +1082,7 @@ function buildMenu(getStartUrl) {
 
 async function bootstrap() {
   settings = new SettingsStore(path.join(app.getPath("userData"), "settings.json"), DEFAULT_SETTINGS);
-  if (setting("openAtLogin")) {
+  if (supportsOpenAtLogin && setting("openAtLogin")) {
     setOpenAtLogin(true, { persist: false });
   }
   // macOS shows the dock icon from the .app bundle; in dev there is none, so

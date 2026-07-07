@@ -710,11 +710,10 @@ export function createQuickLookController({
       fullscreenable: false,
       skipTaskbar: true,
       alwaysOnTop: true,
-      acceptFirstMouse: true,
       hasShadow: true,
       backgroundColor: "#1c150e",
       title: "Agent Snapshots Quick Look",
-      type: isMac ? "panel" : undefined,
+      ...(isMac ? { acceptFirstMouse: true, type: "panel" } : {}),
       webPreferences: {
         contextIsolation: true,
         nodeIntegration: false,
