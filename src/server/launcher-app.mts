@@ -20,7 +20,7 @@ export function renderLauncherApp(csrfToken) {
   <main class="launcher">
     <header class="bar" id="dragbar">
       <svg class="glass" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><line x1="16.5" y1="16.5" x2="21" y2="21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-      <input id="q" class="q" type="text" autocomplete="off" spellcheck="false" placeholder="搜索会话 — 回车在 Orca 继续">
+      <input id="q" class="q" type="text" autocomplete="off" spellcheck="false" placeholder="搜索会话 — 点击在 Orca 继续">
       <div class="scopes" id="scopes">
         <button class="scope active" data-scope="all" type="button">全部</button>
         <button class="scope" data-scope="codex" type="button">Codex</button>
@@ -82,7 +82,7 @@ html,body{height:100%;background:transparent;color:var(--ink);font-family:var(--
 .rs mark{color:#ffd7a0;font-weight:700;background:rgba(217,79,57,0.26);border-radius:3px;padding:0 2px;box-decoration-break:clone;-webkit-box-decoration-break:clone}
 .racc{display:flex;align-items:center;gap:10px;flex:0 0 auto;color:var(--faint);font:600 11px/1 var(--mono);white-space:nowrap}
 .rowhint{color:var(--seal);opacity:0;font-weight:700}
-.row.sel .rowhint{opacity:1}
+.row.sel .rowhint,.row:hover .rowhint{opacity:1}
 .empty{display:grid;place-items:center;height:100%;min-height:180px;color:var(--faint);font:600 13px/1.5 var(--mono);text-align:center}
 .spin{width:15px;height:15px;border:2px solid rgba(233,220,196,0.2);border-top-color:var(--seal);border-radius:99px;animation:sp .8s linear infinite;margin-right:8px;display:inline-block;vertical-align:-2px}
 @keyframes sp{to{transform:rotate(360deg)}}
@@ -182,7 +182,7 @@ function row(it,i){
   const snip=it.snippet?highlight(it.snippet,it.terms):"";
   const sub=[proj,relTime(it.mtime)].filter(Boolean).join(" · ");
   const subLine=state.mode==="search"&&snip?snip:esc(sub);
-  const hint=k==="trae"?"⌘↵ 查看":"↵ Orca 继续";
+  const hint=k==="trae"?"⌘↵ 查看":"点击 Orca 继续";
   return "<div class='row"+(i===state.sel?" sel":"")+"' data-i='"+i+"'>"+
     "<span class='badge "+k+"'>"+badgeChar(k)+"</span>"+
     "<div class='rc'><div class='rt'>"+esc(title)+"</div><div class='rs'>"+subLine+"</div></div>"+
@@ -219,8 +219,8 @@ function updateHint(){
   const k=it?engineKey(it):"codex";
   const sep="<span class='sep'>·</span>";
   const primary=k==="trae"
-    ? "<kbd>↵</kbd> 无法恢复"+sep+"<kbd>⌘↵</kbd> <span class='act'>完整视图</span>"
-    : "<span class='act'>↵ 在 Orca 继续</span>"+sep+"<kbd>⌘↵</kbd> 完整视图";
+    ? "Trae 无法恢复"+sep+"<kbd>⌘↵</kbd> <span class='act'>完整视图</span>"
+    : "<span class='act'>点击 在 Orca 继续</span>"+sep+"<kbd>⌘↵</kbd> 完整视图";
   $("hint").innerHTML=primary+sep+"<kbd>↑↓</kbd> 选择"+sep+"<kbd>esc</kbd> 关闭";
 }
 
@@ -255,7 +255,7 @@ $("q").addEventListener("input",schedule);
 $("q").addEventListener("keydown",(e)=>{
   if(e.key==="ArrowDown"){ e.preventDefault(); move(1); }
   else if(e.key==="ArrowUp"){ e.preventDefault(); move(-1); }
-  else if(e.key==="Enter"){ e.preventDefault(); const it=state.items[state.sel]; if(e.metaKey||e.ctrlKey) openFull(it); else resumeOrOpen(it); }
+  else if(e.key==="Enter"){ e.preventDefault(); if(e.metaKey||e.ctrlKey) openFull(state.items[state.sel]); }
   else if(e.key==="Escape"){ e.preventDefault(); if($("q").value){ $("q").value=""; schedule(); } }
 });
 $("list").addEventListener("click",(e)=>{
