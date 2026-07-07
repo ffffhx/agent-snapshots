@@ -147,8 +147,8 @@ function renderProcessGroupHtml(item, index, options) {
     if (!turns.length) {
         return "";
     }
-    const files = fileChangeLabel(processFileChanges(turns));
-    const fileHtml = files ? `<span class="process-files">${escapeHtml(files)}</span>` : "";
+    const files = fileChangeLabelHtml(processFileChanges(turns));
+    const fileHtml = files ? `<span class="process-files">${files}</span>` : "";
     return `<article class="${escapeHtml(processClassName(options))}"><details class="process-details" data-process-index="${escapeHtml(index)}"><summary class="process-summary"><span>${escapeHtml(processLabel(item.durationTurns || turns, options.labels.processed))}</span>${fileHtml}</summary><div class="process-body">${turns.map((turn) => renderProcessEntryHtml(turn, options)).join("")}</div></details></article>`;
 }
 function renderProcessEntryHtml(turn, options) {
@@ -174,8 +174,8 @@ function turnRole(turn) {
 }
 function renderTurnBodyHtml(turn, options) {
     if (turn.kind === "tool") {
-        const files = fileChangeLabel(turn.fileChanges || []);
-        const fileSuffix = files ? ` · ${escapeHtml(files)}` : "";
+        const files = fileChangeLabelHtml(turn.fileChanges || []);
+        const fileSuffix = files ? ` · ${files}` : "";
         const body = (turn.fileChanges || []).length ? renderFileChangesHtml(turn.fileChanges || []) : `<pre>${escapeHtml(turn.text || "")}</pre>`;
         return `<details class="tool-details"><summary>${escapeHtml(options.labels.tool)}${turn.name ? ` / ${escapeHtml(turn.name)}` : ""}${fileSuffix}</summary>${body}</details>`;
     }
@@ -185,7 +185,7 @@ function renderTurnBodyHtml(turn, options) {
 function renderFileChangesHtml(fileChanges) {
     const groups = uniqueFileChangeGroups(fileChanges);
     return groups.map((group) => {
-        const label = group.paths.length ? `<div class="file-change-path">${escapeHtml(group.paths.join(", "))}</div>` : "";
+        const label = group.paths.length ? `<div class="file-change-path">${renderFilePathListHtml(group.paths, ", ")}</div>` : "";
         return `<div class="file-change">${label}${renderDiffPreHtml(group.diffText)}</div>`;
     }).join("");
 }
@@ -227,6 +227,32 @@ function fileChangeLabel(fileChanges) {
     const visible = paths.slice(0, 3);
     const rest = paths.length - visible.length;
     return visible.join(" · ") + (rest > 0 ? ` 等 ${rest} 个文件` : "");
+}
+function fileChangeLabelHtml(fileChanges) {
+    const paths = uniqueFilePaths(fileChanges);
+    if (!paths.length) {
+        return "";
+    }
+    const visible = paths.slice(0, 3);
+    const rest = paths.length - visible.length;
+    return renderFilePathListHtml(visible, " · ") + (rest > 0 ? ` 等 ${escapeHtml(rest)} 个文件` : "");
+}
+function renderFilePathListHtml(paths, separator) {
+    return paths.map((path) => renderFilePathHtml(path)).join(separator);
+}
+function renderFilePathHtml(path) {
+    const value = String(path || "").trim();
+    if (!value) {
+        return "";
+    }
+    if (!isAbsoluteFilePath(value)) {
+        return escapeHtml(value);
+    }
+    const escaped = escapeHtml(value);
+    return `<span class="file-path-action" role="button" tabindex="0" data-file-path="${escaped}" title="点击复制路径，⌘点击在 Finder 中显示">${escaped}</span>`;
+}
+function isAbsoluteFilePath(value) {
+    return value.startsWith("/") || /^[A-Za-z]:[\\/]/.test(value) || value.startsWith("\\\\");
 }
 function uniqueFilePaths(fileChanges) {
     const paths = [];

@@ -3,6 +3,7 @@
 import http from "node:http";
 import { execFile } from "node:child_process";
 import { stat } from "node:fs/promises";
+import { dirname, isAbsolute } from "node:path";
 import { promisify } from "node:util";
 import { send, sendJson } from "./http.js";
 import { redactText } from "../core/privacy.js";
@@ -199,6 +200,28 @@ export async function serveLocalViewer({
         }
         const result = await resumeSessionInOrca({ engine: refMatch[1], sessionId: refMatch[2], cwd, title: url.searchParams.get("title") || "" });
         sendJson(response, result, result.ok ? 200 : 400);
+        return;
+      }
+      if (url.pathname === "/api/reveal-in-file") {
+        if (!allowMutationRequest(request, response, csrfToken)) {
+          return;
+        }
+        const targetPath = String(url.searchParams.get("path") || "").trim();
+        if (!targetPath) {
+          sendJson(response, { ok: false, error: "缺少路径" }, 400);
+          return;
+        }
+        if (!isAbsolute(targetPath)) {
+          sendJson(response, { ok: false, error: "路径必须是绝对路径" }, 400);
+          return;
+        }
+        const pathInfo = await stat(targetPath).catch(() => null);
+        if (!pathInfo) {
+          sendJson(response, { ok: false, error: "路径不存在" }, 404);
+          return;
+        }
+        const result = await revealPathInFileManager(targetPath, pathInfo.isDirectory());
+        sendJson(response, result, result.ok ? 200 : 500);
         return;
       }
       if (url.pathname === "/api/semantic-search") {
@@ -474,6 +497,22 @@ async function readSessionCommits(snapshot) {
   } catch {
     return [];
   }
+}
+
+async function revealPathInFileManager(targetPath, isDirectory) {
+  if (process.platform === "darwin") {
+    await execFileAsync("open", ["-R", targetPath]);
+    return { ok: true, message: "已在 Finder 中显示" };
+  }
+
+  const directory = isDirectory ? targetPath : dirname(targetPath);
+  if (process.platform === "win32") {
+    await execFileAsync("explorer.exe", [directory]);
+    return { ok: true, message: "已打开所在目录" };
+  }
+
+  await execFileAsync("xdg-open", [directory]);
+  return { ok: true, message: "已打开所在目录" };
 }
 
 function sessionTurnTimeRange(turns) {

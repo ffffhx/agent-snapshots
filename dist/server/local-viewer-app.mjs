@@ -49,6 +49,15 @@ export function renderServerApp(csrfToken, shareConfig = {}) {
             </div>
             <button class="appx" type="button" data-density-toggle title="切换阅读密度（宽松/紧凑）">密</button>
           </div>
+          <div class="reading-tools" role="group" aria-label="阅读工具">
+            <div class="appx-seg view-mode-seg" role="group" aria-label="视图详略">
+              <button class="appx" type="button" data-view-verbosity="standard" title="标准视图（Ctrl+O）">标准</button>
+              <button class="appx" type="button" data-view-verbosity="detailed" title="详细视图（Ctrl+O）">详细</button>
+              <button class="appx" type="button" data-view-verbosity="summary" title="摘要视图（Ctrl+O）">摘要</button>
+            </div>
+            <button id="toggleOutline" class="appx" type="button" title="打开/收起大纲（Ctrl+M）" aria-pressed="false">大纲</button>
+            <button id="openShortcuts" class="appx" type="button" title="快捷键（⌘/）">⌘/</button>
+          </div>
           <div id="exports" class="exports"></div>
         </div>
         <div id="meta" class="meta empty">还没有选择会话。</div>
@@ -66,6 +75,13 @@ export function renderServerApp(csrfToken, shareConfig = {}) {
       <div id="turns" class="turns"></div>
     </section>
   </main>
+  <aside id="outlinePanel" class="outline-panel" aria-label="消息大纲" aria-hidden="true">
+    <div class="outline-head">
+      <b>大纲</b>
+      <button id="closeOutline" class="outline-close" type="button" title="收起大纲">收起</button>
+    </div>
+    <div id="outlineList" class="outline-list"></div>
+  </aside>
   <div id="searchOverlay" class="search-overlay" hidden>
     <section class="search-dialog" role="dialog" aria-modal="true" aria-labelledby="searchTitle">
       <div class="search-bar">
@@ -106,6 +122,25 @@ export function renderServerApp(csrfToken, shareConfig = {}) {
         </div>
       </div>
       <div id="statsBody" class="stats-body"></div>
+    </section>
+  </div>
+  <div id="shortcutOverlay" class="shortcut-overlay" hidden>
+    <section class="shortcut-dialog" role="dialog" aria-modal="true" aria-labelledby="shortcutTitle">
+      <div class="shortcut-bar">
+        <div>
+          <p class="eyebrow">快捷键</p>
+          <h2 id="shortcutTitle">快捷键</h2>
+        </div>
+        <button id="closeShortcuts" class="search-close" type="button" title="关闭">关闭</button>
+      </div>
+      <div class="shortcut-list">
+        <div><kbd>⌘K</kbd><span>全局搜索</span></div>
+        <div><kbd>Ctrl+O</kbd><span>视图详略</span></div>
+        <div><kbd>Ctrl+M</kbd><span>大纲</span></div>
+        <div><kbd>[</kbd><kbd>]</kbd><span>上下个用户回合</span></div>
+        <div><kbd>⌘/</kbd><span>快捷键</span></div>
+        <div><kbd>Esc</kbd><span>关闭弹层</span></div>
+      </div>
     </section>
   </div>
   <div id="toast" class="toast" hidden></div>
@@ -1452,6 +1487,55 @@ button[aria-busy="true"],.search-prewarm[aria-busy="true"]{cursor:progress;}
 .exports a,.search-flag{border-radius:var(--r-md);}
 .search-result,.stat-tile{border-radius:var(--r-lg);}
 
+/* Reading controls */
+.reading-tools{display:inline-flex;flex:0 0 auto;align-items:center;gap:6px;padding:3px;border:1px solid var(--line-2);border-radius:9px;background:var(--panel);}
+.view-mode-seg .appx{min-width:42px;}
+.reading-tools .appx[aria-pressed="true"]{background:var(--ink);color:var(--paper);}
+body[data-view-verbosity="summary"] .turns > .process,
+body[data-view-verbosity="summary"] .turns > .tool,
+body[data-view-verbosity="summary"] .turns > .interrupt,
+body[data-view-verbosity="summary"] .turns > .subagents{display:none !important;}
+body[data-view-verbosity="summary"] .process-entry{display:none !important;}
+.file-path-action{display:inline;border-radius:4px;color:inherit;text-decoration:underline;text-decoration-color:rgba(177,56,42,0.38);text-decoration-style:dotted;text-underline-offset:3px;cursor:copy;}
+.file-path-action:hover{color:var(--seal-deep);text-decoration-color:var(--seal);}
+.file-path-action:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px;}
+
+/* Message outline */
+.outline-panel{position:fixed;top:96px;right:16px;bottom:22px;z-index:30;display:flex;width:min(310px,calc(100vw - 32px));min-height:0;flex-direction:column;gap:10px;border:1px solid var(--line-2);border-top:3px solid var(--pine);border-radius:12px;background:linear-gradient(180deg,var(--panel),var(--panel-2));padding:12px;box-shadow:0 34px 82px -46px rgba(38,24,8,0.82);opacity:0;pointer-events:none;transform:translateX(calc(100% + 24px));transition:opacity 180ms ease,transform 180ms var(--ease-rise);}
+body[data-outline-open="true"] .outline-panel{opacity:1;pointer-events:auto;transform:none;}
+.outline-head{display:flex;align-items:center;justify-content:space-between;gap:10px;border-bottom:1px solid var(--line);padding:0 2px 9px;}
+.outline-head b{color:var(--ink);font:700 12px/1 var(--mono);letter-spacing:var(--track-label);}
+.outline-close{min-height:28px;border:1px solid var(--line-2);border-radius:7px;background:transparent;color:var(--muted);padding:0 9px;font:700 10.5px/1 var(--mono);letter-spacing:0.02em;}
+.outline-close:hover{border-color:var(--seal);background:transparent;color:var(--seal-deep);transform:none;}
+.outline-list{display:grid;gap:2px;min-height:0;overflow:auto;padding-right:2px;scrollbar-width:thin;}
+.outline-item{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px;align-items:start;width:100%;min-height:34px;border:0;border-radius:8px;background:transparent;color:var(--ink-soft);padding:8px 9px;text-align:left;font-family:var(--sans);letter-spacing:0;cursor:pointer;}
+.outline-item:hover{background:var(--wash-2);color:var(--ink);transform:none;}
+.outline-item.active{background:var(--seal-soft);box-shadow:inset 3px 0 0 var(--seal);color:var(--ink);}
+.outline-kind{min-width:32px;color:var(--faint);font:700 10px/1.35 var(--mono);letter-spacing:0.04em;}
+.outline-item.active .outline-kind{color:var(--seal-deep);}
+.outline-text{min-width:0;overflow:hidden;font:500 12.5px/1.35 var(--sans);text-overflow:ellipsis;white-space:nowrap;}
+.outline-empty{border:1px dashed var(--line-2);border-radius:9px;color:var(--faint);padding:14px 12px;text-align:center;font:600 12px/1.45 var(--mono);}
+
+/* Shortcut sheet */
+.shortcut-overlay{position:fixed;inset:0;z-index:55;display:grid;place-items:start center;background:rgba(38,28,12,0.28);padding:clamp(18px,8dvh,72px) 18px 18px;backdrop-filter:blur(5px) saturate(0.92);animation:overlay-fade 0.18s ease both;}
+.shortcut-overlay[hidden]{display:none;}
+.shortcut-dialog{display:flex;width:min(430px,94vw);max-height:calc(100dvh - 40px);flex-direction:column;gap:16px;border:1px solid var(--line-2);border-top:3px solid var(--seal);border-radius:12px;background:linear-gradient(180deg,var(--panel),var(--panel-2));padding:18px;box-shadow:0 42px 100px -44px rgba(38,24,8,0.85);animation:turn-rise 0.24s var(--ease-rise) both;}
+.shortcut-bar{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;}
+.shortcut-bar h2{font-size:22px;font-weight:600;}
+.shortcut-list{display:grid;gap:8px;}
+.shortcut-list div{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px;align-items:center;border:1px solid var(--line);border-radius:9px;background:var(--wash-1);padding:9px 10px;color:var(--ink-soft);font:600 13px/1.35 var(--sans);}
+.shortcut-list kbd{display:inline-flex;align-items:center;justify-content:center;min-width:34px;min-height:24px;border:1px solid var(--line-2);border-radius:6px;background:var(--panel);color:var(--muted);padding:0 7px;font:700 11px/1 var(--mono);}
+.shortcut-list div:has(kbd + kbd){grid-template-columns:auto auto minmax(0,1fr);}
+
+@media (max-width:900px){
+  .reading-tools{order:4;flex-wrap:wrap;}
+  .outline-panel{top:auto;right:10px;bottom:10px;left:10px;width:auto;max-height:min(420px,58dvh);transform:translateY(calc(100% + 18px));}
+  body[data-outline-open="true"] .outline-panel{transform:none;}
+}
+@media (prefers-reduced-motion:reduce){
+  .outline-panel,.shortcut-dialog,.shortcut-overlay{animation:none !important;transition:none !important;}
+}
+
 `;
 }
 function serverJs() {
@@ -1474,6 +1558,7 @@ const state = {
   previewToken: 0,
   stats: null,
   statsRate: { in: 0, out: 0 },
+  reading: { verbosity: "standard", outlineOpen: false, outlineItems: [], outlineVisible: new Set(), outlineTargets: new Map(), outlineActiveId: "", shortcutsOpen: false },
 };
 const SOURCE_MODULES = [
   { key: "codex", label: "Codex" },
@@ -1492,7 +1577,11 @@ const SIDEBAR_MAX = 460;
 const THEME_KEY = "agent-snapshot.theme.v1";
 const DENSITY_KEY = "agent-snapshot.density.v1";
 const READ_SCALE_KEY = "agent-snapshot.read-scale.v1";
+const VIEW_VERBOSITY_KEY = "agent-snapshot.view-verbosity.v1";
+const OUTLINE_OPEN_KEY = "agent-snapshot.outline-open.v1";
 const THEMES = ["light", "sepia", "dark"];
+const VIEW_VERBOSITIES = ["standard", "detailed", "summary"];
+const VIEW_VERBOSITY_LABELS = { standard: "标准", detailed: "详细", summary: "摘要" };
 const READ_SCALE_MIN = 0.85;
 const READ_SCALE_MAX = 1.4;
 const READ_SCALE_STEP = 0.05;
@@ -1512,6 +1601,7 @@ function showViewerLoading(message) {
   state.currentSnapshot = null;
   resetSessionSearchState(false);
   renderSessionSearch();
+  clearOutline("正在加载大纲...");
   $("title").textContent = "正在加载会话";
   $("meta").classList.add("empty");
   $("meta").classList.remove("loading");
@@ -2720,6 +2810,329 @@ function initAppearance() {
   }
 }
 
+var outlineObserver = null;
+var outlineRaf = 0;
+var outlineRebuildTimer = 0;
+
+function currentVerbosity() {
+  const stored = localStorage.getItem(VIEW_VERBOSITY_KEY);
+  return VIEW_VERBOSITIES.includes(stored) ? stored : "standard";
+}
+
+function applyVerbosity(mode, options = {}) {
+  const value = VIEW_VERBOSITIES.includes(mode) ? mode : "standard";
+  state.reading.verbosity = value;
+  document.body.setAttribute("data-view-verbosity", value);
+  if (options.persist !== false) {
+    localStorage.setItem(VIEW_VERBOSITY_KEY, value);
+  }
+  for (const button of document.querySelectorAll("[data-view-verbosity]")) {
+    const active = button.dataset.viewVerbosity === value;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", active ? "true" : "false");
+  }
+  if (value === "detailed") {
+    setTranscriptDetailsOpen(document, true);
+  } else {
+    setTranscriptDetailsOpen(document, false);
+  }
+  if (options.toast) {
+    showToast("已切换为" + VIEW_VERBOSITY_LABELS[value] + "视图", false);
+  }
+  scheduleOutlineRebuild();
+}
+
+function cycleVerbosity() {
+  const index = VIEW_VERBOSITIES.indexOf(state.reading.verbosity);
+  const next = VIEW_VERBOSITIES[(index + 1) % VIEW_VERBOSITIES.length] || "standard";
+  applyVerbosity(next, { toast: true });
+}
+
+function setTranscriptDetailsOpen(root, open) {
+  const scope = root && typeof root.querySelectorAll === "function" ? root : document;
+  for (const details of scope.querySelectorAll("#turns details.process-details, #turns details.tool-details, details.process-details, details.tool-details")) {
+    details.open = Boolean(open);
+  }
+}
+
+function applyVerbosityToContent(root) {
+  if (state.reading.verbosity === "detailed") {
+    setTranscriptDetailsOpen(root, true);
+  }
+}
+
+function afterTranscriptContentMutated(root, options = {}) {
+  applyVerbosityToContent(root);
+  if (options.rebuildOutline !== false) {
+    scheduleOutlineRebuild();
+  }
+}
+
+function setOutlineOpen(open, persist = true) {
+  state.reading.outlineOpen = Boolean(open);
+  document.body.setAttribute("data-outline-open", state.reading.outlineOpen ? "true" : "false");
+  const panel = $("outlinePanel");
+  if (panel) {
+    panel.setAttribute("aria-hidden", state.reading.outlineOpen ? "false" : "true");
+  }
+  const toggle = $("toggleOutline");
+  if (toggle) {
+    toggle.classList.toggle("active", state.reading.outlineOpen);
+    toggle.setAttribute("aria-pressed", state.reading.outlineOpen ? "true" : "false");
+  }
+  if (persist) {
+    localStorage.setItem(OUTLINE_OPEN_KEY, state.reading.outlineOpen ? "1" : "0");
+  }
+  if (state.reading.outlineOpen) {
+    scheduleOutlineRebuild();
+  }
+}
+
+function toggleOutline() {
+  setOutlineOpen(!state.reading.outlineOpen);
+  showToast(state.reading.outlineOpen ? "已打开大纲" : "已收起大纲", false);
+}
+
+function clearOutline(message) {
+  if (outlineObserver) {
+    outlineObserver.disconnect();
+    outlineObserver = null;
+  }
+  state.reading.outlineItems = [];
+  state.reading.outlineVisible = new Set();
+  state.reading.outlineTargets = new Map();
+  state.reading.outlineActiveId = "";
+  const list = $("outlineList");
+  if (list) {
+    list.innerHTML = "<div class='outline-empty'>" + esc(message || "当前会话暂无大纲") + "</div>";
+  }
+}
+
+function scheduleOutlineRebuild() {
+  if (outlineRebuildTimer) {
+    clearTimeout(outlineRebuildTimer);
+  }
+  outlineRebuildTimer = window.setTimeout(() => {
+    outlineRebuildTimer = 0;
+    rebuildOutline();
+  }, 40);
+}
+
+function rebuildOutline() {
+  if (outlineObserver) {
+    outlineObserver.disconnect();
+    outlineObserver = null;
+  }
+  state.reading.outlineVisible = new Set();
+  state.reading.outlineTargets = new Map();
+  const container = $("turns");
+  const list = $("outlineList");
+  if (!container || !list) {
+    return;
+  }
+  const items = [];
+  for (const node of Array.from(container.children)) {
+    if (!(node instanceof HTMLElement) || node.classList.contains("turns-hydrating")) {
+      continue;
+    }
+    if (node.classList.contains("user") && node.hasAttribute("data-turn-number")) {
+      const turn = node.getAttribute("data-turn-number") || "";
+      const text = outlineText(node.querySelector(".body")?.textContent || node.textContent || "用户消息", "用户消息");
+      items.push({ id: "turn-" + turn + "-" + items.length, type: "user", label: text, target: node });
+      continue;
+    }
+    if (node.classList.contains("commit-card")) {
+      const sha = String(node.getAttribute("data-commit-sha") || "").slice(0, 7);
+      const subject = outlineText(node.querySelector(".commit-subject")?.textContent || "Git 提交", "Git 提交");
+      items.push({ id: "commit-" + (sha || items.length) + "-" + items.length, type: "commit", label: (sha ? sha + " " : "") + subject, target: node });
+    }
+  }
+  state.reading.outlineItems = items;
+  list.innerHTML = "";
+  if (!items.length) {
+    list.innerHTML = "<div class='outline-empty'>当前会话暂无大纲</div>";
+    return;
+  }
+  const fragment = document.createDocumentFragment();
+  for (const item of items) {
+    item.target.setAttribute("data-outline-id", item.id);
+    state.reading.outlineTargets.set(item.id, item);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "outline-item";
+    button.dataset.outlineTarget = item.id;
+    const kind = document.createElement("span");
+    kind.className = "outline-kind";
+    kind.textContent = item.type === "commit" ? "提交" : "用户";
+    const text = document.createElement("span");
+    text.className = "outline-text";
+    text.textContent = item.label;
+    button.appendChild(kind);
+    button.appendChild(text);
+    fragment.appendChild(button);
+  }
+  list.appendChild(fragment);
+  const root = container.closest(".viewer") || null;
+  if (typeof IntersectionObserver === "function") {
+    outlineObserver = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        const id = entry.target.getAttribute("data-outline-id") || "";
+        if (!id) {
+          continue;
+        }
+        if (entry.isIntersecting) {
+          state.reading.outlineVisible.add(id);
+        } else {
+          state.reading.outlineVisible.delete(id);
+        }
+      }
+      scheduleActiveOutlineUpdate();
+    }, { root, threshold: [0, 0.1, 0.5, 1] });
+    for (const item of items) {
+      outlineObserver.observe(item.target);
+    }
+  }
+  updateActiveOutline();
+}
+
+function outlineText(value, fallback = "用户消息") {
+  const text = String(value || "").replace(/\\s+/g, " ").trim();
+  if (!text) {
+    return fallback;
+  }
+  return text.length > 60 ? text.slice(0, 60) + "..." : text;
+}
+
+function scheduleActiveOutlineUpdate() {
+  if (outlineRaf) {
+    return;
+  }
+  outlineRaf = window.requestAnimationFrame(() => {
+    outlineRaf = 0;
+    updateActiveOutline();
+  });
+}
+
+function updateActiveOutline() {
+  const items = state.reading.outlineItems.filter((item) => item.target && item.target.isConnected);
+  if (!items.length) {
+    return;
+  }
+  const visible = items.filter((item) => state.reading.outlineVisible.has(item.id));
+  const best = nearestOutlineItem(visible.length ? visible : items);
+  if (best) {
+    setActiveOutlineItem(best.id, false);
+  }
+}
+
+function nearestOutlineItem(items) {
+  const viewer = document.querySelector(".viewer");
+  const rect = viewer ? viewer.getBoundingClientRect() : { top: 0, height: window.innerHeight };
+  const center = rect.top + rect.height * 0.38;
+  let best = null;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (const item of items) {
+    const itemRect = item.target.getBoundingClientRect();
+    const distance = Math.abs(itemRect.top - center);
+    if (distance < bestDistance) {
+      best = item;
+      bestDistance = distance;
+    }
+  }
+  return best;
+}
+
+function setActiveOutlineItem(id, scrollList) {
+  state.reading.outlineActiveId = id;
+  for (const button of document.querySelectorAll("[data-outline-target]")) {
+    const active = button.dataset.outlineTarget === id;
+    button.classList.toggle("active", active);
+    if (active && scrollList && state.reading.outlineOpen) {
+      button.scrollIntoView({ block: "nearest" });
+    }
+  }
+}
+
+function jumpToOutlineItem(id) {
+  const item = state.reading.outlineTargets.get(id);
+  if (!item || !item.target || !item.target.isConnected) {
+    return false;
+  }
+  item.target.scrollIntoView({ behavior: "smooth", block: "center" });
+  setActiveOutlineItem(id, true);
+  return true;
+}
+
+function jumpUserTurn(direction) {
+  flushTranscriptHydration();
+  rebuildOutline();
+  const users = state.reading.outlineItems.filter((item) => item.type === "user");
+  if (!users.length) {
+    showToast("没有用户回合", true);
+    return;
+  }
+  const nearest = nearestOutlineItem(users);
+  let index = nearest ? users.findIndex((item) => item.id === nearest.id) : -1;
+  if (index < 0) {
+    index = direction > 0 ? -1 : users.length;
+  }
+  const nextIndex = clampNumber(index + direction, 0, users.length - 1);
+  jumpToOutlineItem(users[nextIndex].id);
+}
+
+function openShortcuts() {
+  state.reading.shortcutsOpen = true;
+  const overlay = $("shortcutOverlay");
+  if (overlay) {
+    overlay.hidden = false;
+  }
+  window.setTimeout(() => $("closeShortcuts")?.focus(), 0);
+}
+
+function closeShortcuts() {
+  state.reading.shortcutsOpen = false;
+  const overlay = $("shortcutOverlay");
+  if (overlay) {
+    overlay.hidden = true;
+  }
+}
+
+function isTypingTarget(target) {
+  if (!target || typeof target.closest !== "function") {
+    return false;
+  }
+  return Boolean(target.closest("input, textarea, select, [contenteditable='true']"));
+}
+
+function initReadingExperience() {
+  applyVerbosity(currentVerbosity(), { persist: false, forceDetails: true });
+  setOutlineOpen(localStorage.getItem(OUTLINE_OPEN_KEY) === "1", false);
+  for (const button of document.querySelectorAll("[data-view-verbosity]")) {
+    button.addEventListener("click", () => applyVerbosity(button.dataset.viewVerbosity, { toast: true }));
+  }
+  $("toggleOutline").addEventListener("click", toggleOutline);
+  $("closeOutline").addEventListener("click", () => setOutlineOpen(false));
+  $("openShortcuts").addEventListener("click", openShortcuts);
+  $("closeShortcuts").addEventListener("click", closeShortcuts);
+  $("shortcutOverlay").addEventListener("click", (event) => {
+    if (event.target === $("shortcutOverlay")) {
+      closeShortcuts();
+    }
+  });
+  $("outlineList").addEventListener("click", (event) => {
+    const button = event.target.closest("[data-outline-target]");
+    if (button) {
+      jumpToOutlineItem(button.dataset.outlineTarget);
+    }
+  });
+  const viewer = document.querySelector(".viewer");
+  if (viewer) {
+    viewer.addEventListener("scroll", scheduleActiveOutlineUpdate, { passive: true });
+  }
+  window.addEventListener("resize", scheduleActiveOutlineUpdate);
+  clearOutline("选择会话后显示大纲");
+}
+
 function initSplitter() {
   const splitter = $("splitter");
   const app = document.querySelector(".app");
@@ -2940,6 +3353,7 @@ function clearViewer(message) {
   $("risks").innerHTML = "";
   $("exports").innerHTML = "";
   $("turns").innerHTML = "";
+  clearOutline("选择会话后显示大纲");
 }
 
 function sessionEngine(session) {
@@ -3265,6 +3679,7 @@ function renderTranscriptTurns(html) {
   if (nodes.length <= TRANSCRIPT_PROGRESSIVE_THRESHOLD) {
     container.appendChild(template.content);
     openContentLinksInNewTabs(container);
+    afterTranscriptContentMutated(container);
     container.removeAttribute("aria-busy");
     return;
   }
@@ -3279,7 +3694,9 @@ function renderTranscriptTurns(html) {
     tail.appendChild(nodes[i]);
   }
   openContentLinksInNewTabs(tail);
+  afterTranscriptContentMutated(tail, { rebuildOutline: false });
   container.appendChild(tail);
+  scheduleOutlineRebuild();
   container.setAttribute("aria-busy", "true");
 
   const scroller = container.closest(".viewer") || document.scrollingElement || document.documentElement;
@@ -3295,11 +3712,13 @@ function renderTranscriptTurns(html) {
       chunk.appendChild(nodes[i]);
     }
     openContentLinksInNewTabs(chunk);
+    afterTranscriptContentMutated(chunk, { rebuildOutline: false });
     const previousHeight = scroller.scrollHeight;
     const previousTop = scroller.scrollTop;
     placeholder.after(chunk);
     scroller.scrollTop = previousTop + (scroller.scrollHeight - previousHeight);
     end = start;
+    scheduleOutlineRebuild();
   };
   const finish = () => {
     const previousHeight = scroller.scrollHeight;
@@ -3311,6 +3730,7 @@ function renderTranscriptTurns(html) {
     if (transcriptHydration === job) {
       transcriptHydration = null;
     }
+    scheduleOutlineRebuild();
   };
   const step = () => {
     if (job.cancelled) {
@@ -3395,6 +3815,7 @@ function insertSessionCommitCards(snapshot, commits) {
       container.insertBefore(card, subagents || null);
     }
   }
+  scheduleOutlineRebuild();
 }
 
 function transcriptTopLevelTimeline(snapshot, container) {
@@ -3675,7 +4096,11 @@ function redirectToShareLogin(apiUrl, auth) {
 }
 
 async function copyShareUrlToClipboard(url) {
-  const text = String(url || "");
+  return copyTextToClipboard(url);
+}
+
+async function copyTextToClipboard(value) {
+  const text = String(value || "");
   if (!text) {
     return false;
   }
@@ -3686,6 +4111,46 @@ async function copyShareUrlToClipboard(url) {
     } catch (_error) {}
   }
   return copyTextWithSelection(text);
+}
+
+async function copyFilePath(path) {
+  const copied = await copyTextToClipboard(path);
+  showToast(copied ? "已复制路径" : "复制路径失败", !copied);
+}
+
+async function revealFilePath(path) {
+  const targetPath = String(path || "").trim();
+  if (!targetPath) {
+    return;
+  }
+  showToast("正在打开文件位置...", false);
+  try {
+    const params = new URLSearchParams({ path: targetPath });
+    const response = await fetch("/api/reveal-in-file?" + params.toString(), {
+      method: "POST",
+      headers: { "${MUTATION_CSRF_HEADER}": csrfToken },
+    });
+    const data = await response.json().catch(() => ({}));
+    if (response.ok && data.ok) {
+      showToast(data.message || "已打开文件位置", false);
+    } else {
+      showToast(data.error || (response.status === 404 ? "路径不存在" : "打开文件位置失败"), true);
+    }
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : String(error), true);
+  }
+}
+
+function handleFilePathAction(target, event) {
+  const path = target?.dataset?.filePath || "";
+  if (!path) {
+    return;
+  }
+  if (event?.metaKey) {
+    revealFilePath(path);
+  } else {
+    copyFilePath(path);
+  }
 }
 
 function copyTextWithSelection(text) {
@@ -4012,9 +4477,40 @@ $("searchFacets").addEventListener("click", (event) => {
 });
 document.addEventListener("keydown", (event) => {
   const key = String(event.key || "").toLowerCase();
+  const typing = isTypingTarget(event.target);
   if ((event.metaKey || event.ctrlKey) && key === "k") {
     event.preventDefault();
     openSearchDialog();
+    return;
+  }
+  if (event.metaKey && key === "/") {
+    event.preventDefault();
+    openShortcuts();
+    return;
+  }
+  if (event.ctrlKey && !event.metaKey && !event.altKey && key === "o") {
+    event.preventDefault();
+    cycleVerbosity();
+    return;
+  }
+  if (event.ctrlKey && !event.metaKey && !event.altKey && key === "m") {
+    event.preventDefault();
+    toggleOutline();
+    return;
+  }
+  if (!typing && !event.metaKey && !event.ctrlKey && !event.altKey && event.key === "[") {
+    event.preventDefault();
+    jumpUserTurn(-1);
+    return;
+  }
+  if (!typing && !event.metaKey && !event.ctrlKey && !event.altKey && event.key === "]") {
+    event.preventDefault();
+    jumpUserTurn(1);
+    return;
+  }
+  if (event.key === "Escape" && state.reading.shortcutsOpen) {
+    event.preventDefault();
+    closeShortcuts();
     return;
   }
   if (event.key === "Escape" && state.search.open) {
@@ -4037,12 +4533,28 @@ $("exports").addEventListener("click", (event) => {
   }
 });
 $("turns").addEventListener("click", (event) => {
+  const filePath = event.target.closest?.("[data-file-path]");
+  if (filePath) {
+    event.preventDefault();
+    event.stopPropagation();
+    handleFilePathAction(filePath, event);
+    return;
+  }
   const link = event.target.closest?.("a[href]");
   if (!link) {
     return;
   }
   event.preventDefault();
   openInNewTab(link.href);
+});
+$("turns").addEventListener("keydown", (event) => {
+  const filePath = event.target.closest?.("[data-file-path]");
+  if (!filePath || !isKeyboardActivation(event)) {
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  handleFilePathAction(filePath, event);
 });
 for (const id of ["redact"]) {
   $(id).addEventListener("change", () => {
@@ -4053,6 +4565,7 @@ for (const id of ["redact"]) {
   });
 }
 initAppearance();
+initReadingExperience();
 loadStatsRate();
 initSplitter();
 loadSessions().then(() => {
