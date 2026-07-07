@@ -19,7 +19,7 @@ import { renderLauncherApp } from "./launcher-app.mjs";
 import { prewarmSemanticIndex, semanticSearchSessions } from "./semantic-index.mjs";
 import { semanticSearchSnapshot } from "./semantic-search.mjs";
 import { searchIndexed, syncSearchIndexInBackground, searchIndexStats, indexRowCount, searchIndexCoversCodexHomes } from "./search-index.mjs";
-import { listSessionsWithCache, sessionListCacheStatus, reconcileSessionListCacheInBackground } from "./session-list-cache.mjs";
+import { listSessionsWithCache, sessionListCacheStatus, sessionListCacheWatermark, reconcileSessionListCacheInBackground } from "./session-list-cache.mjs";
 import { resumeSessionInOrca } from "./orca-bridge.mjs";
 import { readClaudeBlockUsageEstimate, readCodexQuotaSnapshot } from "./quota-meter.mjs";
 import { buildUsageAnalytics } from "./usage-analytics.mjs";
@@ -334,6 +334,17 @@ export async function serveLocalViewer({
           cache: sessionHeadCache,
         });
         sendJson(response, head);
+        return;
+      }
+      if (url.pathname === "/api/sessions-watermark") {
+        reconcileSessionListCacheInBackground({
+          codexHome,
+          claudeHome,
+          traeHome,
+          traeAppHome,
+          traeRecordingsDir,
+        });
+        sendJson(response, { watermark: await sessionListCacheWatermark() });
         return;
       }
       if (url.pathname === "/api/session-peek") {

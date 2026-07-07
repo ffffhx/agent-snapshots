@@ -78,6 +78,7 @@ try {
     ["GET /api/weekly-digest returns weekly markdown shape", () => assertWeeklyDigest(viewerUrl)],
     ["GET /api/images and /api/image return image entries safely", () => assertImages(viewerUrl)],
     ["GET /api/session-head validates missing and real ids", () => assertSessionHead(viewerUrl)],
+    ["GET /api/sessions-watermark returns a cheap list watermark", () => assertSessionsWatermark(viewerUrl)],
     ["multi-home Codex sessions list and round-trip refs", () => assertMultiHomeCodex(viewerUrl)],
     ["GET /api/session-peek returns lightweight redacted turns", () => assertSessionPeek(viewerUrl)],
     ["launcher prefs reject missing CSRF and persist pin changes", () => assertLauncherPrefs(viewerUrl, origin, csrfToken)],
@@ -229,6 +230,20 @@ async function assertSessionHead(viewerUrl) {
   assert(response.status === 200, `/api/session-head should return 200 for ${id}, got ${response.status}`);
   assert(typeof payload.complete === "boolean", "session head should include complete boolean");
   assert(typeof payload.turnCount === "number" && payload.turnCount >= 0, "session head should include numeric turnCount");
+}
+
+async function assertSessionsWatermark(viewerUrl) {
+  const first = await fetchJson(`${viewerUrl}/api/sessions-watermark`, { timeoutMs: 1000 });
+  assert(Object.hasOwn(first, "watermark"), "sessions watermark payload should include watermark");
+  assert(Number.isFinite(Number(first.watermark)), `sessions watermark should be numeric, got ${JSON.stringify(first)}`);
+
+  const started = Date.now();
+  const { response, payload } = await fetchJsonResponse(`${viewerUrl}/api/sessions-watermark`, { timeoutMs: 1000 });
+  const elapsedMs = Date.now() - started;
+  assert(response.status === 200, `/api/sessions-watermark should return 200, got ${response.status}`);
+  assert(Object.hasOwn(payload, "watermark"), "warm sessions watermark payload should include watermark");
+  assert(Number.isFinite(Number(payload.watermark)), `warm sessions watermark should be numeric, got ${JSON.stringify(payload)}`);
+  assert(elapsedMs < 250, `/api/sessions-watermark should be fast when warm, took ${elapsedMs}ms`);
 }
 
 async function assertMultiHomeCodex(viewerUrl) {

@@ -649,7 +649,9 @@ export async function reconcileSessionListCache(options) {
       }
     }
 
-    const watermark = candidates.reduce((max, candidate) => Math.max(max, Number(candidate.mtimeMs || 0)), previousWatermark);
+    const maxCandidateWatermark = candidates.reduce((max, candidate) => Math.max(max, Number(candidate.mtimeMs || 0)), previousWatermark);
+    const changed = updated > 0 || deleted > 0;
+    const watermark = changed ? Math.max(maxCandidateWatermark, previousWatermark + 1) : maxCandidateWatermark;
     setMeta(db, "watermark_mtime_ms", String(watermark));
     setMeta(db, "last_reconcile_ms", String(Date.now() - started));
     setMeta(db, "last_reconcile_at", new Date().toISOString());
@@ -706,4 +708,15 @@ export async function sessionListCacheStatus() {
     lastReconcileError: getMeta(db, "last_reconcile_error", ""),
     running: reconciling,
   };
+}
+
+export async function sessionListCacheWatermark() {
+  const db = await getDb();
+  const metaWatermark = Number(getMeta(db, "watermark_mtime_ms", "0")) || 0;
+  const row = db.prepare(`SELECT MAX(candidate_mtime_ms) AS candidate_mtime_ms, MAX(mtime_ms) AS mtime_ms FROM ${CACHE_TABLE}`).get();
+  return Math.max(
+    metaWatermark,
+    Number(row?.candidate_mtime_ms || 0) || 0,
+    Number(row?.mtime_ms || 0) || 0,
+  );
 }

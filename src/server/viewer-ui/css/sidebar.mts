@@ -273,6 +273,7 @@ button:disabled { cursor: wait; opacity: 0.55; transform: none; box-shadow: none
 .session:hover { background: rgba(33, 27, 16, 0.045); transform: none; }
 .session.active { background: var(--seal-soft); }
 .session.active::before { background: var(--seal); }
+.session.fresh { animation: session-fresh-slide 2.4s ease-out both; }
 .session strong {
   min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   font: 500 13.5px/1.3 var(--sans);
@@ -309,8 +310,16 @@ button:disabled { cursor: wait; opacity: 0.55; transform: none; box-shadow: none
   70% { box-shadow: 0 0 0 7px rgba(63, 143, 98, 0); }
   100% { box-shadow: 0 0 0 0 rgba(63, 143, 98, 0); }
 }
+@keyframes session-fresh-slide {
+  0% { background: rgba(63, 143, 98, 0.18); box-shadow: inset 3px 0 0 var(--live); transform: translateX(-6px); }
+  24% { background: rgba(63, 143, 98, 0.13); transform: translateX(0); }
+  100% { background: transparent; box-shadow: inset 0 0 0 transparent; transform: translateX(0); }
+}
 @media (prefers-reduced-motion: no-preference) {
   .session-live-dot { animation: live-pulse 2.4s ease-out infinite; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .session.fresh { animation: none; background: rgba(63, 143, 98, 0.12); }
 }
 .project-more {
   justify-self: start;

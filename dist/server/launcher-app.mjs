@@ -202,8 +202,12 @@ let ambientToken=0;
 let previewTimer=0;
 let pruneQueue=Promise.resolve();
 const AMBIENT_REFRESH_MS=60000;
+const RECENT_WATERMARK_POLL_MS=8000;
+const RECENT_WATERMARK_JITTER_MS=2000;
+const RECENT_WATERMARK_BACKOFF_MS=30000;
 const PEEK_CACHE_MAX=10;
 const peekCache=new Map();
+const recentFreshness={started:false,timer:0,polling:false,refreshing:false,errors:0,watermark:null};
 
 function relTime(v){
   if(!v) return "";
@@ -261,6 +265,97 @@ function showToast(msg,err){
 function schedule(){
   clearTimeout(timer);
   timer=setTimeout(run,140);
+}
+
+function jitteredRecentWatermarkDelay(baseMs){
+  const base=Math.max(1000,Number(baseMs)||RECENT_WATERMARK_POLL_MS);
+  const jitter=(Math.random()*2-1)*RECENT_WATERMARK_JITTER_MS;
+  return Math.max(1000,Math.round(base+jitter));
+}
+
+function shouldPollRecentWatermark(){
+  return !document.hidden && state.mode==="recent" && !$("q").value.trim() && !state.previewOpen;
+}
+
+function scheduleRecentWatermarkPoll(baseDelay){
+  clearTimeout(recentFreshness.timer);
+  if(document.hidden) return;
+  recentFreshness.timer=setTimeout(pollRecentWatermark,jitteredRecentWatermarkDelay(baseDelay));
+}
+
+function startRecentWatermarkPolling(){
+  if(recentFreshness.started) return;
+  recentFreshness.started=true;
+  scheduleRecentWatermarkPoll(RECENT_WATERMARK_POLL_MS);
+}
+
+async function fetchRecentWatermark(){
+  const response=await fetch("/api/sessions-watermark");
+  const payload=await response.json();
+  if(!response.ok) throw new Error(payload.error||"watermark failed");
+  return String(payload.watermark??"");
+}
+
+async function pollRecentWatermark(){
+  if(!shouldPollRecentWatermark()){
+    scheduleRecentWatermarkPoll(recentFreshness.errors>=3?RECENT_WATERMARK_BACKOFF_MS:RECENT_WATERMARK_POLL_MS);
+    return;
+  }
+  if(recentFreshness.polling){
+    scheduleRecentWatermarkPoll(recentFreshness.errors>=3?RECENT_WATERMARK_BACKOFF_MS:RECENT_WATERMARK_POLL_MS);
+    return;
+  }
+  recentFreshness.polling=true;
+  try{
+    const watermark=await fetchRecentWatermark();
+    if(recentFreshness.watermark!==null && watermark!==recentFreshness.watermark){
+      const refreshed=await refreshRecentInPlace();
+      if(!refreshed) return;
+    }
+    recentFreshness.watermark=watermark;
+    recentFreshness.errors=0;
+  }catch(e){
+    recentFreshness.errors+=1;
+  }finally{
+    recentFreshness.polling=false;
+    scheduleRecentWatermarkPoll(recentFreshness.errors>=3?RECENT_WATERMARK_BACKOFF_MS:RECENT_WATERMARK_POLL_MS);
+  }
+}
+
+async function refreshRecentInPlace(){
+  if(recentFreshness.refreshing || state.loading || !shouldPollRecentWatermark()) return false;
+  recentFreshness.refreshing=true;
+  const selectedRef=sessionKey(state.items[state.sel]);
+  const scope=state.scope;
+  try{
+    const src=scope==="all"?"all":scope;
+    const prefs=await fetchLauncherPrefs();
+    if(!shouldPollRecentWatermark() || state.scope!==scope) return false;
+    setLauncherPrefs(prefs);
+    const liveParams=new URLSearchParams({limit:"40",completeOnly:"0",liveOnly:"1",source:src});
+    const recentParams=new URLSearchParams({limit:"40",completeOnly:"1",source:src});
+    const [pinnedResult,liveResult,recentResult]=await Promise.allSettled([
+      resolvePinnedRows(prefs.pinned,src),
+      fetch("/api/sessions?"+liveParams.toString()).then(x=>x.json()),
+      fetch("/api/sessions?"+recentParams.toString()).then(x=>x.json())
+    ]);
+    if(!shouldPollRecentWatermark() || state.scope!==scope) return false;
+    if(liveResult.status==="rejected" && recentResult.status==="rejected") throw liveResult.reason || recentResult.reason;
+    const pinnedRows=pinnedResult.status==="fulfilled" && Array.isArray(pinnedResult.value)?pinnedResult.value:[];
+    const liveRows=liveResult.status==="fulfilled" && Array.isArray(liveResult.value)?liveResult.value:[];
+    const recentRows=recentResult.status==="fulfilled" && Array.isArray(recentResult.value)?recentResult.value:[];
+    const merged=mergeRecent(pinnedRows,liveRows,recentRows);
+    state.items=merged.items;
+    state.pinnedCount=merged.pinnedCount;
+    state.liveCount=merged.liveCount;
+    state.recentCount=merged.recentCount;
+    const nextIndex=selectedRef?state.items.findIndex((item)=>sessionKey(item)===selectedRef):-1;
+    state.sel=nextIndex>=0?nextIndex:0;
+    render();
+    return true;
+  }finally{
+    recentFreshness.refreshing=false;
+  }
 }
 
 async function fetchLauncherPrefs(){
@@ -430,7 +525,7 @@ async function run(){
       state.liveCount=merged.liveCount;
       state.recentCount=merged.recentCount;
     }catch(e){ if(token===state.token) state.items=[]; }
-    if(token===state.token){ state.loading=false; state.sel=0; render(); }
+    if(token===state.token){ state.loading=false; state.sel=0; render(); scheduleRecentWatermarkPoll(RECENT_WATERMARK_POLL_MS); }
     return;
   }
   state.mode="search";
@@ -1174,15 +1269,17 @@ document.addEventListener("keydown",(e)=>{
   else if(e.key==="ArrowRight" && !isTypingTarget(e.target)){ e.preventDefault(); openPreview(); }
 });
 document.addEventListener("visibilitychange",()=>{
-  if(document.hidden){ clearTimeout(ambientTimer); clearTimeout(previewTimer); state.previewToken+=1; }
+  if(document.hidden){ clearTimeout(ambientTimer); clearTimeout(recentFreshness.timer); clearTimeout(previewTimer); state.previewToken+=1; }
   else{
     refreshAmbientStatus();
     scheduleAmbientRefresh(AMBIENT_REFRESH_MS);
+    scheduleRecentWatermarkPoll(0);
     if(state.previewOpen) schedulePreviewLoad(0);
   }
 });
 $("q").focus();
 run();
+startRecentWatermarkPolling();
 refreshAmbientStatus();
 scheduleAmbientRefresh(AMBIENT_REFRESH_MS);
 `;

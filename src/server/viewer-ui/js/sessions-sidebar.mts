@@ -1,6 +1,152 @@
 // @ts-nocheck
 
-export const sessionsSidebarJs = `async function loadSessions() {
+export const sessionsSidebarJs = `const SESSION_WATERMARK_POLL_MS = 10000;
+const SESSION_WATERMARK_JITTER_MS = 2000;
+const SESSION_WATERMARK_BACKOFF_MS = 30000;
+const sessionFreshness = {
+  started: false,
+  timer: 0,
+  polling: false,
+  errors: 0,
+  watermark: null,
+  refreshing: false,
+  highlightRefs: new Set(),
+  highlightTimer: 0,
+};
+
+function jitteredSessionWatermarkDelay(baseMs) {
+  const base = Math.max(1000, Number(baseMs) || SESSION_WATERMARK_POLL_MS);
+  const jitter = (Math.random() * 2 - 1) * SESSION_WATERMARK_JITTER_MS;
+  return Math.max(1000, Math.round(base + jitter));
+}
+
+function sidebarScrollElement() {
+  return document.querySelector(".sidebar") || $("sessions");
+}
+
+function restoreSidebarScroll(scrollTop) {
+  const element = sidebarScrollElement();
+  if (!element) {
+    return;
+  }
+  element.scrollTop = scrollTop;
+  requestAnimationFrame(() => {
+    element.scrollTop = scrollTop;
+  });
+}
+
+function renderSessionsPreservingScroll() {
+  const element = sidebarScrollElement();
+  const scrollTop = element ? element.scrollTop : 0;
+  renderSessions();
+  restoreSidebarScroll(scrollTop);
+}
+
+function scheduleSessionWatermarkPoll(baseDelay) {
+  clearTimeout(sessionFreshness.timer);
+  if (document.hidden) {
+    return;
+  }
+  sessionFreshness.timer = setTimeout(pollSessionWatermark, jitteredSessionWatermarkDelay(baseDelay));
+}
+
+function startSessionFreshnessPolling() {
+  if (sessionFreshness.started) {
+    return;
+  }
+  sessionFreshness.started = true;
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      clearTimeout(sessionFreshness.timer);
+      return;
+    }
+    scheduleSessionWatermarkPoll(0);
+  });
+  scheduleSessionWatermarkPoll(SESSION_WATERMARK_POLL_MS);
+}
+
+async function fetchSessionsWatermark() {
+  const response = await fetch("/api/sessions-watermark");
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(payload.error || "Failed to load sessions watermark");
+  }
+  return String(payload.watermark ?? "");
+}
+
+async function pollSessionWatermark() {
+  if (document.hidden) {
+    return;
+  }
+  if (sessionFreshness.polling) {
+    scheduleSessionWatermarkPoll(sessionFreshness.errors >= 3 ? SESSION_WATERMARK_BACKOFF_MS : SESSION_WATERMARK_POLL_MS);
+    return;
+  }
+  sessionFreshness.polling = true;
+  try {
+    const watermark = await fetchSessionsWatermark();
+    if (sessionFreshness.watermark !== null && watermark !== sessionFreshness.watermark) {
+      const refreshed = await refreshSessionsInPlace();
+      if (!refreshed) {
+        return;
+      }
+    }
+    sessionFreshness.watermark = watermark;
+    sessionFreshness.errors = 0;
+  } catch {
+    sessionFreshness.errors += 1;
+  } finally {
+    sessionFreshness.polling = false;
+    scheduleSessionWatermarkPoll(sessionFreshness.errors >= 3 ? SESSION_WATERMARK_BACKOFF_MS : SESSION_WATERMARK_POLL_MS);
+  }
+}
+
+async function refreshSessionsInPlace() {
+  if (sessionFreshness.refreshing || state.loadingMoreSessions) {
+    return false;
+  }
+  sessionFreshness.refreshing = true;
+  const previousRefs = new Set(state.sessions.map(sessionRef));
+  const previousSelected = state.selected;
+  const scrollElement = sidebarScrollElement();
+  const scrollTop = scrollElement ? scrollElement.scrollTop : 0;
+  const limit = Math.max(SESSION_BATCH_LIMIT, state.sessions.length || 0);
+  try {
+    const sessions = await fetchSessionPage(0, { limit, source: "all" });
+    const newRefs = [];
+    for (const session of sessions) {
+      const ref = sessionRef(session);
+      if (ref && !previousRefs.has(ref)) {
+        newRefs.push(ref);
+      }
+    }
+    state.sessions = sessions;
+    state.hasMoreSessions = sessions.length === limit;
+    state.selected = previousSelected;
+    state.activeSource = visibleSourceKey(state.activeSource);
+    state.sessionListError = "";
+    setFreshSessionHighlights(newRefs);
+    renderSessions();
+    restoreSidebarScroll(scrollTop);
+    return true;
+  } finally {
+    sessionFreshness.refreshing = false;
+  }
+}
+
+function setFreshSessionHighlights(refs) {
+  clearTimeout(sessionFreshness.highlightTimer);
+  sessionFreshness.highlightRefs = new Set((refs || []).filter(Boolean));
+  if (!sessionFreshness.highlightRefs.size) {
+    return;
+  }
+  sessionFreshness.highlightTimer = setTimeout(() => {
+    sessionFreshness.highlightRefs.clear();
+    renderSessionsPreservingScroll();
+  }, 2600);
+}
+
+async function loadSessions() {
   setViewerLoading("正在加载会话...");
   $("sessions").classList.add("sessions-loading");
   $("sessions").innerHTML = renderLoading("正在加载会话...");
@@ -30,13 +176,15 @@ export const sessionsSidebarJs = `async function loadSessions() {
     $("sessions").classList.remove("sessions-loading");
     $("sessions").removeAttribute("aria-busy");
     $("reload").disabled = false;
+    startSessionFreshnessPolling();
   }
 }
 
-async function fetchSessionPage(offset) {
+async function fetchSessionPage(offset, options = {}) {
+  const limit = Math.max(1, Number(options.limit || SESSION_BATCH_LIMIT) || SESSION_BATCH_LIMIT);
   const query = new URLSearchParams({
-    source: "all",
-    limit: String(SESSION_BATCH_LIMIT),
+    source: options.source || "all",
+    limit: String(limit),
     offset: String(Math.max(0, Number(offset) || 0)),
     completeOnly: "0",
   });
@@ -469,13 +617,14 @@ function renderSessionRow(session) {
   const ref = sessionRef(session);
   const active = ref === state.selected ? " active" : "";
   const live = isLiveSessionItem(session);
+  const fresh = sessionFreshness.highlightRefs.has(ref) ? " fresh" : "";
   const liveDot = live ? "<span class='session-live-dot' aria-hidden='true'></span>" : "";
   const liveBadge = live ? "<span class='session-badge live'>进行中</span>" : "";
   const historyBadge = session.historyOnly ? "<span class='session-badge'>history</span>" : "";
   const origin = String(session.codexHomeLabel || "").trim();
   const originBadge = origin ? "<span class='session-badge' title='Codex home: " + esc(origin) + "'>" + esc(origin) + "</span>" : "";
   const title = origin ? session.title + " · " + origin : session.title;
-  return "<button class='session" + active + (live ? " live" : "") + "' data-id='" + esc(ref) + "' title='" + esc(title) + "'" + (active ? " aria-current='page'" : "") + ">" +
+  return "<button class='session" + active + (live ? " live" : "") + fresh + "' data-id='" + esc(ref) + "' title='" + esc(title) + "'" + (active ? " aria-current='page'" : "") + ">" +
     liveDot +
     "<strong>" + esc(session.title) + "</strong>" +
     liveBadge +
