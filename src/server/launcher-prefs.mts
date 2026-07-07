@@ -22,7 +22,7 @@ export interface LauncherPinInput {
 }
 
 const PINNED_LIMIT = 20;
-const PREFS_PATH = join(homedir(), ".agent-snapshot", "launcher-prefs.json");
+const PREFS_PATH = join(process.env.AGENT_SNAPSHOT_PREFS_DIR || join(homedir(), ".agent-snapshot"), "launcher-prefs.json");
 
 export async function readLauncherPrefs(): Promise<LauncherPrefs> {
   try {

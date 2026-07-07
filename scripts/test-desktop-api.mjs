@@ -1,0 +1,485 @@
+#!/usr/bin/env node
+
+import { spawn } from "node:child_process";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import http from "node:http";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const CSRF_HEADER = "x-agent-snapshot-csrf";
+const SESSION_ID = "desktop-api-session-001";
+const PNG_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=";
+
+const tempDir = await mkdtemp(path.join(os.tmpdir(), "agent-snapshots-desktop-api-"));
+let serverProcess;
+
+try {
+  const codexHome = path.join(tempDir, "codex");
+  const claudeHome = path.join(tempDir, "claude");
+  const traeHome = path.join(tempDir, "trae");
+  const traeAppHome = path.join(tempDir, "trae-app");
+  const traeRecordingsDir = path.join(tempDir, "trae-recordings");
+  const prefsDir = path.join(tempDir, "prefs");
+  const cacheHome = path.join(tempDir, "cache");
+
+  await writeCodexFixture(codexHome);
+  await mkdir(claudeHome, { recursive: true });
+  await mkdir(traeHome, { recursive: true });
+  await mkdir(traeAppHome, { recursive: true });
+  await mkdir(traeRecordingsDir, { recursive: true });
+  await mkdir(prefsDir, { recursive: true });
+  await mkdir(cacheHome, { recursive: true });
+
+  const port = await getFreePort();
+  const viewerUrl = `http://127.0.0.1:${port}`;
+  const origin = new URL(viewerUrl).origin;
+
+  serverProcess = spawn(process.execPath, [
+    "dist/cli/agent-snapshot.mjs",
+    "serve",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    String(port),
+  ], {
+    cwd: ROOT_DIR,
+    env: {
+      ...process.env,
+      AGENT_SNAPSHOT_PREFS_DIR: prefsDir,
+      CLAUDE_HOME: claudeHome,
+      CODEX_HOME: codexHome,
+      TRAE_APP_HOME: traeAppHome,
+      TRAE_HOME: traeHome,
+      TRAE_RECORDINGS_DIR: traeRecordingsDir,
+      XDG_CACHE_HOME: cacheHome,
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  const output = collectChildOutput(serverProcess);
+  await waitForJson(`${viewerUrl}/api/sessions?source=all&limit=1&completeOnly=0`, output, serverProcess);
+
+  const csrfToken = extractCsrfToken(await fetchText(viewerUrl));
+  const tests = [
+    ["GET /api/quota returns unavailable or quota window shape", () => assertQuota(viewerUrl)],
+    ["GET /api/activity returns per-day engine aggregations", () => assertActivity(viewerUrl)],
+    ["GET /api/images and /api/image return image entries safely", () => assertImages(viewerUrl)],
+    ["GET /api/session-head validates missing and real ids", () => assertSessionHead(viewerUrl)],
+    ["launcher prefs reject missing CSRF and persist pin changes", () => assertLauncherPrefs(viewerUrl, origin, csrfToken)],
+    ["reveal-in-file rejects unsafe requests without opening Finder", () => assertRevealInFile(viewerUrl, origin, csrfToken)],
+    ["POST routes reject disallowed origins", () => assertBadOriginRejected(viewerUrl, csrfToken)],
+  ];
+
+  let failed = 0;
+  for (const [name, fn] of tests) {
+    try {
+      await fn();
+      console.log(`✓ ${name}`);
+    } catch (error) {
+      failed += 1;
+      console.error(`✗ ${name}`);
+      console.error(`  ${error instanceof Error ? error.message : error}`);
+    }
+  }
+
+  if (failed) {
+    process.exitCode = 1;
+  } else {
+    console.log(`\n✓ desktop API integration checks passed (${tests.length}/${tests.length})`);
+  }
+} finally {
+  await stopChild(serverProcess);
+  await rm(tempDir, { recursive: true, force: true });
+}
+
+async function assertQuota(viewerUrl) {
+  const { response, payload } = await fetchJsonResponse(`${viewerUrl}/api/quota`);
+  assert(response.status === 200, `/api/quota should return 200, got ${response.status}`);
+  assert(typeof payload.available === "boolean", "quota payload should include boolean available");
+
+  if (!payload.available) {
+    return;
+  }
+
+  assert(typeof payload.updatedAt === "string", "available quota should include updatedAt string");
+  assert(Object.hasOwn(payload, "primary"), "available quota should include primary window");
+  assert(Object.hasOwn(payload, "secondary"), "available quota should include secondary window");
+  assert(typeof payload.planType === "string", "available quota should include planType string");
+  assertQuotaWindow(payload.primary, "primary");
+  assertQuotaWindow(payload.secondary, "secondary");
+}
+
+async function assertActivity(viewerUrl) {
+  const { response, payload } = await fetchJsonResponse(`${viewerUrl}/api/activity?limit=20`);
+  assert(response.status === 200, `/api/activity should return 200, got ${response.status}`);
+  assertValidIso(payload.generatedAt, "activity generatedAt");
+  assert(payload.range && typeof payload.range === "object", "activity should include range object");
+  assert(typeof payload.range.startDate === "string", "activity range should include startDate");
+  assert(typeof payload.range.endDate === "string", "activity range should include endDate");
+  assertEngineCounts(payload.engines, "activity engines");
+
+  assert(Array.isArray(payload.days) && payload.days.length > 0, "activity should include per-day rows");
+  for (const day of payload.days) {
+    assert(typeof day.date === "string", "activity day should include date string");
+    assertEngineCounts(day, `activity day ${day.date}`);
+  }
+
+  assert(Array.isArray(payload.hours) && payload.hours.length === 24, "activity should include 24 hourly rows");
+  for (const hour of payload.hours) {
+    assert(Number.isInteger(hour.hour) && hour.hour >= 0 && hour.hour <= 23, "activity hour should be 0-23");
+    assertEngineCounts(hour, `activity hour ${hour.hour}`);
+  }
+}
+
+async function assertImages(viewerUrl) {
+  const { response, payload } = await fetchJsonResponse(`${viewerUrl}/api/images?limit=3`);
+  assert(response.status === 200, `/api/images should return 200, got ${response.status}`);
+  assert(Array.isArray(payload.entries), "/api/images should return entries array");
+  assert(payload.entries.length > 0, "fixture session should produce at least one image entry");
+
+  const [entry] = payload.entries;
+  assert(typeof entry.id === "string" && entry.id, "image entry should include id");
+  assert(typeof entry.mime === "string" && entry.mime.startsWith("image/"), "image entry should include image mime");
+
+  const imageResponse = await fetch(`${viewerUrl}/api/image?ref=${encodeURIComponent(entry.id)}`, {
+    signal: AbortSignal.timeout(2000),
+  });
+  const bytes = Buffer.from(await imageResponse.arrayBuffer());
+  assert(imageResponse.status === 200, `/api/image should return 200 for real ref, got ${imageResponse.status}`);
+  assert(String(imageResponse.headers.get("content-type") || "").startsWith("image/"), "/api/image should return image content-type");
+  assert(bytes.length > 0, "/api/image should return image bytes");
+
+  const bogus = await fetch(`${viewerUrl}/api/image?ref=not-a-valid-image-ref`, {
+    signal: AbortSignal.timeout(2000),
+  });
+  assert(bogus.status >= 400 && bogus.status < 500, `bogus image ref should return 4xx, got ${bogus.status}`);
+}
+
+async function assertSessionHead(viewerUrl) {
+  const missing = await fetch(`${viewerUrl}/api/session-head`, {
+    signal: AbortSignal.timeout(2000),
+  });
+  assert(missing.status === 400, `missing session-head id should return 400, got ${missing.status}`);
+
+  const sessions = await fetchJson(`${viewerUrl}/api/sessions?source=all&limit=1&completeOnly=0`);
+  assert(Array.isArray(sessions) && sessions.length > 0, "fixture should provide a real session");
+  const id = sessions[0].ref || `codex:${sessions[0].id}`;
+  const { response, payload } = await fetchJsonResponse(`${viewerUrl}/api/session-head?id=${encodeURIComponent(id)}`);
+  assert(response.status === 200, `/api/session-head should return 200 for ${id}, got ${response.status}`);
+  assert(typeof payload.complete === "boolean", "session head should include complete boolean");
+  assert(typeof payload.turnCount === "number" && payload.turnCount >= 0, "session head should include numeric turnCount");
+}
+
+async function assertLauncherPrefs(viewerUrl, origin, csrfToken) {
+  const initial = await fetchJson(`${viewerUrl}/api/launcher-prefs`);
+  assert(Array.isArray(initial.pinned), "launcher prefs should include pinned array");
+
+  const noCsrf = await fetch(`${viewerUrl}/api/launcher-prefs/pin`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      origin,
+    },
+    body: JSON.stringify({ ref: "codex:desktop-api-prefs-fake", engine: "codex", pinned: true }),
+    signal: AbortSignal.timeout(2000),
+  });
+  assert([400, 403].includes(noCsrf.status), `launcher prefs pin without CSRF should be rejected, got ${noCsrf.status}`);
+
+  const ref = "codex:desktop-api-prefs-fake";
+  const pin = await fetchJson(`${viewerUrl}/api/launcher-prefs/pin`, {
+    method: "POST",
+    headers: mutationHeaders(origin, csrfToken),
+    body: JSON.stringify({ ref, engine: "codex", pinned: true }),
+  });
+  assert(pin.ok === true, `pin should return ok=true: ${JSON.stringify(pin)}`);
+
+  const afterPin = await fetchJson(`${viewerUrl}/api/launcher-prefs`);
+  assert(afterPin.pinned.some((item) => item.ref === ref && item.engine === "codex"), "pinned ref should persist after pin");
+
+  const unpin = await fetchJson(`${viewerUrl}/api/launcher-prefs/pin`, {
+    method: "POST",
+    headers: mutationHeaders(origin, csrfToken),
+    body: JSON.stringify({ ref, engine: "codex", pinned: false }),
+  });
+  assert(unpin.ok === true, `unpin should return ok=true: ${JSON.stringify(unpin)}`);
+
+  const afterUnpin = await fetchJson(`${viewerUrl}/api/launcher-prefs`);
+  assert(!afterUnpin.pinned.some((item) => item.ref === ref), "pinned ref should be removed after unpin");
+}
+
+async function assertRevealInFile(viewerUrl, origin, csrfToken) {
+  const withoutCsrf = await fetch(`${viewerUrl}/api/reveal-in-file?path=${encodeURIComponent("relative/path.txt")}`, {
+    method: "POST",
+    headers: { origin },
+    signal: AbortSignal.timeout(2000),
+  });
+  assert([400, 403].includes(withoutCsrf.status), `reveal without CSRF should be rejected, got ${withoutCsrf.status}`);
+
+  const relative = await fetch(`${viewerUrl}/api/reveal-in-file?path=${encodeURIComponent("relative/path.txt")}`, {
+    method: "POST",
+    headers: {
+      [CSRF_HEADER]: csrfToken,
+      origin,
+    },
+    signal: AbortSignal.timeout(2000),
+  });
+  assert(relative.status === 400, `reveal with relative path should return 400, got ${relative.status}`);
+
+  const missingPath = path.join(tempDir, "does-not-exist", "missing.txt");
+  const missing = await fetch(`${viewerUrl}/api/reveal-in-file?path=${encodeURIComponent(missingPath)}`, {
+    method: "POST",
+    headers: {
+      [CSRF_HEADER]: csrfToken,
+      origin,
+    },
+    signal: AbortSignal.timeout(2000),
+  });
+  assert(missing.status === 404, `reveal with nonexistent absolute path should return 404, got ${missing.status}`);
+}
+
+async function assertBadOriginRejected(viewerUrl, csrfToken) {
+  const response = await fetch(`${viewerUrl}/api/launcher-prefs/pin`, {
+    method: "POST",
+    headers: {
+      [CSRF_HEADER]: csrfToken,
+      "content-type": "application/json",
+      origin: "http://evil.example",
+    },
+    body: JSON.stringify({ ref: "codex:evil-origin", engine: "codex", pinned: true }),
+    signal: AbortSignal.timeout(2000),
+  });
+  assert(response.status === 403, `evil Origin POST should return 403, got ${response.status}`);
+}
+
+async function writeCodexFixture(codexHome) {
+  const sessionDir = path.join(codexHome, "sessions", "2026", "06", "01");
+  await mkdir(sessionDir, { recursive: true });
+  const sessionPath = path.join(sessionDir, `rollout-2026-06-01T00-00-00-${SESSION_ID}.jsonl`);
+  const rows = [
+    {
+      type: "session_meta",
+      timestamp: "2026-06-01T00:00:00.000Z",
+      payload: {
+        id: SESSION_ID,
+        cwd: path.join(codexHome, "fixture-project"),
+        timestamp: "2026-06-01T00:00:00.000Z",
+        model: "gpt-5",
+        model_provider: "openai",
+        originator: "codex",
+      },
+    },
+    {
+      type: "response_item",
+      timestamp: "2026-06-01T00:00:01.000Z",
+      payload: {
+        type: "message",
+        role: "user",
+        content: [
+          { type: "input_text", text: "Inspect this desktop API fixture image." },
+          { type: "input_image", image_url: PNG_DATA_URL, detail: "low" },
+        ],
+      },
+    },
+    {
+      type: "response_item",
+      timestamp: "2026-06-01T00:00:02.000Z",
+      payload: {
+        type: "message",
+        role: "assistant",
+        content: [{ type: "output_text", text: "The image fixture is available." }],
+      },
+    },
+    {
+      type: "event_msg",
+      timestamp: "2026-06-01T00:00:03.000Z",
+      payload: {
+        type: "token_count",
+        info: {
+          total_token_usage: {
+            input_tokens: 120,
+            cached_input_tokens: 20,
+            output_tokens: 30,
+            reasoning_output_tokens: 5,
+            total_tokens: 150,
+          },
+          rate_limits: {
+            updated_at: "2026-06-01T00:00:03.000Z",
+            plan_type: "test",
+            primary: {
+              used_percent: 12.5,
+              resets_at: "2026-06-01T04:00:00.000Z",
+              window_minutes: 240,
+            },
+            secondary: {
+              used_percent: 3,
+              resets_at: "2026-06-01T00:15:00.000Z",
+              window_minutes: 15,
+            },
+          },
+        },
+      },
+    },
+  ];
+  await writeFile(sessionPath, rows.map((row) => JSON.stringify(row)).join("\n") + "\n", "utf8");
+}
+
+function assertQuotaWindow(value, label) {
+  if (value === null) {
+    return;
+  }
+  assert(value && typeof value === "object", `${label} quota window should be an object when present`);
+  assert(typeof value.usedPercent === "number" && Number.isFinite(value.usedPercent), `${label}.usedPercent should be a number`);
+  assert(typeof value.resetsAt === "string", `${label}.resetsAt should be a string`);
+  assert(typeof value.windowMinutes === "number" && Number.isFinite(value.windowMinutes), `${label}.windowMinutes should be a number`);
+}
+
+function assertEngineCounts(value, label) {
+  assert(value && typeof value === "object", `${label} should be an object`);
+  for (const key of ["total", "codex", "claude", "trae"]) {
+    assert(typeof value[key] === "number" && Number.isFinite(value[key]), `${label}.${key} should be a number`);
+  }
+}
+
+function mutationHeaders(origin, csrfToken) {
+  return {
+    [CSRF_HEADER]: csrfToken,
+    "content-type": "application/json",
+    origin,
+  };
+}
+
+async function waitForJson(url, output, childProcess) {
+  const deadline = Date.now() + 7000;
+  let lastError;
+
+  while (Date.now() < deadline) {
+    if (childProcess?.exitCode !== null) {
+      throw new Error(`local viewer exited early with code ${childProcess.exitCode}\n${output.text()}`);
+    }
+
+    try {
+      await fetchJson(url, { timeoutMs: 500 });
+      return;
+    } catch (error) {
+      lastError = error;
+    }
+
+    await sleep(120);
+  }
+
+  throw new Error(`local viewer did not become ready: ${lastError?.message || "timeout"}\n${output.text()}`);
+}
+
+async function fetchJson(url, options = {}) {
+  const { response, payload, text } = await fetchJsonResponse(url, options);
+  if (!response.ok) {
+    throw new Error(`${url} failed with HTTP ${response.status}: ${payload?.error || text}`);
+  }
+  return payload;
+}
+
+async function fetchJsonResponse(url, options = {}) {
+  const { timeoutMs = 2000, ...fetchOptions } = options;
+  const response = await fetch(url, {
+    ...fetchOptions,
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  const text = await response.text();
+  let payload;
+
+  try {
+    payload = JSON.parse(text);
+  } catch {
+    throw new Error(`Expected JSON from ${url}, got ${text.slice(0, 200)}`);
+  }
+
+  return { response, payload, text };
+}
+
+async function fetchText(url, options = {}) {
+  const { timeoutMs = 2000, ...fetchOptions } = options;
+  const response = await fetch(url, {
+    ...fetchOptions,
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(`${url} failed with HTTP ${response.status}: ${text.slice(0, 200)}`);
+  }
+  return text;
+}
+
+function extractCsrfToken(html) {
+  const match = html.match(/AGENT_SNAPSHOT_CSRF_TOKEN=("(?:\\.|[^"])*")/) || html.match(/window\.CSRF=("(?:\\.|[^"])*")/);
+  assert(match, "viewer HTML should expose a JSON-encoded CSRF token");
+  const token = JSON.parse(match[1]);
+  assert(typeof token === "string" && token.length >= 32, "CSRF token should be a strong string");
+  return token;
+}
+
+function assertValidIso(value, label) {
+  assert(typeof value === "string" && Number.isFinite(new Date(value).getTime()), `${label} should be an ISO date string`);
+}
+
+function collectChildOutput(child) {
+  const chunks = { stdout: "", stderr: "" };
+  child?.stdout?.setEncoding("utf8");
+  child?.stderr?.setEncoding("utf8");
+  child?.stdout?.on("data", (chunk) => {
+    chunks.stdout += chunk;
+  });
+  child?.stderr?.on("data", (chunk) => {
+    chunks.stderr += chunk;
+  });
+
+  return {
+    text() {
+      return [chunks.stdout, chunks.stderr].filter(Boolean).join("\n");
+    },
+  };
+}
+
+async function getFreePort() {
+  return new Promise((resolve, reject) => {
+    const server = http.createServer();
+    server.unref();
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      server.close(() => {
+        if (address && typeof address === "object") {
+          resolve(address.port);
+        } else {
+          reject(new Error("Could not allocate a local test port"));
+        }
+      });
+    });
+  });
+}
+
+async function stopChild(child) {
+  if (!child || child.exitCode !== null) {
+    return;
+  }
+
+  child.kill("SIGTERM");
+  await Promise.race([
+    new Promise((resolve) => child.once("exit", resolve)),
+    sleep(1500).then(() => {
+      if (child.exitCode === null) {
+        child.kill("SIGKILL");
+      }
+    }),
+  ]);
+}
+
+function assert(condition, message) {
+  if (!condition) {
+    throw new Error(message);
+  }
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
