@@ -91,6 +91,14 @@ export const overlaysCss = `/* ---------- 搜索浮层 ---------- */
 .stats-section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
 .stats-section h3 { margin: 0; color: var(--ink-soft); font: 700 13px/1.2 var(--sans); }
 .stats-section-meta { color: var(--faint); font: 700 10.5px/1.2 var(--mono); white-space: nowrap; }
+.stats-section-actions { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.stats-mini-action {
+  min-height: 28px; border: 1px solid var(--line-2); border-radius: 7px;
+  background: transparent; color: var(--muted);
+  padding: 0 10px; font: 800 10.5px/1 var(--mono); white-space: nowrap;
+}
+.stats-mini-action:hover { border-color: var(--seal); background: transparent; color: var(--seal-deep); transform: none; }
+.stats-mini-action[aria-pressed="true"] { border-color: var(--seal); background: var(--seal-soft); color: var(--seal-deep); }
 .stats-subsection { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
 .stats-subsection .stats-section-head { margin-bottom: 8px; }
 .stats-skeleton { display: grid; gap: 8px; }
@@ -144,6 +152,48 @@ export const overlaysCss = `/* ---------- 搜索浮层 ---------- */
 .hour-axis { display: grid; grid-template-columns: repeat(4, 1fr); color: var(--faint); font: 700 9.5px/1 var(--mono); }
 .hour-axis span:nth-child(2), .hour-axis span:nth-child(3) { text-align: center; }
 .hour-axis span:last-child { text-align: right; }
+.weekly-digest-panel { display: grid; gap: 12px; }
+.weekly-digest-toolbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.weekly-digest-toolbar b { display: block; color: var(--ink); font: 750 14px/1.2 var(--sans); }
+.weekly-digest-toolbar span { display: block; margin-top: 3px; color: var(--faint); font: 700 10.5px/1.25 var(--mono); }
+.weekly-digest-actions { display: inline-flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
+.weekly-digest-warning {
+  border: 1px solid rgba(177,56,42,0.28); border-radius: 8px;
+  background: rgba(177,56,42,0.06); color: var(--seal);
+  padding: 8px 10px; font: 650 11px/1.35 var(--mono);
+}
+.weekly-digest-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.weekly-card {
+  min-width: 0; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--panel-wash); padding: 12px;
+}
+.weekly-card.primary { border-color: rgba(47, 93, 73, 0.32); background: rgba(47, 93, 73, 0.055); }
+.weekly-card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.weekly-card-head strong { color: var(--ink); font: 750 13px/1.2 var(--sans); }
+.weekly-card-head span { overflow: hidden; color: var(--faint); font: 700 10px/1.2 var(--mono); text-overflow: ellipsis; white-space: nowrap; }
+.weekly-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 10px; }
+.weekly-metric {
+  min-width: 0; border-radius: 7px; background: rgba(255,255,255,0.34);
+  box-shadow: inset 0 0 0 1px rgba(33,27,16,0.05); padding: 9px 10px;
+}
+.weekly-metric span, .weekly-metric strong, .weekly-metric em { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.weekly-metric span { color: var(--faint); font: 800 10px/1.1 var(--mono); }
+.weekly-metric strong { margin-top: 5px; color: var(--ink); font: 800 19px/1.1 var(--mono); }
+.weekly-delta { margin-top: 5px; font: 800 10.5px/1.1 var(--mono); font-style: normal; }
+.weekly-delta.up { color: var(--pine); }
+.weekly-delta.down { color: var(--seal); }
+.weekly-delta.flat { color: var(--faint); }
+.weekly-detail-list { display: grid; gap: 6px; }
+.weekly-detail-list span {
+  min-width: 0; overflow: hidden; color: var(--ink-soft); font: 600 11.5px/1.35 var(--sans);
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.weekly-detail-list b { margin-right: 6px; color: var(--faint); font: 800 10px/1 var(--mono); }
+.weekly-projects { display: grid; gap: 8px; }
+.weekly-project-table { width: 100%; border-collapse: collapse; table-layout: fixed; color: var(--ink-soft); font: 650 11.5px/1.3 var(--sans); }
+.weekly-project-table th, .weekly-project-table td { border-bottom: 1px solid var(--line); padding: 6px 4px; text-align: right; }
+.weekly-project-table th:first-child, .weekly-project-table td:first-child { width: 58%; overflow: hidden; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
+.weekly-project-table th { color: var(--faint); font: 800 10px/1.2 var(--mono); }
 .project-ranks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .rank-title { margin: 0 0 8px; color: var(--muted); font: 800 10.5px/1 var(--mono); letter-spacing: 0.04em; }
 .rank-list { display: grid; gap: 7px; }
@@ -341,6 +391,9 @@ export const overlaysCss = `/* ---------- 搜索浮层 ---------- */
   .stats-filterbar { align-items: flex-start; flex-direction: column; }
   .stats-chip-group { justify-content: flex-start; }
   .stats-section-quota, .stats-section-usage, .stats-section-activity, .stats-section-projects { grid-column: 1 / -1; }
+  .weekly-digest-toolbar { align-items: stretch; flex-direction: column; }
+  .weekly-digest-actions { justify-content: flex-start; }
+  .weekly-digest-grid { grid-template-columns: 1fr; }
   .project-ranks { grid-template-columns: 1fr; }
   .gallery-dialog { height: calc(100dvh - 20px); padding: 14px; }
   .gallery-grid { columns: 150px; column-gap: 10px; }

@@ -23,6 +23,7 @@ import { listSessionsWithCache, sessionListCacheStatus, reconcileSessionListCach
 import { resumeSessionInOrca } from "./orca-bridge.mjs";
 import { readClaudeBlockUsageEstimate, readCodexQuotaSnapshot } from "./quota-meter.mjs";
 import { buildUsageAnalytics } from "./usage-analytics.mjs";
+import { buildWeeklyDigest } from "./weekly-digest.mjs";
 import { listImageEntries, readImageBytes } from "./image-index.mjs";
 import { readLauncherPrefs, recordLauncherAccess, setLauncherSessionPinned } from "./launcher-prefs.mjs";
 
@@ -217,6 +218,30 @@ export async function serveLocalViewer({
           limit,
         });
         sendJson(response, analytics);
+        return;
+      }
+      if (url.pathname === "/api/weekly-digest") {
+        syncSearchIndexInBackground({
+          codexHome,
+          claudeHome,
+          traeHome,
+          traeAppHome,
+          traeRecordingsDir,
+          source: "all",
+          scanLimit: 20000,
+          updateLimit: 20000,
+        });
+        const digest = await buildWeeklyDigest({
+          codexHome,
+          claudeHome,
+          traeHome,
+          traeAppHome,
+          traeRecordingsDir,
+          listSessions: (options) => listSessionsWithCache({ ...options, listSessions }),
+          weeks: readPositiveInteger(url.searchParams.get("weeks") || "1", "weeks"),
+          limit: readPositiveInteger(url.searchParams.get("limit") || "20000", "limit"),
+        });
+        sendJson(response, digest);
         return;
       }
       if (url.pathname === "/api/images") {

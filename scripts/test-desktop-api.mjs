@@ -64,6 +64,7 @@ try {
   const tests = [
     ["GET /api/quota returns unavailable or quota window shape", () => assertQuota(viewerUrl)],
     ["GET /api/activity returns per-day engine aggregations", () => assertActivity(viewerUrl)],
+    ["GET /api/weekly-digest returns weekly markdown shape", () => assertWeeklyDigest(viewerUrl)],
     ["GET /api/images and /api/image return image entries safely", () => assertImages(viewerUrl)],
     ["GET /api/session-head validates missing and real ids", () => assertSessionHead(viewerUrl)],
     ["GET /api/session-peek returns lightweight redacted turns", () => assertSessionPeek(viewerUrl)],
@@ -132,6 +133,40 @@ async function assertActivity(viewerUrl) {
   for (const hour of payload.hours) {
     assert(Number.isInteger(hour.hour) && hour.hour >= 0 && hour.hour <= 23, "activity hour should be 0-23");
     assertEngineCounts(hour, `activity hour ${hour.hour}`);
+  }
+}
+
+async function assertWeeklyDigest(viewerUrl) {
+  const { response, payload } = await fetchJsonResponse(`${viewerUrl}/api/weekly-digest?weeks=1&limit=20`);
+  assert(response.status === 200, `/api/weekly-digest should return 200, got ${response.status}`);
+  assertValidIso(payload.generatedAt, "weekly digest generatedAt");
+  assert(typeof payload.generatedDate === "string", "weekly digest should include generatedDate");
+  assert(payload.range && typeof payload.range === "object", "weekly digest should include range object");
+  assert(typeof payload.range.startDate === "string", "weekly digest range should include startDate");
+  assert(typeof payload.range.endDate === "string", "weekly digest range should include endDate");
+  assert(Array.isArray(payload.weeks) && payload.weeks.length === 2, "weeks=1 should return last complete week plus current week");
+  assert(typeof payload.markdown === "string" && payload.markdown.includes("# Agent 使用周报"), "weekly digest should include markdown title");
+  assert(payload.markdown.includes("### 概览"), "weekly markdown should include overview section");
+  assert(payload.markdown.includes("### Top 项目"), "weekly markdown should include top projects section");
+
+  for (const week of payload.weeks) {
+    assert(week.range && typeof week.range === "object", "weekly row should include range");
+    assert(typeof week.range.startDate === "string", "weekly row range should include startDate");
+    assert(typeof week.range.endDate === "string", "weekly row range should include endDate");
+    assert(typeof week.range.label === "string", "weekly row range should include label");
+    assertEngineCounts(week.sessionCount, `weekly ${week.range.label} sessionCount`);
+    assertTokenCounts(week.totalTokens, `weekly ${week.range.label} totalTokens`);
+    assert(Array.isArray(week.topProjects), "weekly row should include topProjects array");
+    assert(week.topProjects.length <= 5, "weekly topProjects should be capped at 5");
+    if (week.busiestDay !== null) {
+      assert(typeof week.busiestDay.date === "string", "weekly busiestDay should include date");
+      assert(typeof week.busiestDay.sessions === "number", "weekly busiestDay should include session count");
+    }
+    if (week.longestSession !== null) {
+      assert(typeof week.longestSession.title === "string", "weekly longestSession should include title");
+      assert(typeof week.longestSession.ref === "string", "weekly longestSession should include ref");
+      assert(typeof week.longestSession.turns === "number", "weekly longestSession should include turns");
+    }
   }
 }
 
@@ -502,6 +537,13 @@ function assertQuotaWindow(value, label) {
 function assertEngineCounts(value, label) {
   assert(value && typeof value === "object", `${label} should be an object`);
   for (const key of ["total", "codex", "claude", "trae"]) {
+    assert(typeof value[key] === "number" && Number.isFinite(value[key]), `${label}.${key} should be a number`);
+  }
+}
+
+function assertTokenCounts(value, label) {
+  assert(value && typeof value === "object", `${label} should be an object`);
+  for (const key of ["total", "input", "output", "indexedSessions"]) {
     assert(typeof value[key] === "number" && Number.isFinite(value[key]), `${label}.${key} should be a number`);
   }
 }

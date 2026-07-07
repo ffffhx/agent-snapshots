@@ -266,6 +266,9 @@ async function loadStats() {
   loadStatsQuota(requestToken);
   loadStatsActivity(requestToken);
   loadStatsUsage(requestToken);
+  if (state.statsWeeklyDigestOpen) {
+    loadStatsWeeklyDigest(requestToken);
+  }
 }
 
 function renderStatsShell() {
@@ -287,8 +290,11 @@ function renderStatsShell() {
 }
 
 function statsSectionShell(kind, title, meta) {
+  const action = kind === "activity"
+    ? "<span class='stats-section-actions'><span class='stats-section-meta'>" + esc(meta) + "</span><button class='stats-mini-action' type='button' data-weekly-digest-toggle='1' aria-pressed='" + (state.statsWeeklyDigestOpen ? "true" : "false") + "'>" + (state.statsWeeklyDigestOpen ? "热力图" : "周报") + "</button></span>"
+    : "<span class='stats-section-meta'>" + esc(meta) + "</span>";
   return "<section class='stats-section stats-section-" + esc(kind) + "'>" +
-    "<div class='stats-section-head'><h3>" + esc(title) + "</h3><span class='stats-section-meta'>" + esc(meta) + "</span></div>" +
+    "<div class='stats-section-head'><h3>" + esc(title) + "</h3>" + action + "</div>" +
     "<div id='stats" + kind[0].toUpperCase() + kind.slice(1) + "Panel'>" + renderStatsSkeleton() + "</div>" +
   "</section>";
 }
@@ -338,6 +344,34 @@ async function loadStatsActivity(requestToken) {
     if (requestToken === state.statsRequestToken) {
       $("statsActivityPanel").innerHTML = statsError(error, "活动统计失败");
       $("statsProjectsPanel").innerHTML = statsError(error, "项目排行失败");
+    }
+  }
+}
+
+async function loadStatsWeeklyDigest(requestToken = state.statsRequestToken) {
+  const token = state.statsWeeklyDigestRequestToken + 1;
+  state.statsWeeklyDigestRequestToken = token;
+  state.statsWeeklyDigestLoading = true;
+  state.statsWeeklyDigestError = "";
+  renderStatsActivity();
+  try {
+    const response = await fetch("/api/weekly-digest?weeks=1");
+    const digest = await response.json();
+    if (!response.ok) {
+      throw new Error(digest.error || "周报生成失败");
+    }
+    if (requestToken !== state.statsRequestToken || token !== state.statsWeeklyDigestRequestToken) {
+      return;
+    }
+    state.statsWeeklyDigest = digest;
+  } catch (error) {
+    if (requestToken === state.statsRequestToken && token === state.statsWeeklyDigestRequestToken) {
+      state.statsWeeklyDigestError = error instanceof Error ? error.message : String(error);
+    }
+  } finally {
+    if (requestToken === state.statsRequestToken && token === state.statsWeeklyDigestRequestToken) {
+      state.statsWeeklyDigestLoading = false;
+      renderStatsActivity();
     }
   }
 }
@@ -540,6 +574,10 @@ function formatWindow(minutes) {
 }
 
 function renderStatsActivity() {
+  if (state.statsWeeklyDigestOpen) {
+    renderStatsWeeklyDigest();
+    return;
+  }
   const activity = state.statsActivity;
   if (!activity) {
     return;
@@ -576,6 +614,188 @@ function renderStatsActivity() {
         "<div class='hour-axis'><span>00</span><span>06</span><span>12</span><span>23</span></div>" +
       "</div>" +
     "</div>";
+}
+
+function renderStatsWeeklyDigest() {
+  const panel = $("statsActivityPanel");
+  if (!panel) {
+    return;
+  }
+  if (state.statsWeeklyDigestLoading && !state.statsWeeklyDigest) {
+    panel.innerHTML = renderLoading("正在生成周报...");
+    return;
+  }
+  if (state.statsWeeklyDigestError && !state.statsWeeklyDigest) {
+    panel.innerHTML = statsError(state.statsWeeklyDigestError, "周报生成失败");
+    return;
+  }
+  const digest = state.statsWeeklyDigest;
+  if (!digest) {
+    panel.innerHTML = renderLoading("正在生成周报...");
+    return;
+  }
+  const weeks = Array.isArray(digest.weeks) ? digest.weeks : [];
+  const current = weeks.find((week) => week?.range?.current) || weeks[weeks.length - 1] || null;
+  const currentIndex = current ? weeks.indexOf(current) : -1;
+  const previous = currentIndex > 0 ? weeks[currentIndex - 1] : null;
+  const currentHtml = current ? renderWeeklyDigestCard(current, true) : "<div class='stats-muted'>暂无本周数据</div>";
+  const previousHtml = previous ? renderWeeklyDigestCard(previous, false) : "<div class='stats-muted'>暂无上周数据</div>";
+  panel.innerHTML =
+    "<div class='weekly-digest-panel'>" +
+      "<div class='weekly-digest-toolbar'>" +
+        "<div><b>本周 vs 上周</b><span>" + esc(digest.range?.startDate || "") + " 至 " + esc(digest.range?.endDate || "") + "</span></div>" +
+        "<div class='weekly-digest-actions'>" +
+          "<button class='stats-mini-action' type='button' data-weekly-digest-copy='1'>复制 Markdown</button>" +
+          "<button class='stats-mini-action' type='button' data-weekly-digest-download='1'>下载 .md</button>" +
+        "</div>" +
+      "</div>" +
+      (state.statsWeeklyDigestError ? "<div class='weekly-digest-warning'>" + esc(state.statsWeeklyDigestError) + "</div>" : "") +
+      "<div class='weekly-digest-grid'>" + currentHtml + previousHtml + "</div>" +
+      renderWeeklyTopProjects(current) +
+    "</div>";
+}
+
+function renderWeeklyDigestCard(week, primary) {
+  return "<article class='weekly-card" + (primary ? " primary" : "") + "'>" +
+    "<div class='weekly-card-head'><strong>" + esc(week.range?.label || "") + "</strong><span>" + esc(weeklyRangeText(week)) + "</span></div>" +
+    "<div class='weekly-metrics'>" +
+      weeklyMetric("会话", formatTokenCount(week.sessionCount?.total), primary ? week.comparison?.sessions : null, false) +
+      weeklyMetric("Tokens", formatTokenShort(week.totalTokens?.total), primary ? week.comparison?.totalTokens : null, true) +
+    "</div>" +
+    "<div class='weekly-detail-list'>" +
+      "<span><b>来源</b>" + esc(weeklyEngineText(week)) + "</span>" +
+      "<span><b>最活跃</b>" + esc(weeklyBusiestText(week)) + "</span>" +
+      "<span><b>最长会话</b>" + esc(weeklyLongestText(week)) + "</span>" +
+    "</div>" +
+  "</article>";
+}
+
+function weeklyMetric(label, value, comparison, tokenValue) {
+  return "<div class='weekly-metric'><span>" + esc(label) + "</span><strong>" + esc(value) + "</strong>" + weeklyDelta(comparison, tokenValue) + "</div>";
+}
+
+function weeklyDelta(comparison, tokenValue) {
+  if (!comparison) {
+    return "<em class='weekly-delta flat'>环比 -</em>";
+  }
+  const change = Number(comparison.change || 0);
+  if (!change) {
+    return "<em class='weekly-delta flat'>持平</em>";
+  }
+  const cls = change > 0 ? "up" : "down";
+  const arrow = change > 0 ? "▲" : "▼";
+  const value = tokenValue ? formatTokenShort(Math.abs(change)) : formatTokenCount(Math.abs(change));
+  return "<em class='weekly-delta " + cls + "'>" + arrow + " " + esc(value) + "</em>";
+}
+
+function weeklyRangeText(week) {
+  const range = week?.range || {};
+  return [range.startDate, range.endDate].filter(Boolean).join(" 至 ");
+}
+
+function weeklyEngineText(week) {
+  const counts = week?.sessionCount || {};
+  return "Codex " + formatTokenCount(counts.codex) + " · Claude " + formatTokenCount(counts.claude) + " · Trae " + formatTokenCount(counts.trae);
+}
+
+function weeklyBusiestText(week) {
+  const day = week?.busiestDay;
+  return day ? day.date + " · " + formatTokenCount(day.sessions) + " 次" : "暂无";
+}
+
+function weeklyLongestText(week) {
+  const session = week?.longestSession;
+  if (!session) {
+    return "暂无";
+  }
+  return String(session.title || session.ref || "Untitled session") + " · " + formatTokenCount(session.turns) + " turns";
+}
+
+function renderWeeklyTopProjects(week) {
+  const projects = Array.isArray(week?.topProjects) ? week.topProjects : [];
+  if (!projects.length) {
+    return "<div class='weekly-projects'><div class='rank-title'>本周 Top 项目</div><div class='stats-muted'>暂无项目数据</div></div>";
+  }
+  const rows = projects.map((project) =>
+    "<tr><td title='" + esc(project.path || project.name) + "'>" + esc(project.name || "(无项目)") + "</td><td>" + esc(formatTokenCount(project.sessions)) + "</td><td>" + esc(formatTokenShort(project.totalTokens)) + "</td></tr>"
+  ).join("");
+  return "<div class='weekly-projects'>" +
+    "<div class='rank-title'>本周 Top 项目</div>" +
+    "<table class='weekly-project-table'><thead><tr><th>项目</th><th>会话</th><th>Tokens</th></tr></thead><tbody>" + rows + "</tbody></table>" +
+  "</div>";
+}
+
+async function toggleWeeklyDigest() {
+  state.statsWeeklyDigestOpen = !state.statsWeeklyDigestOpen;
+  updateWeeklyDigestToggle();
+  renderStatsActivity();
+  if (state.statsWeeklyDigestOpen && !state.statsWeeklyDigestLoading && !state.statsWeeklyDigest) {
+    await loadStatsWeeklyDigest();
+  }
+}
+
+function updateWeeklyDigestToggle() {
+  const button = document.querySelector("[data-weekly-digest-toggle]");
+  if (!button) {
+    return;
+  }
+  button.textContent = state.statsWeeklyDigestOpen ? "热力图" : "周报";
+  button.setAttribute("aria-pressed", state.statsWeeklyDigestOpen ? "true" : "false");
+}
+
+async function copyWeeklyDigestMarkdown() {
+  const digest = state.statsWeeklyDigest;
+  const markdown = String(digest?.markdown || "");
+  if (!markdown) {
+    showToast("周报还没生成完成", true);
+    return;
+  }
+  const copied = await copyText(markdown);
+  showToast(copied ? "已复制周报 Markdown" : "复制失败", !copied);
+}
+
+function downloadWeeklyDigestMarkdown() {
+  const digest = state.statsWeeklyDigest;
+  const markdown = String(digest?.markdown || "");
+  if (!markdown) {
+    showToast("周报还没生成完成", true);
+    return;
+  }
+  const date = String(digest.generatedDate || new Date().toISOString().slice(0, 10));
+  const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "agent-weekly-" + date + ".md";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function copyText(text) {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch (_error) {
+    // Fall through to the textarea copy path.
+  }
+  try {
+    const area = document.createElement("textarea");
+    area.value = text;
+    area.setAttribute("readonly", "readonly");
+    area.style.position = "fixed";
+    area.style.left = "-9999px";
+    document.body.appendChild(area);
+    area.select();
+    const ok = document.execCommand("copy");
+    area.remove();
+    return ok;
+  } catch (_error) {
+    return false;
+  }
 }
 
 function heatLevel(count, max) {

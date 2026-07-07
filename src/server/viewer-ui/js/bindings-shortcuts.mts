@@ -56,13 +56,25 @@ $("openStats").addEventListener("click", openStats);
 $("openGallery").addEventListener("click", openGallery);
 $("closeStats").addEventListener("click", closeStats);
 $("statsRefresh").addEventListener("click", loadStats);
-$("statsOverlay").addEventListener("click", (event) => {
+$("statsOverlay").addEventListener("click", async (event) => {
   const filterButton = event.target.closest("[data-stats-filter]");
   if (filterButton) {
     state.statsFilter = STATS_FILTERS.some((item) => item.key === filterButton.dataset.statsFilter) ? filterButton.dataset.statsFilter : "all";
     renderStatsFilter();
     renderStatsActivity();
     renderStatsProjects();
+    return;
+  }
+  if (event.target.closest("[data-weekly-digest-toggle]")) {
+    await toggleWeeklyDigest();
+    return;
+  }
+  if (event.target.closest("[data-weekly-digest-copy]")) {
+    await copyWeeklyDigestMarkdown();
+    return;
+  }
+  if (event.target.closest("[data-weekly-digest-download]")) {
+    downloadWeeklyDigestMarkdown();
     return;
   }
   if (event.target === $("statsOverlay")) {
