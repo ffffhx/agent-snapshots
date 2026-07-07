@@ -306,11 +306,13 @@ const VIEW_VERBOSITY_KEY = "agent-snapshot.view-verbosity.v1";
 const VIEW_VERBOSITY_LABELS = { standard: "标准", detailed: "详细", summary: "摘要" };
 const state = { reading: { verbosity: "standard" } };
 let outlineRebuilds = 0;
+let toastCount = 0;
 function scheduleOutlineRebuild() { outlineRebuilds += 1; }
-function showToast() {}
+function showToast() { toastCount += 1; }
 function outlineRebuildCalls() { return outlineRebuilds; }
+function toastCalls() { return toastCount; }
 `,
-      ["state", "applyVerbosity", "outlineRebuildCalls"],
+      ["state", "applyVerbosity", "outlineRebuildCalls", "toastCalls"],
     );
 
     runtime.applyVerbosity("standard", { persist: false });
@@ -330,7 +332,34 @@ function outlineRebuildCalls() { return outlineRebuilds; }
     assert.equal(document.querySelector("details.process-details").open, false);
     assert.equal(document.querySelector("details.tool-details").open, false);
     assert.equal(runtime.outlineRebuildCalls(), 3);
+    assert.equal(runtime.toastCalls(), 0, "silent mode application should not toast");
+
+    runtime.applyVerbosity("standard", { persist: false, toast: true });
+    assert.equal(runtime.toastCalls(), 0, "non-user mode application should remain silent even with toast option");
+    runtime.applyVerbosity("detailed", { persist: false, toast: true, userInitiated: true });
+    assert.equal(runtime.toastCalls(), 1, "explicit user mode changes should toast");
   });
+});
+
+test("viewer gallery cards reserve image aspect ratios with fallback", async () => {
+  const runtime = await viewerRuntime(
+    ["galleryImageAspectRatio", "galleryEngineLabel", "galleryProjectLabel", "renderGalleryCard"],
+    `
+${escPrelude()}
+function relativeTime() { return "刚刚"; }
+`,
+    ["galleryImageAspectRatio", "renderGalleryCard"],
+  );
+  assert.equal(runtime.galleryImageAspectRatio({ width: 16, height: 9 }), "16 / 9");
+  assert.equal(runtime.galleryImageAspectRatio({}), "4 / 3");
+  assert.match(
+    runtime.renderGalleryCard({ id: "img-1", width: 16, height: 9, mime: "image/png", sessionTitle: "A" }, 0),
+    /style='aspect-ratio:16 \/ 9'/,
+  );
+  assert.match(
+    runtime.renderGalleryCard({ id: "img-2", mime: "image/webp", sessionTitle: "B" }, 1),
+    /style='aspect-ratio:4 \/ 3'/,
+  );
 });
 
 test("viewer rebuilds outline from user turns with 60 character truncation", async () => {

@@ -15,7 +15,7 @@ import { send, sendJson } from "../server/http.js";
 import { createGitHubGist } from "../server/gist-publish.mjs";
 import { serveLocalViewer } from "../server/local-viewer.mjs";
 import { readCodexQuotaSnapshot } from "../server/quota-meter.mjs";
-import { defaultSearchIndexPath, searchIndexStats } from "../server/search-index.mjs";
+import { defaultSearchIndexPath, searchIndexStats, syncSearchIndex } from "../server/search-index.mjs";
 import { semanticIndexStatus } from "../server/semantic-index.mjs";
 import { sessionListCachePath, sessionListCacheStatus } from "../server/session-list-cache.mjs";
 import { buildWeeklyDigest, renderWeeklyDigestMarkdown } from "../server/weekly-digest.mjs";
@@ -102,6 +102,13 @@ async function main() {
     }
     const traeRecordingsDir = path.resolve(parsed.options.traeRecordingsDir || process.env.TRAE_RECORDINGS_DIR || path.join(dataDir, "trae-recordings"));
     if (parsed.command === "digest") {
+        await ensureDigestTokenIndex({
+            codexHome,
+            claudeHome,
+            traeHome,
+            traeAppHome,
+            traeRecordingsDir,
+        });
         const digest = await buildWeeklyDigest({
             codexHome,
             claudeHome,
@@ -749,6 +756,7 @@ async function buildDoctorReport({ codexHome, claudeHome, traeHome, traeAppHome,
             rows: Number(searchStats?.indexedSessions || 0),
             sessionsWithTokens: Number(searchStats?.sessionsWithTokens || 0),
             totalTokens: Number(searchStats?.totalTokens || 0),
+            coldStarting: Number(searchStats?.indexedSessions || 0) > 0 && Number(searchStats?.sessionsWithTokens || 0) === 0,
             available: Boolean(searchStats),
         },
         semanticIndex: semanticStatus || {
@@ -786,6 +794,43 @@ async function safeDiagnostic(_label, fn, fallback) {
     catch {
         return fallback;
     }
+}
+async function ensureDigestTokenIndex({ codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir }) {
+    const stats = await safeDiagnostic("digestSearchIndex", () => searchIndexStats(), null);
+    if (Number(stats?.sessionsWithTokens || 0) > 0) {
+        return;
+    }
+    const sessions = await safeDiagnostic("digestSessions", () => listSessions({
+        codexHome,
+        claudeHome,
+        traeHome,
+        traeAppHome,
+        traeRecordingsDir,
+        source: "all",
+        includeArchived: true,
+        completeOnly: true,
+        limit: 1,
+    }), []);
+    if (!sessions.length) {
+        return;
+    }
+    process.stderr.write("Token 索引为空，正在同步本机会话以生成 digest...\n");
+    const result = await syncSearchIndex({
+        codexHome,
+        claudeHome,
+        traeHome,
+        traeAppHome,
+        traeRecordingsDir,
+        source: "all",
+        includeArchived: true,
+        completeOnly: true,
+        scanLimit: 20_000,
+        updateLimit: 20_000,
+        includeTools: false,
+        includeToolOutput: false,
+        withTokens: true,
+    });
+    process.stderr.write(`Token 索引同步完成：扫描 ${formatInteger(result.scanned)}，更新 ${formatInteger(result.updated)}，待处理 ${formatInteger(result.pending)}，失败 ${formatInteger(result.failed)}。\n`);
 }
 async function pathExists(filePath) {
     try {
@@ -842,7 +887,8 @@ function renderDoctorReport(report) {
     const cache = report.sessionListCache;
     lines.push(checkLine(cache.available ? (cache.rows > 0 ? true : null) : false, "Session-list cache", `${cache.path} · rows ${formatInteger(cache.rows)} · watermark ${cache.watermark ? ageText(cache.watermarkAgeMs) : "无"}`));
     const search = report.searchIndex;
-    lines.push(checkLine(search.available ? (search.rows > 0 ? true : null) : false, "Search index", `${search.path} · rows ${formatInteger(search.rows)} · token rows ${formatInteger(search.sessionsWithTokens)}`));
+    const tokenRowsText = search.coldStarting ? "索引冷启动中" : formatInteger(search.sessionsWithTokens);
+    lines.push(checkLine(search.available ? (search.rows > 0 ? true : null) : false, "Search index", `${search.path} · rows ${formatInteger(search.rows)} · token rows ${tokenRowsText}`));
     const semantic = report.semanticIndex;
     const semanticDetail = semantic.exists
         ? `${semantic.path} · entries ${formatInteger(semantic.entries)} · ${semantic.model || "unknown"}${semantic.updatedAt ? ` · updated ${ageText(Date.now() - new Date(semantic.updatedAt).getTime())}` : ""}`

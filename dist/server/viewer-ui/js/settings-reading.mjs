@@ -220,7 +220,7 @@ function applyVerbosity(mode, options = {}) {
   } else {
     setTranscriptDetailsOpen(document, false);
   }
-  if (options.toast) {
+  if (options.toast && options.userInitiated) {
     showToast("已切换为" + VIEW_VERBOSITY_LABELS[value] + "视图", false);
   }
   scheduleOutlineRebuild();
@@ -240,7 +240,7 @@ function syncDefaultVerbosityControls(value = defaultVerbosity()) {
 function cycleVerbosity() {
   const index = VIEW_VERBOSITIES.indexOf(state.reading.verbosity);
   const next = VIEW_VERBOSITIES[(index + 1) % VIEW_VERBOSITIES.length] || "standard";
-  applyVerbosity(next, { toast: true });
+  applyVerbosity(next, { toast: true, userInitiated: true });
 }
 
 function setTranscriptDetailsOpen(root, open) {
@@ -732,7 +732,7 @@ function initReadingExperience() {
   setOutlineOpen(currentOutlineOpen(), false);
   syncDefaultOutlineControls();
   for (const button of document.querySelectorAll("[data-view-verbosity]")) {
-    button.addEventListener("click", () => applyVerbosity(button.dataset.viewVerbosity, { toast: true }));
+    button.addEventListener("click", () => applyVerbosity(button.dataset.viewVerbosity, { toast: true, userInitiated: true }));
   }
   for (const button of document.querySelectorAll("[data-default-view-verbosity]")) {
     button.addEventListener("click", () => applyDefaultVerbosity(button.dataset.defaultViewVerbosity, { toast: true }));

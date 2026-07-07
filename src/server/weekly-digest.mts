@@ -32,6 +32,8 @@ export async function buildWeeklyDigest({
     limit,
   });
   const tokenRows = await readIndexedSessionTokens();
+  const tokenDataAvailable = tokenRows.some((row) => tokenNumber(row.totalTokens) || tokenNumber(row.inputTokens) || tokenNumber(row.outputTokens));
+  const tokensUnavailable = sessions.length > 0 && !tokenDataAvailable;
   const tokenByRef = new Map(tokenRows.map((row) => [row.ref, row]));
   const weekRows = ranges.map((range) => emptyWeek(range));
   const firstDate = ranges[0]?.startDate || localDateKey(now);
@@ -115,6 +117,13 @@ export async function buildWeeklyDigest({
     generatedDate: localDateKey(now),
     scanLimit: limit,
     requestedCompleteWeeks: completeWeeks,
+    tokenIndex: {
+      rows: tokenRows.length,
+      sessions: sessions.length,
+      tokensAvailable: tokenDataAvailable,
+      unavailable: tokensUnavailable,
+      note: tokensUnavailable ? "Tokens 列尚在索引中，稍后重试。" : "",
+    },
     range: {
       startDate: firstDate,
       endDate: lastDate,
@@ -190,9 +199,14 @@ function delta(current, previous) {
 
 export function renderWeeklyDigestMarkdown(digest) {
   const lines = [];
+  const tokensUnavailable = Boolean(digest.tokenIndex?.unavailable);
   lines.push(`# Agent 使用周报（${digest.range.startDate} 至 ${digest.range.endDate}）`);
   lines.push("");
   lines.push(`生成时间：${formatLocalDateTime(digest.generatedAt)}`);
+  if (tokensUnavailable) {
+    lines.push("");
+    lines.push("> Tokens 列尚在索引中，稍后重试。");
+  }
   lines.push("");
 
   for (const week of digest.weeks) {
@@ -200,7 +214,11 @@ export function renderWeeklyDigestMarkdown(digest) {
     lines.push("");
     lines.push("### 概览");
     lines.push(`- 会话数：${formatInteger(week.sessionCount.total)}（${comparisonText(week.comparison?.sessions)}）`);
-    lines.push(`- Tokens：${formatTokenShort(week.totalTokens.total)}（输入 ${formatTokenShort(week.totalTokens.input)} / 输出 ${formatTokenShort(week.totalTokens.output)}，${comparisonText(week.comparison?.totalTokens)}）`);
+    if (tokensUnavailable) {
+      lines.push("- Tokens：尚在索引中，稍后重试");
+    } else {
+      lines.push(`- Tokens：${formatTokenShort(week.totalTokens.total)}（输入 ${formatTokenShort(week.totalTokens.input)} / 输出 ${formatTokenShort(week.totalTokens.output)}，${comparisonText(week.comparison?.totalTokens)}）`);
+    }
     lines.push(`- 按来源：Codex ${formatInteger(week.sessionCount.codex)}，Claude Code ${formatInteger(week.sessionCount.claude)}，Trae ${formatInteger(week.sessionCount.trae)}`);
     lines.push(`- 最活跃的一天：${week.busiestDay ? `${week.busiestDay.date}（${formatInteger(week.busiestDay.sessions)} 次会话）` : "暂无会话"}`);
     lines.push(`- 最长会话：${week.longestSession ? `${mdText(week.longestSession.title)}（${formatInteger(week.longestSession.turns)} turns，ref：${mdText(week.longestSession.ref)}）` : "暂无会话"}`);
@@ -211,7 +229,11 @@ export function renderWeeklyDigestMarkdown(digest) {
       lines.push("| 项目 | 会话 | Tokens | 输入 | 输出 |");
       lines.push("| --- | ---: | ---: | ---: | ---: |");
       for (const project of week.topProjects) {
-        lines.push(`| ${mdTable(project.name)} | ${formatInteger(project.sessions)} | ${formatTokenShort(project.totalTokens)} | ${formatTokenShort(project.inputTokens)} | ${formatTokenShort(project.outputTokens)} |`);
+        if (tokensUnavailable) {
+          lines.push(`| ${mdTable(project.name)} | ${formatInteger(project.sessions)} | 索引中 | 索引中 | 索引中 |`);
+        } else {
+          lines.push(`| ${mdTable(project.name)} | ${formatInteger(project.sessions)} | ${formatTokenShort(project.totalTokens)} | ${formatTokenShort(project.inputTokens)} | ${formatTokenShort(project.outputTokens)} |`);
+        }
       }
     } else {
       lines.push("暂无项目数据。");

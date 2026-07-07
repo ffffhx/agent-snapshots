@@ -266,21 +266,25 @@ export const overlaysCss = `/* ---------- 搜索浮层 ---------- */
 .gallery-thumb {
   display: block;
   width: 100%;
-  min-height: 96px;
+  max-height: 360px;
   border: 0;
   border-radius: 0;
   background: var(--wash-1);
   padding: 0;
   cursor: zoom-in;
+  overflow: hidden;
 }
 .gallery-thumb:hover { background: var(--wash-2); transform: none; }
 .gallery-thumb img {
   display: block;
   width: 100%;
-  max-height: 360px;
+  height: 100%;
   object-fit: cover;
   background: var(--panel);
+  opacity: 0;
+  transition: opacity 180ms ease;
 }
+.gallery-thumb img.loaded { opacity: 1; }
 .gallery-card-meta {
   display: grid;
   gap: 4px;

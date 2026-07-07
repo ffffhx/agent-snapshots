@@ -141,6 +141,7 @@ function renderGallery() {
       "</div>"
     : "";
   body.innerHTML = grid + more;
+  wireGalleryImageLoads(body);
 }
 
 function renderGalleryFilters() {
@@ -158,8 +159,9 @@ function renderGalleryCard(entry, index) {
   const title = String(entry.sessionTitle || entry.sessionRef || "Untitled session");
   const meta = [entry.engineLabel || galleryEngineLabel(entry.engine), relativeTime(entry.timestamp), galleryProjectLabel(entry.project)].filter(Boolean).join(" · ");
   const imageUrl = "/api/image?ref=" + encodeURIComponent(entry.id || "");
+  const aspectRatio = galleryImageAspectRatio(entry);
   return "<article class='gallery-card' data-gallery-index='" + esc(index) + "'>" +
-    "<button class='gallery-thumb' type='button' data-gallery-lightbox='" + esc(index) + "' title='查看大图'>" +
+    "<button class='gallery-thumb' type='button' data-gallery-lightbox='" + esc(index) + "' title='查看大图' style='aspect-ratio:" + esc(aspectRatio) + "'>" +
       "<img src='" + esc(imageUrl) + "' alt='" + esc(title) + "' loading='lazy' decoding='async'>" +
     "</button>" +
     "<button class='gallery-card-meta' type='button' data-gallery-session='" + esc(index) + "' title='打开会话并跳到图片所在回合'>" +
@@ -167,6 +169,27 @@ function renderGalleryCard(entry, index) {
       "<span>" + esc(meta) + "</span>" +
     "</button>" +
   "</article>";
+}
+
+function galleryImageAspectRatio(entry) {
+  const width = Number(entry?.width || 0);
+  const height = Number(entry?.height || 0);
+  if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
+    return Math.round(width) + " / " + Math.round(height);
+  }
+  return "4 / 3";
+}
+
+function wireGalleryImageLoads(root) {
+  const scope = root && typeof root.querySelectorAll === "function" ? root : document;
+  for (const image of scope.querySelectorAll(".gallery-thumb img")) {
+    const markLoaded = () => image.classList.add("loaded");
+    if (image.complete && image.naturalWidth > 0) {
+      markLoaded();
+    } else {
+      image.addEventListener("load", markLoaded, { once: true });
+    }
+  }
 }
 
 async function openGallerySession(index) {

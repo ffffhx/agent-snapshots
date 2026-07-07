@@ -261,7 +261,7 @@ export async function serveLocalViewer({
           traeHome,
           traeAppHome,
           traeRecordingsDir,
-          listSessions,
+          listSessions: (options) => listSessionsWithCache({ ...options, listSessions }),
           loadSnapshot,
           source: url.searchParams.get("source") || "all",
           limit: readPositiveInteger(url.searchParams.get("limit") || "36", "limit"),

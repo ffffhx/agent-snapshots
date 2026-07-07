@@ -79,6 +79,7 @@ try {
     ["GET /api/images and /api/image return image entries safely", () => assertImages(viewerUrl)],
     ["GET /api/session-head validates missing and real ids", () => assertSessionHead(viewerUrl)],
     ["GET /api/sessions-watermark returns a cheap list watermark", () => assertSessionsWatermark(viewerUrl)],
+    ["Codex home discovery includes default home when CODEX_HOME is explicit", () => assertCodexHomeDiscoveryIncludesDefault()],
     ["multi-home Codex sessions list and round-trip refs", () => assertMultiHomeCodex(viewerUrl)],
     ["GET /api/session-peek returns lightweight redacted turns", () => assertSessionPeek(viewerUrl)],
     ["launcher prefs reject missing CSRF and persist pin changes", () => assertLauncherPrefs(viewerUrl, origin, csrfToken)],
@@ -193,6 +194,7 @@ async function assertImages(viewerUrl) {
   const [entry] = payload.entries;
   assert(typeof entry.id === "string" && entry.id, "image entry should include id");
   assert(typeof entry.mime === "string" && entry.mime.startsWith("image/"), "image entry should include image mime");
+  assert(entry.width === 1 && entry.height === 1, `PNG image entry should include parsed 1x1 dimensions: ${JSON.stringify(entry)}`);
 
   const imageResponse = await fetch(`${viewerUrl}/api/image?ref=${encodeURIComponent(entry.id)}`, {
     signal: AbortSignal.timeout(2000),
@@ -215,6 +217,41 @@ async function assertImages(viewerUrl) {
     signal: AbortSignal.timeout(2000),
   });
   assert(forged.status >= 400 && forged.status < 500, `forged path image ref should return 4xx, got ${forged.status}`);
+}
+
+async function assertCodexHomeDiscoveryIncludesDefault() {
+  const homeRoot = await mkdtemp(path.join(os.tmpdir(), "agent-snapshots-codex-homes-"));
+  const previousHome = process.env.HOME;
+  const previousCodexHome = process.env.CODEX_HOME;
+  try {
+    const explicitHome = path.join(homeRoot, "explicit-codex");
+    const defaultHome = path.join(homeRoot, ".codex");
+    await mkdir(path.join(explicitHome, "sessions"), { recursive: true });
+    await mkdir(path.join(defaultHome, "sessions"), { recursive: true });
+    process.env.HOME = homeRoot;
+    process.env.CODEX_HOME = explicitHome;
+    const { discoverCodexHomes } = await import(pathToFileURL(path.join(ROOT_DIR, "dist/sources/codex-homes.mjs")).href);
+    const homes = await discoverCodexHomes();
+    assert(homes.length >= 2, `expected explicit and default homes, got ${JSON.stringify(homes)}`);
+    assert(homes[0].home === explicitHome, `explicit CODEX_HOME should be primary first: ${JSON.stringify(homes)}`);
+    assert(homes[0].primary === true, `explicit CODEX_HOME should be marked primary: ${JSON.stringify(homes[0])}`);
+    const defaultEntry = homes.find((home) => home.home === defaultHome);
+    assert(defaultEntry, `default ~/.codex home should be discovered: ${JSON.stringify(homes)}`);
+    assert(defaultEntry.primary === false, `default home should be an extra home: ${JSON.stringify(defaultEntry)}`);
+    assert(defaultEntry.label === "default", `default home should carry default label: ${JSON.stringify(defaultEntry)}`);
+  } finally {
+    if (previousHome === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = previousHome;
+    }
+    if (previousCodexHome === undefined) {
+      delete process.env.CODEX_HOME;
+    } else {
+      process.env.CODEX_HOME = previousCodexHome;
+    }
+    await rm(homeRoot, { recursive: true, force: true });
+  }
 }
 
 async function assertSessionHead(viewerUrl) {

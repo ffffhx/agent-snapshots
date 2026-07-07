@@ -30,6 +30,7 @@ export async function discoverCodexHomes(primaryHome = "") {
         });
     };
     addHome(primary, { primary: true });
+    await addDefaultCodexHomeIfPresent(primary, addHome);
     for (const candidate of candidateExtraCodexHomes(primary)) {
         const sessionsDir = path.join(candidate.home, "sessions");
         const info = await stat(sessionsDir).catch(() => null);
@@ -39,6 +40,18 @@ export async function discoverCodexHomes(primaryHome = "") {
         addHome(candidate.home, { label: candidate.label });
     }
     return homes;
+}
+async function addDefaultCodexHomeIfPresent(primary, addHome) {
+    const defaultHome = defaultCodexHome();
+    if (normalizeHomePath(defaultHome) === normalizeHomePath(primary)) {
+        return;
+    }
+    const sessionsDir = path.join(defaultHome, "sessions");
+    const info = await stat(sessionsDir).catch(() => null);
+    if (!info?.isDirectory()) {
+        return;
+    }
+    addHome(defaultHome, { label: "default" });
 }
 export function codexHomeKey(home) {
     const normalized = normalizeHomePath(path.resolve(expandHome(home)));
