@@ -368,6 +368,68 @@ function activeUpdateCalls() { return activeUpdates; }
   });
 });
 
+test("viewer transcript match mode skips summary-hidden process turns", async () => {
+  await withDom(`
+    <body data-view-verbosity="summary">
+      <div id="matchNav" hidden><span id="matchNavCount"></span></div>
+      <div id="turns">
+        <article class="turn process">
+          <details class="process-details">
+            <div class="process-body">
+              <section class="process-entry process-assistant" data-turn-number="2"><div class="body">hidden needle</div></section>
+            </div>
+          </details>
+        </article>
+        <article class="turn assistant" data-turn-number="3"><div class="message-card"><div class="body">visible Needle text</div></div></article>
+      </div>
+    </body>
+  `, async (dom) => {
+    dom.window.HTMLElement.prototype.scrollIntoView = function scrollIntoView() {
+      this.setAttribute("data-scrolled", "1");
+    };
+    const runtime = await viewerRuntime(
+      [
+        "escapeRegExp",
+        "tokenizeMatchTerms",
+        "transcriptMatchBody",
+        "isSummaryHiddenTranscriptNode",
+        "isTranscriptMatchCandidate",
+        "transcriptMatchCandidates",
+        "transcriptNodeMatchTerm",
+        "clearTranscriptMatchMarks",
+        "markTranscriptTerms",
+        "markTranscriptMatches",
+        "updateTranscriptMatchIndicator",
+        "dismissTranscriptMatchMode",
+        "refreshTranscriptMatches",
+        "flashTranscriptMatch",
+        "scrollTranscriptMatchIndex",
+        "startTranscriptMatchMode",
+      ],
+      `
+${escPrelude()}
+const state = { selected: "codex:a", transcriptMatch: { active: false, query: "", terms: [], matches: [], index: -1, timer: 0 } };
+const $ = (id) => document.getElementById(id);
+function flushTranscriptHydration() {}
+function preferredScrollBehavior() { return "auto"; }
+function showToast() {}
+`,
+      ["state", "startTranscriptMatchMode", "refreshTranscriptMatches"],
+    );
+
+    assert.equal(runtime.startTranscriptMatchMode(["needle"], { autoScroll: true }), true);
+    assert.equal(runtime.state.transcriptMatch.matches.length, 1);
+    assert.equal(document.querySelector(".assistant").getAttribute("data-scrolled"), "1");
+    assert.equal(document.querySelectorAll(".transcript-match-mark").length, 1);
+    assert.equal(document.getElementById("matchNavCount").textContent, "1/1 匹配");
+
+    document.body.setAttribute("data-view-verbosity", "standard");
+    assert.equal(runtime.refreshTranscriptMatches({ keepCurrent: true }), true);
+    assert.equal(runtime.state.transcriptMatch.matches.length, 2);
+    assert.equal(document.querySelectorAll(".transcript-match-mark").length, 2);
+  });
+});
+
 test("viewer live-session detection handles codex claude and trae edge cases", async () => {
   const { isLiveSessionItem } = await viewerRuntime(
     ["sessionEngineKey", "normalizedSessionPath", "isLiveSessionItem"],

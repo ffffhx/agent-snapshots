@@ -882,6 +882,338 @@ function findTurnNode(turnNumber) {
     .find((item) => item.getAttribute("data-turn-number") === String(turnNumber)) || null;
 }
 
+function tokenizeMatchTerms(value) {
+  const tokens = String(value || "").match(/[^\\s"]*"[^"]*"[^\\s"]*|[^\\s]+/g) || [];
+  const terms = [];
+  const seen = new Set();
+  for (const token of tokens) {
+    const term = String(token || "").replace(/^"|"$/g, "").replace(/"/g, "").trim();
+    const key = term.toLowerCase();
+    if (!term || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    terms.push(term);
+  }
+  return terms.slice(0, 12);
+}
+
+function matchTermsFromQuery(query) {
+  const parsed = parseSearchQuery(String(query || ""));
+  return tokenizeMatchTerms(parsed.text || query);
+}
+
+function searchResultMatchTerms(result) {
+  const terms = Array.isArray(result?.terms) && result.terms.length
+    ? result.terms
+    : (state.search.terms || []);
+  const normalized = tokenizeMatchTerms(terms.join(" "));
+  if (normalized.length) {
+    return normalized;
+  }
+  return matchTermsFromQuery(state.search.query || $("globalSearch")?.value || "");
+}
+
+function transcriptMatchBody(node) {
+  if (!node || typeof node.querySelector !== "function") {
+    return null;
+  }
+  return node.querySelector(".body") || node;
+}
+
+function isSummaryHiddenTranscriptNode(node) {
+  if (document.body.getAttribute("data-view-verbosity") !== "summary") {
+    return false;
+  }
+  return node.classList.contains("process-entry")
+    || node.classList.contains("process")
+    || node.classList.contains("tool")
+    || node.classList.contains("interrupt")
+    || Boolean(node.closest(".process, .tool, .interrupt, .subagents"));
+}
+
+function isTranscriptMatchCandidate(node) {
+  return node instanceof HTMLElement
+    && node.hasAttribute("data-turn-number")
+    && !node.classList.contains("turns-hydrating")
+    && !node.closest("[hidden]")
+    && !node.closest(".subagents")
+    && !isSummaryHiddenTranscriptNode(node)
+    && Boolean(transcriptMatchBody(node)?.textContent?.trim());
+}
+
+function transcriptMatchCandidates() {
+  const container = $("turns");
+  if (!container) {
+    return [];
+  }
+  return Array.from(container.querySelectorAll(".turn[data-turn-number], .process-entry[data-turn-number]"))
+    .filter(isTranscriptMatchCandidate);
+}
+
+function transcriptNodeMatchTerm(node, terms) {
+  const body = transcriptMatchBody(node);
+  const hay = String(body?.textContent || "").toLowerCase();
+  if (!hay) {
+    return "";
+  }
+  for (const term of terms) {
+    const needle = String(term || "").toLowerCase();
+    if (needle && hay.includes(needle)) {
+      return term;
+    }
+  }
+  return "";
+}
+
+function clearTranscriptMatchMarks(root = document) {
+  const marks = root?.querySelectorAll ? Array.from(root.querySelectorAll("mark[data-transcript-match-mark]")) : [];
+  for (const mark of marks) {
+    const parent = mark.parentNode;
+    mark.replaceWith(document.createTextNode(mark.textContent || ""));
+    parent?.normalize?.();
+  }
+}
+
+function markTranscriptTerms(root, terms) {
+  if (!root || !terms.length) {
+    return;
+  }
+  const needles = terms.slice().sort((a, b) => b.length - a.length);
+  const pattern = needles.map(escapeRegExp).join("|");
+  if (!pattern) {
+    return;
+  }
+  const matcher = new RegExp("(" + pattern + ")", "gi");
+  const lowerNeedles = needles.map((term) => term.toLowerCase());
+  const nodeFilter = window.NodeFilter || { SHOW_TEXT: 4, FILTER_REJECT: 2, FILTER_ACCEPT: 1 };
+  const walker = document.createTreeWalker(root, nodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      const value = node.nodeValue || "";
+      if (!value.trim() || !matcher.test(value)) {
+        matcher.lastIndex = 0;
+        return nodeFilter.FILTER_REJECT;
+      }
+      matcher.lastIndex = 0;
+      const parent = node.parentElement;
+      if (!parent || parent.closest("mark[data-transcript-match-mark]")) {
+        return nodeFilter.FILTER_REJECT;
+      }
+      return nodeFilter.FILTER_ACCEPT;
+    },
+  });
+  const textNodes = [];
+  while (walker.nextNode()) {
+    textNodes.push(walker.currentNode);
+  }
+  for (const textNode of textNodes) {
+    const text = textNode.nodeValue || "";
+    const parts = text.split(matcher);
+    if (parts.length <= 1) {
+      continue;
+    }
+    const fragment = document.createDocumentFragment();
+    for (const part of parts) {
+      if (!part) {
+        continue;
+      }
+      if (lowerNeedles.includes(part.toLowerCase())) {
+        const mark = document.createElement("mark");
+        mark.className = "transcript-match-mark";
+        mark.dataset.transcriptMatchMark = "1";
+        mark.textContent = part;
+        fragment.appendChild(mark);
+      } else {
+        fragment.appendChild(document.createTextNode(part));
+      }
+    }
+    textNode.replaceWith(fragment);
+  }
+}
+
+function markTranscriptMatches() {
+  clearTranscriptMatchMarks();
+  for (const node of state.transcriptMatch.matches || []) {
+    markTranscriptTerms(transcriptMatchBody(node), state.transcriptMatch.terms || []);
+  }
+}
+
+function updateTranscriptMatchIndicator() {
+  const nav = $("matchNav");
+  const count = $("matchNavCount");
+  if (!nav || !count) {
+    return;
+  }
+  const total = state.transcriptMatch.matches.length;
+  if (!state.transcriptMatch.active || !total) {
+    nav.hidden = true;
+    count.textContent = "0/0 匹配";
+    return;
+  }
+  nav.hidden = false;
+  const index = Math.max(0, state.transcriptMatch.index);
+  count.textContent = (index + 1) + "/" + total + " 匹配";
+}
+
+function setSessionDeepLink(ref, query) {
+  if (!window.history || !ref) {
+    return;
+  }
+  const params = new URLSearchParams(location.search);
+  params.set("session", ref);
+  const q = String(query || "").trim();
+  if (q) {
+    params.set("q", q);
+  } else {
+    params.delete("q");
+  }
+  const next = location.pathname + (params.toString() ? "?" + params.toString() : "");
+  history.replaceState({}, "", next);
+}
+
+function clearTranscriptMatchUrlParam() {
+  if (!window.history) {
+    return;
+  }
+  const params = new URLSearchParams(location.search);
+  if (!params.has("q")) {
+    return;
+  }
+  params.delete("q");
+  const next = location.pathname + (params.toString() ? "?" + params.toString() : "");
+  history.replaceState({}, "", next);
+}
+
+function dismissTranscriptMatchMode(options = {}) {
+  if (state.transcriptMatch.timer) {
+    clearTimeout(state.transcriptMatch.timer);
+  }
+  document.querySelectorAll(".transcript-match-current, .transcript-match-flash").forEach((node) => {
+    node.classList.remove("transcript-match-current", "transcript-match-flash");
+  });
+  clearTranscriptMatchMarks();
+  state.transcriptMatch = { active: false, query: "", terms: [], matches: [], index: -1, timer: 0 };
+  updateTranscriptMatchIndicator();
+  if (options.updateUrl) {
+    clearTranscriptMatchUrlParam();
+  }
+}
+
+function refreshTranscriptMatches(options = {}) {
+  if (!state.transcriptMatch.active) {
+    return false;
+  }
+  const previous = state.transcriptMatch.matches[state.transcriptMatch.index] || null;
+  document.querySelectorAll(".transcript-match-current, .transcript-match-flash").forEach((node) => {
+    node.classList.remove("transcript-match-current", "transcript-match-flash");
+  });
+  clearTranscriptMatchMarks();
+  const terms = state.transcriptMatch.terms || [];
+  state.transcriptMatch.matches = transcriptMatchCandidates().filter((node) => transcriptNodeMatchTerm(node, terms));
+  if (!state.transcriptMatch.matches.length) {
+    state.transcriptMatch.index = -1;
+    updateTranscriptMatchIndicator();
+    return false;
+  }
+  const previousIndex = previous ? state.transcriptMatch.matches.indexOf(previous) : -1;
+  state.transcriptMatch.index = options.keepCurrent && previousIndex >= 0
+    ? previousIndex
+    : Math.max(0, Math.min(state.transcriptMatch.index, state.transcriptMatch.matches.length - 1));
+  markTranscriptMatches();
+  updateTranscriptMatchIndicator();
+  return true;
+}
+
+function flashTranscriptMatch(node) {
+  document.querySelectorAll(".transcript-match-current, .transcript-match-flash").forEach((item) => {
+    item.classList.remove("transcript-match-current", "transcript-match-flash");
+  });
+  node.classList.add("transcript-match-current", "transcript-match-flash");
+  if (state.transcriptMatch.timer) {
+    clearTimeout(state.transcriptMatch.timer);
+  }
+  state.transcriptMatch.timer = window.setTimeout(() => {
+    node.classList.remove("transcript-match-flash");
+    state.transcriptMatch.timer = 0;
+  }, 2200);
+}
+
+function scrollTranscriptMatchIndex(index) {
+  const matches = state.transcriptMatch.matches || [];
+  if (!matches.length) {
+    updateTranscriptMatchIndicator();
+    return false;
+  }
+  const nextIndex = (index + matches.length) % matches.length;
+  state.transcriptMatch.index = nextIndex;
+  const target = matches[nextIndex];
+  const details = target.closest("details");
+  if (details) {
+    details.open = true;
+  }
+  target.scrollIntoView({ behavior: preferredScrollBehavior(), block: "center" });
+  flashTranscriptMatch(target);
+  updateTranscriptMatchIndicator();
+  return true;
+}
+
+function startTranscriptMatchMode(terms, options = {}) {
+  const normalized = tokenizeMatchTerms((terms || []).join ? terms.join(" ") : terms);
+  if (!normalized.length) {
+    dismissTranscriptMatchMode({ updateUrl: false });
+    return false;
+  }
+  if (options.flush !== false) {
+    flushTranscriptHydration();
+  }
+  state.transcriptMatch.active = true;
+  state.transcriptMatch.query = String(options.query || normalized.join(" "));
+  state.transcriptMatch.terms = normalized;
+  state.transcriptMatch.index = 0;
+  if (!refreshTranscriptMatches({ keepCurrent: false })) {
+    dismissTranscriptMatchMode({ updateUrl: false });
+    return false;
+  }
+  const targetTurn = String(options.targetTurn || "");
+  if (targetTurn) {
+    const targetIndex = state.transcriptMatch.matches.findIndex((node) => node.getAttribute("data-turn-number") === targetTurn);
+    if (targetIndex >= 0) {
+      state.transcriptMatch.index = targetIndex;
+    }
+  }
+  if (options.updateUrl && state.selected) {
+    setSessionDeepLink(state.selected, state.transcriptMatch.query);
+  }
+  if (options.autoScroll !== false) {
+    scrollTranscriptMatchIndex(state.transcriptMatch.index);
+  } else {
+    updateTranscriptMatchIndicator();
+  }
+  return true;
+}
+
+function startTranscriptMatchModeFromQuery(query, options = {}) {
+  return startTranscriptMatchMode(matchTermsFromQuery(query), { ...options, query: String(query || "") });
+}
+
+function jumpTranscriptMatch(direction) {
+  if (!state.transcriptMatch.active) {
+    return false;
+  }
+  if (!refreshTranscriptMatches({ keepCurrent: true })) {
+    showToast("当前视图没有匹配项", true);
+    return false;
+  }
+  return scrollTranscriptMatchIndex(state.transcriptMatch.index + direction);
+}
+
+function jumpSessionSearchResult(turn) {
+  const query = state.sessionSearch.query || $("sessionSearchInput")?.value || "";
+  if (!startTranscriptMatchModeFromQuery(query, { targetTurn: turn, autoScroll: true })) {
+    focusTurn(turn);
+  }
+}
+
 function highlightSearchSnippet(text, terms) {
   const source = String(text || "");
   const needles = Array.from(new Set((terms || []).map((term) => String(term || "").trim()).filter(Boolean)))
@@ -907,22 +1239,28 @@ async function selectSearchResult(ref) {
     return;
   }
   const result = state.search.results.find((item) => item.ref === ref);
+  const terms = searchResultMatchTerms(result);
+  const query = terms.join(" ");
   if (result?.session) {
     appendSessions([result.session]);
     state.activeSource = visibleSourceKey(sessionEngine(result.session));
   }
   // Commit: the live preview may already show this session — reuse it if cached.
   closeSearchDialog(true);
+  setSessionDeepLink(ref, query);
   if (state.snapshotCache.has(ref)) {
     state.selected = ref;
     renderSessions();
     renderSnapshot(state.snapshotCache.get(ref));
-    if (result?.turn) {
+    if (!startTranscriptMatchMode(terms, { query, updateUrl: false }) && result?.turn) {
       focusTurn(result.turn);
     }
     return;
   }
   await selectSession(ref);
+  if (state.selected === ref && !startTranscriptMatchMode(terms, { query, updateUrl: false }) && result?.turn) {
+    focusTurn(result.turn);
+  }
 }
 
 `;

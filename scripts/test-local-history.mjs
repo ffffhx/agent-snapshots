@@ -84,6 +84,22 @@ test("web markdown links stay clickable", () => {
   assert.ok(html.includes('rel="noopener noreferrer"'), html);
 });
 
+test("transcript renders assistant turn token and duration metadata", () => {
+  const html = renderTranscriptHtml([
+    { kind: "message", role: "user", turn: 1, text: "请实现搜索锚点", timestamp: "2026-06-01T00:00:00.000Z" },
+    {
+      kind: "message",
+      role: "assistant",
+      turn: 2,
+      text: "已完成",
+      timestamp: "2026-06-01T00:00:08.000Z",
+      tokenUsage: { inputTokens: 900, outputTokens: 300, totalTokens: 1200 },
+    },
+  ]);
+  assert.ok(html.includes("turn-meta-badge"), html);
+  assert.ok(html.includes("1.2k tok · 8s"), html);
+});
+
 // --- Persistent semantic index ---------------------------------------------
 
 test("semantic session search persists and reuses indexed embeddings", async () => {

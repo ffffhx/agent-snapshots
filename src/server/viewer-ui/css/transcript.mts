@@ -266,6 +266,16 @@ html[data-density="compact"] .sessions { gap: 1px; }
 }
 .turn-meta { margin-bottom: 9px; color: var(--faint); font: 700 9.5px/1.3 var(--mono); letter-spacing: 0.16em; text-transform: uppercase; }
 .turn-meta span { font-weight: 500; }
+.turn-meta-badge {
+  min-height: 14px;
+  margin: 0 0 5px auto;
+  color: var(--faint);
+  font: 700 10.5px/1.2 var(--mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+body[data-turn-meta="off"] .turn-meta-badge { display: none; }
 .turn-notice {
   display: inline-flex; align-items: center; gap: 8px;
   border: 1px dashed rgba(33, 27, 16, 0.3); border-radius: 999px;

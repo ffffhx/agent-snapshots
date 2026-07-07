@@ -15,6 +15,7 @@ const state = {
   search: { open: false, query: "", scope: "all", cwd: "", scopeLabel: "全部历史", mode: "keyword", loading: false, results: [], rawResults: [], terms: [], matched: 0, scanned: 0, indexed: 0, indexedChunks: 0, updated: 0, pending: 0, failed: 0, model: "", error: "", requestToken: 0, active: 0, previewRef: "", restoreSelection: "", flags: { caseSensitive: false, wholeWord: false }, filters: null },
   semanticWarmup: { running: false, requestedStop: false, rounds: 0, scanned: 0, indexed: 0, indexedChunks: 0, updated: 0, totalUpdated: 0, pending: 0, failed: 0, model: "", error: "", complete: false },
   sessionSearch: { query: "", loading: false, results: [], chunkCount: 0, model: "", error: "", requestToken: 0 },
+  transcriptMatch: { active: false, query: "", terms: [], matches: [], index: -1, timer: 0 },
   snapshotCache: new Map(),
   previewToken: 0,
   stats: null,
@@ -29,7 +30,7 @@ const state = {
   statsRequestToken: 0,
   statsRate: { in: 0, out: 0 },
   gallery: { open: false, source: "all", items: [], offset: 0, limit: 36, loading: false, hasMore: true, error: "", requestToken: 0, lightboxOpen: false, lightboxIndex: 0 },
-  reading: { verbosity: "standard", outlineOpen: false, outlineItems: [], outlineVisible: new Set(), outlineTargets: new Map(), outlineActiveId: "", shortcutsOpen: false, settingsOpen: false, sidebarCollapsed: false },
+  reading: { verbosity: "standard", outlineOpen: false, outlineItems: [], outlineVisible: new Set(), outlineTargets: new Map(), outlineActiveId: "", shortcutsOpen: false, settingsOpen: false, sidebarCollapsed: false, turnMeta: true },
   liveTail: { active: false, ref: "", timer: 0, token: 0, head: null, polling: false, following: true, needsFollowPrompt: false },
   notes: { ref: "", text: "", lastSavedText: "", updatedAt: "", open: false, editing: false, loading: false, saving: false, error: "", requestToken: 0, saveToken: 0 },
 };
@@ -58,6 +59,7 @@ const VIEW_VERBOSITY_KEY = "agent-snapshot.view-verbosity.v1";
 const OUTLINE_OPEN_KEY = "agent-snapshot.outline-open.v1";
 const DEFAULT_VIEW_VERBOSITY_KEY = "agent-snapshot.default-view-verbosity.v1";
 const DEFAULT_OUTLINE_OPEN_KEY = "agent-snapshot.default-outline-open.v1";
+const TURN_META_KEY = "agent-snapshot.turn-meta.v1";
 const THEMES = ["light", "sepia", "dark"];
 const VIEW_VERBOSITIES = ["standard", "detailed", "summary"];
 const VIEW_VERBOSITY_LABELS = { standard: "标准", detailed: "详细", summary: "摘要" };
@@ -79,6 +81,9 @@ function renderLoading(message) {
 function showViewerLoading(message) {
   stopLiveTail({ silent: true });
   state.currentSnapshot = null;
+  if (typeof dismissTranscriptMatchMode === "function") {
+    dismissTranscriptMatchMode({ updateUrl: false });
+  }
   clearSessionNoteState();
   resetSessionSearchState(false);
   renderSessionSearch();

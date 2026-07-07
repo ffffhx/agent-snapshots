@@ -7,6 +7,7 @@ export type { SnapshotImage, SnapshotTurn } from "../core/snapshot.js";
 export type TurnItem = {
   kind: "turn";
   turn: SnapshotTurn;
+  durationTurns?: SnapshotTurn[];
 };
 
 export type ProcessItem = {
@@ -92,7 +93,11 @@ export function buildTranscriptItems(turns: SnapshotTurn[]): TranscriptItem[] {
           durationTurns: buildProcessDurationTurns(previousUserTurn, processTurns.concat(finalTurn)),
         });
       }
-      items.push({ kind: "turn", turn: finalTurn });
+      items.push({
+        kind: "turn",
+        turn: finalTurn,
+        durationTurns: buildProcessDurationTurns(previousUserTurn, segment),
+      });
       continue;
     }
 
@@ -209,10 +214,10 @@ function renderTranscriptItemHtml(
   if (item.kind === "process") {
     return renderProcessGroupHtml(item, index, options);
   }
-  return renderTurnHtml(item.turn, options);
+  return renderTurnHtml(item.turn, options, item.durationTurns || []);
 }
 
-function renderTurnHtml(turn: SnapshotTurn, options: NormalizedTranscriptRenderOptions): string {
+function renderTurnHtml(turn: SnapshotTurn, options: NormalizedTranscriptRenderOptions, durationTurns: SnapshotTurn[] = []): string {
   if (isInterruptionTurn(turn)) {
     return renderInterruptionNoticeHtml(options);
   }
@@ -220,7 +225,8 @@ function renderTurnHtml(turn: SnapshotTurn, options: NormalizedTranscriptRenderO
   const meta = options.includeTopLevelToolMeta && role === "tool"
     ? `<div class="turn-meta">${escapeHtml(turnLabel(role, turn, options))}</div>`
     : "";
-  return `<article class="${escapeHtml(turnClassName(role, options))}"${turnAnchorAttrs(turn)}><div class="message-card">${meta}${renderBodyContainerHtml(turn, options)}</div></article>`;
+  const assistantMeta = role === "assistant" ? renderAssistantTurnMetaHtml(turn, durationTurns) : "";
+  return `<article class="${escapeHtml(turnClassName(role, options))}"${turnAnchorAttrs(turn)}><div class="message-card">${meta}${assistantMeta}${renderBodyContainerHtml(turn, options)}</div></article>`;
 }
 
 function renderInterruptionNoticeHtml(options: NormalizedTranscriptRenderOptions): string {
@@ -248,6 +254,45 @@ function renderProcessEntryHtml(turn: SnapshotTurn, options: NormalizedTranscrip
     ? `<div class="turn-meta">${escapeHtml(turnLabel(role, turn, options))}</div>`
     : "";
   return `<section class="process-entry process-${escapeHtml(role)}"${turnAnchorAttrs(turn)}>${meta}${renderBodyContainerHtml(turn, options)}</section>`;
+}
+
+function renderAssistantTurnMetaHtml(turn: SnapshotTurn, durationTurns: SnapshotTurn[]): string {
+  const tokenLabel = turnTokenUsageLabel(turn.tokenUsage);
+  const duration = processDurationLabel(durationTurns);
+  const parts = [tokenLabel, duration].filter(Boolean);
+  if (!parts.length) {
+    return "";
+  }
+  return `<div class="turn-meta-badge">${escapeHtml(parts.join(" · "))}</div>`;
+}
+
+function turnTokenUsageLabel(usage: SnapshotTurn["tokenUsage"]): string {
+  if (!usage) {
+    return "";
+  }
+  const total = tokenUsageNumber(usage.totalTokens);
+  const input = tokenUsageNumber(usage.inputTokens);
+  const output = tokenUsageNumber(usage.outputTokens);
+  const tokens = total || input + output;
+  return tokens ? `${formatTokenShort(tokens)} tok` : "";
+}
+
+function tokenUsageNumber(value: unknown): number {
+  const number = Number(value || 0);
+  return Number.isFinite(number) && number > 0 ? Math.round(number) : 0;
+}
+
+function formatTokenShort(value: number): string {
+  if (value >= 1000000000) {
+    return `${(value / 1000000000).toFixed(1).replace(/\.0$/, "")}B`;
+  }
+  if (value >= 1000000) {
+    return `${(value / 1000000).toFixed(1).replace(/\.0$/, "")}M`;
+  }
+  if (value >= 1000) {
+    return `${(value / 1000).toFixed(1).replace(/\.0$/, "")}k`;
+  }
+  return String(value);
 }
 
 function turnAnchorAttrs(turn: SnapshotTurn): string {

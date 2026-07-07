@@ -102,8 +102,18 @@ export function renderServerApp(csrfToken, shareConfig = {}) {
                   <span>大纲面板默认开启</span>
                   <input id="defaultOutlineOpen" type="checkbox">
                 </label>
+                <label class="settings-toggle-row" title="显示助手回复的耗时和 token">
+                  <span>回合元信息</span>
+                  <input id="turnMetaToggle" type="checkbox">
+                </label>
               </div>
             </div>
+          </div>
+          <div id="matchNav" class="match-nav" aria-live="polite" hidden>
+            <span id="matchNavCount">0/0 匹配</span>
+            <button id="matchPrev" class="appx" type="button" title="上一个匹配（Shift+N）" aria-label="上一个匹配">N</button>
+            <button id="matchNext" class="appx" type="button" title="下一个匹配（N）" aria-label="下一个匹配">n</button>
+            <button id="matchClose" class="appx" type="button" title="关闭匹配" aria-label="关闭匹配">×</button>
           </div>
           <div class="reading-tools" role="group" aria-label="阅读工具">
             <button id="openShortcuts" class="appx" type="button" title="快捷键（⌘/）" aria-label="打开快捷键">⌘/</button>

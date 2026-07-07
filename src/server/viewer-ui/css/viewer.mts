@@ -188,6 +188,30 @@ export const viewerCss = `/* ---------- 阅读区 ---------- */
   accent-color: var(--seal);
   cursor: pointer;
 }
+.match-nav {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 3px;
+  min-height: 34px;
+  border: 1px solid var(--line-2);
+  border-radius: 9px;
+  background: var(--panel);
+  padding: 3px 4px 3px 10px;
+  color: var(--muted);
+  font: 700 11px/1 var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+.match-nav[hidden] { display: none; }
+.match-nav span {
+  padding-right: 4px;
+  white-space: nowrap;
+}
+.match-nav .appx {
+  min-height: 26px;
+  min-width: 26px;
+  padding: 0 6px;
+}
 .exports { display: inline-flex; flex: 0 0 auto; flex-wrap: wrap; gap: 8px; align-items: center; }
 .exports a, .exports button {
   display: inline-flex; min-height: 34px; align-items: center;
@@ -352,6 +376,28 @@ export const viewerCss = `/* ---------- 阅读区 ---------- */
   outline: 2px solid rgba(177, 56, 42, 0.42);
   outline-offset: 5px;
   border-radius: 10px;
+}
+.transcript-match-current .message-card,
+.transcript-match-current.process-entry {
+  outline: 2px solid rgba(177, 56, 42, 0.48);
+  outline-offset: 5px;
+  border-radius: 10px;
+}
+.transcript-match-flash .message-card,
+.transcript-match-flash.process-entry {
+  background: linear-gradient(180deg, rgba(234, 197, 110, 0.16), transparent 78%);
+}
+.transcript-match-mark {
+  border-radius: 2px;
+  background: linear-gradient(180deg, rgba(234, 197, 110, 0.2), rgba(234, 197, 110, 0.72));
+  color: inherit;
+  padding: 0 2px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+html[data-theme="dark"] .transcript-match-mark {
+  color: #1a1206;
+  background: linear-gradient(180deg, rgba(199, 146, 66, 0.85), rgba(199, 146, 66, 0.96));
 }
 @media (max-width: 760px) {
   .session-search-bar { grid-template-columns: 1fr; }

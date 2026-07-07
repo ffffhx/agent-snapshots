@@ -10,6 +10,16 @@ export type SnapshotFileChange = {
   diffText: string;
 };
 
+export type SnapshotTurnTokenUsage = {
+  inputTokens?: number;
+  cachedInputTokens?: number;
+  cacheCreationInputTokens?: number;
+  outputTokens?: number;
+  reasoningOutputTokens?: number;
+  totalTokens?: number;
+  updatedAt?: string;
+};
+
 export type SnapshotTurn = {
   kind?: string;
   role?: string;
@@ -19,6 +29,7 @@ export type SnapshotTurn = {
   html?: string;
   images?: SnapshotImage[];
   fileChanges?: SnapshotFileChange[];
+  tokenUsage?: SnapshotTurnTokenUsage;
   timestamp?: string;
 };
 
@@ -35,14 +46,7 @@ export type SnapshotNotice = {
   text?: string;
 };
 
-export type SnapshotTokenUsage = {
-  inputTokens?: number;
-  cachedInputTokens?: number;
-  outputTokens?: number;
-  reasoningOutputTokens?: number;
-  totalTokens?: number;
-  updatedAt?: string;
-};
+export type SnapshotTokenUsage = SnapshotTurnTokenUsage;
 
 export type Snapshot = {
   id?: string;

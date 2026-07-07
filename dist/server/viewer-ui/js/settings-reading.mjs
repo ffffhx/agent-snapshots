@@ -224,6 +224,9 @@ function applyVerbosity(mode, options = {}) {
     showToast("已切换为" + VIEW_VERBOSITY_LABELS[value] + "视图", false);
   }
   scheduleOutlineRebuild();
+  if (typeof refreshTranscriptMatches === "function") {
+    refreshTranscriptMatches({ keepCurrent: true });
+  }
 }
 
 function syncDefaultVerbosityControls(value = defaultVerbosity()) {
@@ -286,9 +289,27 @@ function syncDefaultOutlineControls(value = defaultOutlineOpen()) {
   }
 }
 
+function currentTurnMetaEnabled() {
+  return localStorage.getItem(TURN_META_KEY) !== "0";
+}
+
+function applyTurnMeta(enabled, options = {}) {
+  state.reading.turnMeta = Boolean(enabled);
+  document.body.setAttribute("data-turn-meta", state.reading.turnMeta ? "on" : "off");
+  localStorage.setItem(TURN_META_KEY, state.reading.turnMeta ? "1" : "0");
+  const input = $("turnMetaToggle");
+  if (input) {
+    input.checked = state.reading.turnMeta;
+  }
+  if (options.toast) {
+    showToast(state.reading.turnMeta ? "已显示回合元信息" : "已隐藏回合元信息", false);
+  }
+}
+
 function syncSettingsControls() {
   syncDefaultVerbosityControls();
   syncDefaultOutlineControls();
+  applyTurnMeta(currentTurnMetaEnabled());
   applyDensity(currentDensity());
   applyReadScale(currentReadScale());
 }
@@ -706,6 +727,7 @@ function isTypingTarget(target) {
 
 function initReadingExperience() {
   applyVerbosity(currentVerbosity(), { persist: false, forceDetails: true });
+  applyTurnMeta(currentTurnMetaEnabled());
   syncDefaultVerbosityControls();
   setOutlineOpen(currentOutlineOpen(), false);
   syncDefaultOutlineControls();
@@ -716,6 +738,7 @@ function initReadingExperience() {
     button.addEventListener("click", () => applyDefaultVerbosity(button.dataset.defaultViewVerbosity, { toast: true }));
   }
   $("defaultOutlineOpen")?.addEventListener("change", (event) => applyDefaultOutlineOpen(event.target.checked, { toast: true }));
+  $("turnMetaToggle")?.addEventListener("change", (event) => applyTurnMeta(event.target.checked, { toast: true }));
   $("toggleOutline").addEventListener("click", toggleOutline);
   $("closeOutline").addEventListener("click", () => setOutlineOpen(false));
   $("openShortcuts").addEventListener("click", openShortcuts);

@@ -245,6 +245,7 @@ function ascSnapshot(session, { includeTools, includeToolOutput, redact }) {
     imageRiskFinding: { id: "image-attachment", label: "Image attachment", severity: "medium" },
   });
   attachAscFileChanges(session, snapshot, { includeTools, redact });
+  attachAscTurnTokenUsage(session, snapshot);
 
   // Strip any directive prefix that survived into the title/goal (ASC derives
   // them from raw first-message text; toSnapshot already redacted them).
@@ -343,6 +344,7 @@ function loadAscClaudeSubagents(parentFilePath, parentSessionId, { includeTools,
       imageRiskFinding: { id: "image-attachment", label: "Image attachment", severity: "medium" },
     });
     attachAscFileChanges(session, snap, { includeTools, redact });
+    attachAscTurnTokenUsage(session, snap);
     const turns = Array.isArray(snap.turns) ? snap.turns : [];
     if (!turns.length) {
       continue;
@@ -370,6 +372,84 @@ function loadAscClaudeSubagents(parentFilePath, parentSessionId, { includeTools,
     });
   }
   return subagents;
+}
+
+function attachAscTurnTokenUsage(session, snapshot) {
+  if (!session || !snapshot || !Array.isArray(session.events) || !Array.isArray(snapshot.turns)) {
+    return;
+  }
+  const assistantTurns = new Map();
+  for (const turn of snapshot.turns) {
+    if (turn?.kind !== "tool" && turn?.role === "assistant" && Number(turn.turn || 0) > 0 && !assistantTurns.has(turn.turn)) {
+      assistantTurns.set(turn.turn, turn);
+    }
+  }
+  if (!assistantTurns.size) {
+    return;
+  }
+
+  let turnNumber = 0;
+  let activeAssistantTurn = 0;
+  const pendingUsage = [];
+  for (const ev of session.events) {
+    if (ev.kind === "message") {
+      if (ev.internal || (ev.role !== "user" && ev.role !== "assistant")) {
+        continue;
+      }
+      const rawText = ev.text || "";
+      const images = ev.images || [];
+      if (!String(rawText).trim() && !images.length) {
+        continue;
+      }
+      turnNumber += 1;
+      if (ev.role === "assistant") {
+        activeAssistantTurn = turnNumber;
+        if (pendingUsage.length) {
+          for (const usageEvent of pendingUsage.splice(0)) {
+            addTurnTokenUsage(assistantTurns.get(activeAssistantTurn), usageEvent);
+          }
+        }
+      } else {
+        activeAssistantTurn = 0;
+      }
+      continue;
+    }
+    if (ev.kind !== "token_usage") {
+      continue;
+    }
+    if (activeAssistantTurn) {
+      addTurnTokenUsage(assistantTurns.get(activeAssistantTurn), ev);
+    } else {
+      pendingUsage.push(ev);
+    }
+  }
+}
+
+function addTurnTokenUsage(turn, event) {
+  if (!turn || !event?.usage) {
+    return;
+  }
+  const current = turn.tokenUsage || {};
+  const usage = event.usage;
+  const input = tokenNumber(usage.input);
+  const cached = tokenNumber(usage.cached);
+  const cacheCreation = tokenNumber(usage.cacheCreation);
+  const output = tokenNumber(usage.output);
+  const reasoning = tokenNumber(usage.reasoning);
+  turn.tokenUsage = {
+    inputTokens: tokenNumber(current.inputTokens) + input,
+    cachedInputTokens: tokenNumber(current.cachedInputTokens) + cached,
+    cacheCreationInputTokens: tokenNumber(current.cacheCreationInputTokens) + cacheCreation,
+    outputTokens: tokenNumber(current.outputTokens) + output,
+    reasoningOutputTokens: tokenNumber(current.reasoningOutputTokens) + reasoning,
+    totalTokens: tokenNumber(current.totalTokens) + input + output,
+    updatedAt: event.ts || current.updatedAt || "",
+  };
+}
+
+function tokenNumber(value) {
+  const number = Number(value || 0);
+  return Number.isFinite(number) && number > 0 ? Math.round(number) : 0;
 }
 
 function attachAscFileChanges(session, snapshot, { includeTools, redact }) {

@@ -155,6 +155,9 @@ function clearViewer(message) {
   state.requestToken += 1;
   stopLiveTail({ silent: true });
   state.currentSnapshot = null;
+  if (typeof dismissTranscriptMatchMode === "function") {
+    dismissTranscriptMatchMode({ updateUrl: false });
+  }
   clearSessionNoteState();
   resetSessionSearchState(false);
   renderSessionSearch();

@@ -361,6 +361,9 @@ function appendLiveSnapshotDelta(snapshot) {
     } else {
       state.liveTail.needsFollowPrompt = true;
     }
+    if (typeof refreshTranscriptMatches === "function") {
+      refreshTranscriptMatches({ keepCurrent: true });
+    }
     updateFollowLatestButton();
   }
   postSnapshotState(snapshot);

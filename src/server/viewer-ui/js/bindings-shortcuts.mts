@@ -228,7 +228,7 @@ $("sessionNote").addEventListener("click", (event) => {
 $("sessionSearchResults").addEventListener("click", (event) => {
   const button = event.target.closest("[data-session-search-turn]");
   if (button) {
-    focusTurn(button.dataset.sessionSearchTurn);
+    jumpSessionSearchResult(button.dataset.sessionSearchTurn);
   }
 });
 $("sessionSearchResults").addEventListener("keydown", (event) => {
@@ -238,7 +238,7 @@ $("sessionSearchResults").addEventListener("keydown", (event) => {
   const button = event.target.closest("[data-session-search-turn]");
   if (button) {
     event.preventDefault();
-    focusTurn(button.dataset.sessionSearchTurn);
+    jumpSessionSearchResult(button.dataset.sessionSearchTurn);
   }
 });
 for (const button of document.querySelectorAll("[data-search-mode]")) {
@@ -264,6 +264,9 @@ $("searchFacets").addEventListener("click", (event) => {
   }
   toggleQueryToken(chip.dataset.facetKey, chip.dataset.facetValue, chip.dataset.facetKey === "source");
 });
+$("matchPrev")?.addEventListener("click", () => jumpTranscriptMatch(-1));
+$("matchNext")?.addEventListener("click", () => jumpTranscriptMatch(1));
+$("matchClose")?.addEventListener("click", () => dismissTranscriptMatchMode({ updateUrl: true }));
 let pendingTopJumpTimer = 0;
 let pendingTopJump = false;
 
@@ -304,6 +307,11 @@ document.addEventListener("keydown", (event) => {
   if (isOverlayOpen()) {
     return;
   }
+  if (state.transcriptMatch.active && event.key === "Escape") {
+    event.preventDefault();
+    dismissTranscriptMatchMode({ updateUrl: true });
+    return;
+  }
   if ((event.metaKey || event.ctrlKey) && key === "k") {
     event.preventDefault();
     openSearchDialog();
@@ -326,6 +334,12 @@ document.addEventListener("keydown", (event) => {
   }
   if (typing || event.metaKey || event.ctrlKey || event.altKey) {
     clearPendingTopJump();
+    return;
+  }
+  if (state.transcriptMatch.active && key === "n") {
+    event.preventDefault();
+    clearPendingTopJump();
+    jumpTranscriptMatch(event.shiftKey ? -1 : 1);
     return;
   }
   if (event.key === "[") {
@@ -438,10 +452,18 @@ initReadingExperience();
 loadStatsRate();
 initSplitter();
 loadSessions().then(() => {
-  // Deep link from the launcher: /?session=<ref> auto-opens that session.
-  const wanted = new URLSearchParams(location.search).get("session");
+  // Deep link from the launcher/search: /?session=<ref> auto-opens that session.
+  const params = new URLSearchParams(location.search);
+  const wanted = params.get("session");
+  const query = params.get("q") || params.get("query") || "";
   if (wanted) {
-    selectSession(wanted).catch(() => {});
+    selectSession(wanted)
+      .then(() => {
+        if (query && state.selected === wanted) {
+          startTranscriptMatchModeFromQuery(query, { updateUrl: false });
+        }
+      })
+      .catch(() => {});
   }
 }).catch((error) => {
   $("sessions").innerHTML = "<div class='meta'>" + esc(error.message) + "</div>";
