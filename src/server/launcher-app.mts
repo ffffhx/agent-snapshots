@@ -17,7 +17,7 @@ export function renderLauncherApp(csrfToken) {
   <style>${launcherCss()}</style>
 </head>
 <body>
-  <main class="launcher">
+  <main id="launcher" class="launcher">
     <header class="bar" id="dragbar">
       <svg class="glass" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><line x1="16.5" y1="16.5" x2="21" y2="21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
       <input id="q" class="q" type="text" autocomplete="off" spellcheck="false" placeholder="搜索会话 — 点击在 Orca 继续">
@@ -28,7 +28,10 @@ export function renderLauncherApp(csrfToken) {
         <button class="scope" data-scope="trae" type="button">Trae</button>
       </div>
     </header>
-    <div id="list" class="list" role="listbox" aria-label="会话"></div>
+    <section id="workspace" class="workspace">
+      <div id="list" class="list" role="listbox" aria-label="会话"></div>
+      <aside id="peek" class="peek" aria-label="会话预览" aria-hidden="true"></aside>
+    </section>
     <footer class="foot">
       <span class="brand">
         <svg class="mark" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#c33f28"/><g transform="rotate(-5 32 32)"><rect x="18.5" y="15" width="27" height="33" rx="3" fill="#f6ecd6"/><g fill="#c9bb98"><rect x="22.5" y="21" width="19" height="2" rx="1"/><rect x="22.5" y="25.5" width="17" height="2" rx="1"/><rect x="22.5" y="30" width="19" height="2" rx="1"/></g><circle cx="40.5" cy="42.5" r="6.2" fill="#a82f1c"/><circle cx="40.5" cy="42.5" r="6.2" fill="none" stroke="#fff3df" stroke-width="0.9" stroke-opacity="0.85"/></g></svg>
@@ -45,6 +48,8 @@ export function renderLauncherApp(csrfToken) {
       <div class="shortcut-list">
         <span>点击</span><b>在 Orca 继续</b>
         <span>⌘↵</span><b>完整视图</b>
+        <span>→ / ⌘P</span><b>预览</b>
+        <span>← / esc</span><b>关闭预览</b>
         <span>↑↓</span><b>选择</b>
         <span>⌘1-4</span><b>切换范围</b>
         <span>⌘/</span><b>快捷键</b>
@@ -81,11 +86,15 @@ html,body{height:100%;background:transparent;color:var(--ink);font-family:var(--
 .scope{border:0;border-radius:6px;background:transparent;color:var(--dim);padding:5px 9px;font:700 10.5px/1 var(--mono);letter-spacing:0.04em;cursor:pointer;transition:background-color .12s ease,color .12s ease}
 .scope:hover{color:var(--ink)}
 .scope.active{background:rgba(233,220,196,0.1);color:var(--ink)}
-.list{flex:1 1 auto;min-height:0;overflow-y:auto;padding:8px;scrollbar-width:thin;scrollbar-color:rgba(233,220,196,0.2) transparent}
+.workspace{position:relative;display:flex;flex:1 1 auto;min-height:0;overflow:hidden}
+.list{flex:1 1 auto;min-width:0;max-width:100%;min-height:0;overflow-y:auto;padding:8px;scrollbar-width:thin;scrollbar-color:rgba(233,220,196,0.2) transparent;transition:flex-basis .18s ease,max-width .18s ease}
+.peek-open .list{flex:0 0 55%;max-width:55%}
+.peek{display:flex;flex:0 0 0;min-width:0;height:100%;overflow:hidden;flex-direction:column;border-left:1px solid transparent;background:rgba(18,13,8,0.68);opacity:0;transform:translateX(18px);pointer-events:none;transition:flex-basis .18s ease,opacity .16s ease,transform .18s ease,border-color .18s ease}
+.peek-open .peek{flex-basis:45%;border-left-color:var(--line-2);opacity:1;transform:translateX(0);pointer-events:auto}
 .list::-webkit-scrollbar{width:10px}
 .list::-webkit-scrollbar-thumb{background:rgba(233,220,196,0.16);background-clip:content-box;border:3px solid transparent;border-radius:99px}
 .sectlabel{padding:8px 12px 6px;color:var(--faint);font:700 10px/1 var(--mono);letter-spacing:0.14em;text-transform:uppercase}
-.row{display:grid;grid-template-columns:26px minmax(0,1fr) max-content;align-items:center;gap:12px;padding:9px 12px;border-radius:9px;cursor:pointer;transition:background-color .12s ease,box-shadow .12s ease}
+.row{position:relative;display:grid;grid-template-columns:26px minmax(0,1fr) max-content;align-items:center;gap:12px;padding:9px 28px 9px 12px;border-radius:9px;cursor:pointer;transition:background-color .12s ease,box-shadow .12s ease}
 .row:hover{background:var(--row-hover)}
 .row.sel{background:var(--seal-soft);box-shadow:inset 3px 0 0 var(--seal)}
 .badge{display:grid;place-items:center;width:26px;height:26px;border-radius:7px;font:800 11px/1 var(--mono);color:#fff}
@@ -100,6 +109,8 @@ html,body{height:100%;background:transparent;color:var(--ink);font-family:var(--
 .age{color:var(--faint)}
 .rowhint{max-width:118px;overflow:hidden;color:var(--seal);opacity:0;font-weight:700;text-overflow:ellipsis;transition:opacity .12s ease}
 .row.sel .rowhint,.row:hover .rowhint{opacity:1}
+.peekchev{position:absolute;right:10px;top:50%;color:#efcfb7;font:800 20px/1 var(--sans);opacity:0;transform:translateY(-50%) translateX(-2px);transition:opacity .12s ease,transform .12s ease}
+.row.sel .peekchev{opacity:.82;transform:translateY(-50%) translateX(0)}
 .live-chip{display:inline-flex;align-items:center;gap:5px;height:19px;padding:0 7px;border:1px solid rgba(124,207,136,0.24);border-radius:99px;background:var(--live-soft);color:#bfe6c4;font:800 10px/1 var(--mono)}
 .live-dot{width:6px;height:6px;border-radius:50%;background:var(--live);box-shadow:0 0 0 0 rgba(124,207,136,0.36);animation:livepulse 2.2s ease-out infinite}
 @keyframes livepulse{0%{box-shadow:0 0 0 0 rgba(124,207,136,0.32)}70%{box-shadow:0 0 0 6px rgba(124,207,136,0)}100%{box-shadow:0 0 0 0 rgba(124,207,136,0)}}
@@ -116,6 +127,24 @@ html,body{height:100%;background:transparent;color:var(--ink);font-family:var(--
 .empty{display:grid;place-items:center;height:100%;min-height:180px;padding:28px;color:var(--faint);font:600 13px/1.5 var(--mono);text-align:center}
 .spin{width:15px;height:15px;border:2px solid rgba(233,220,196,0.2);border-top-color:var(--seal);border-radius:99px;animation:sp .8s linear infinite;margin-right:8px;display:inline-block;vertical-align:-2px}
 @keyframes sp{to{transform:rotate(360deg)}}
+.peek-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex:0 0 auto;padding:13px 12px 10px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,rgba(233,220,196,0.055),rgba(233,220,196,0))}
+.peek-headtext{min-width:0}
+.peek-title{display:-webkit-box;overflow:hidden;-webkit-line-clamp:2;-webkit-box-orient:vertical;color:var(--ink);font:700 13px/1.28 var(--sans)}
+.peek-meta{overflow:hidden;margin-top:4px;color:var(--dim);font:700 10.5px/1.25 var(--mono);text-overflow:ellipsis;white-space:nowrap}
+.peek-close{display:grid;place-items:center;flex:0 0 auto;width:24px;height:24px;border:1px solid rgba(233,220,196,0.12);border-radius:7px;background:rgba(233,220,196,0.05);color:var(--dim);font:700 18px/1 var(--sans);cursor:pointer}
+.peek-close:hover{border-color:rgba(233,220,196,0.22);background:rgba(233,220,196,0.1);color:var(--ink)}
+.peek-close:focus-visible{outline:2px solid rgba(217,79,57,0.5);outline-offset:2px}
+.peek-body{display:flex;flex:1 1 auto;min-height:0;overflow-y:auto;flex-direction:column;gap:8px;padding:10px 11px 14px;scrollbar-width:thin;scrollbar-color:rgba(233,220,196,0.18) transparent}
+.peek-body::-webkit-scrollbar{width:9px}
+.peek-body::-webkit-scrollbar-thumb{background:rgba(233,220,196,0.14);background-clip:content-box;border:3px solid transparent;border-radius:99px}
+.peek-state{display:flex;align-items:center;justify-content:center;gap:8px;min-height:108px;color:var(--dim);font:700 12px/1.35 var(--mono);text-align:center}
+.peek-state .spin{width:12px;height:12px;margin-right:0;border-width:1.5px}
+.peek-state.err{color:#e9b0a4}
+.peek-turn{position:relative;max-width:94%;max-height:112px;overflow:hidden;border:1px solid rgba(233,220,196,0.1);border-radius:8px;background:rgba(233,220,196,0.045);color:#e6d9bd;font:500 12px/1.42 var(--sans);white-space:pre-wrap;word-break:break-word;padding:8px 10px}
+.peek-turn::after{position:absolute;right:0;bottom:0;left:0;height:26px;background:linear-gradient(180deg,rgba(24,18,11,0),rgba(24,18,11,0.96));content:"";pointer-events:none}
+.peek-turn.user{align-self:flex-end;border-right:3px solid var(--seal);background:rgba(217,79,57,0.12);border-top-right-radius:3px}
+.peek-turn.user::after{background:linear-gradient(180deg,rgba(50,25,17,0),rgba(50,25,17,0.96))}
+.peek-turn.assistant{align-self:flex-start;border-left:3px solid rgba(233,220,196,0.34);border-top-left-radius:3px}
 .foot{display:flex;align-items:center;justify-content:space-between;gap:12px;height:42px;flex:0 0 auto;padding:0 14px;border-top:1px solid var(--line-2);background:linear-gradient(0deg,rgba(14,10,6,0.62),rgba(14,10,6,0.16));-webkit-app-region:drag}
 .brand{display:inline-flex;align-items:center;gap:8px;flex:0 0 auto;color:#c3b596;font:700 11px/1 var(--mono);letter-spacing:0.03em}
 .mark{width:18px;height:18px;border-radius:5px}
@@ -147,12 +176,17 @@ html,body{height:100%;background:transparent;color:var(--ink);font-family:var(--
 .shortcut-list{display:grid;grid-template-columns:72px minmax(0,1fr);gap:9px 16px;align-items:center}
 .shortcut-list span{display:inline-flex;align-items:center;justify-content:center;min-height:22px;border:1px solid rgba(233,220,196,0.2);border-radius:7px;background:rgba(233,220,196,0.07);color:#eadfc6;font:800 11px/1 var(--mono)}
 .shortcut-list b{min-width:0;color:var(--dim);font:700 12px/1.25 var(--sans)}
+@media (max-width:680px){
+  .peek-open .list{flex:1 1 auto;max-width:100%}
+  .peek{position:absolute;top:0;right:0;bottom:0;z-index:4;width:min(84vw,350px);height:auto;box-shadow:-18px 0 42px -26px #000;transform:translateX(22px)}
+  .peek-open .peek{flex-basis:auto;transform:translateX(0)}
+}
 @media (max-width:760px){
   .quota-meters{display:none}
 }
 @media (prefers-reduced-motion:reduce){
   .spin,.live-dot{animation:none}
-  .row,.scope,.rowhint,.actions{transition:none}
+  .row,.scope,.rowhint,.actions,.list,.peek,.peekchev{transition:none}
 }
 `;
 }
@@ -163,12 +197,15 @@ const $=(id)=>document.getElementById(id);
 const esc=(v)=>String(v==null?"":v).replace(/[&<>"']/g,(c)=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const SCOPES=["all","codex","claude","trae"];
 const SCOPE_LABELS={all:"全部",codex:"Codex",claude:"Claude",trae:"Trae"};
-const state={items:[],sel:0,scope:"all",query:"",mode:"recent",token:0,loading:false,searchMs:0,matched:0,pinnedPrefs:[],pinnedSet:new Set(),accessPrefs:{},projectPrefs:{},pinnedCount:0,liveCount:0,recentCount:0,quota:null,ambientLiveCount:0,shortcutsOpen:false};
+const state={items:[],sel:0,scope:"all",query:"",mode:"recent",token:0,loading:false,searchMs:0,matched:0,pinnedPrefs:[],pinnedSet:new Set(),accessPrefs:{},projectPrefs:{},pinnedCount:0,liveCount:0,recentCount:0,quota:null,ambientLiveCount:0,shortcutsOpen:false,previewOpen:false,previewLoading:false,previewError:false,previewKey:"",previewData:null,previewToken:0};
 let timer=0;
 let ambientTimer=0;
 let ambientToken=0;
+let previewTimer=0;
 let pruneQueue=Promise.resolve();
 const AMBIENT_REFRESH_MS=60000;
+const PEEK_CACHE_MAX=10;
+const peekCache=new Map();
 
 function relTime(v){
   if(!v) return "";
@@ -573,12 +610,12 @@ function render(loading){
   if(loading && !state.items.length){
     const text=state.mode==="search"?"正在搜索…":"正在载入…";
     list.innerHTML="<div class='empty'><span class='spin'></span> "+text+"</div>";
-    updateHint(); return;
+    updateHint(); syncPreviewAfterRender(); return;
   }
   if(state.sel>=state.items.length) state.sel=Math.max(0,state.items.length-1);
   if(!state.items.length){
     list.innerHTML="<div class='empty'>"+emptyMessage()+"</div>";
-    updateHint(); return;
+    updateHint(); syncPreviewAfterRender(); return;
   }
   let html="";
   if(state.mode==="recent"){
@@ -607,6 +644,7 @@ function render(loading){
   list.innerHTML=html;
   scrollSelected();
   updateHint();
+  syncPreviewAfterRender();
 }
 
 function searchLabel(){
@@ -644,6 +682,7 @@ function row(it,i){
     "<span class='badge "+k+"'>"+badgeChar(k)+"</span>"+
     "<div class='rc'><div class='rt'>"+esc(title)+"</div><div class='rs'>"+subLine+"</div></div>"+
     "<div class='racc'>"+pinMarker+freqMarker+live+"<span class='age'>"+esc(relTime(it.mtime))+"</span><span class='rowhint'>"+hint+"</span>"+actions+"</div>"+
+    "<span class='peekchev' aria-hidden='true'>›</span>"+
   "</div>";
 }
 
@@ -678,6 +717,173 @@ function highlight(text,terms){
   return out;
 }
 
+function projectName(it){
+  return String(it&& (it.displayCwd||it.cwd) || "").split("/").filter(Boolean).pop()||"";
+}
+
+function peekCacheKey(it){
+  const ref=sessionKey(it);
+  return ref?ref+"|"+String(it&&it.mtime||""):"";
+}
+
+function readPeekCache(key){
+  if(!key || !peekCache.has(key)) return null;
+  const value=peekCache.get(key);
+  peekCache.delete(key);
+  peekCache.set(key,value);
+  return value;
+}
+
+function rememberPeek(key,value){
+  if(!key) return;
+  if(peekCache.has(key)) peekCache.delete(key);
+  peekCache.set(key,value);
+  while(peekCache.size>PEEK_CACHE_MAX){
+    const first=peekCache.keys().next().value;
+    peekCache.delete(first);
+  }
+}
+
+function openPreview(){
+  if(!state.items.length) return;
+  state.previewOpen=true;
+  schedulePreviewLoad(0);
+  updateHint();
+}
+
+function closePreview(){
+  clearTimeout(previewTimer);
+  state.previewOpen=false;
+  state.previewLoading=false;
+  state.previewError=false;
+  state.previewToken+=1;
+  renderPreview();
+  updateHint();
+}
+
+function syncPreviewAfterRender(){
+  if(state.previewOpen) schedulePreviewLoad(0);
+  else renderPreview();
+}
+
+function schedulePreviewLoad(delay){
+  clearTimeout(previewTimer);
+  if(!state.previewOpen){ renderPreview(); return; }
+  const it=state.items[state.sel];
+  const key=peekCacheKey(it);
+  if(!it || !key){
+    state.previewKey="";
+    state.previewData=null;
+    state.previewLoading=false;
+    state.previewError=false;
+    renderPreview();
+    return;
+  }
+  const cached=readPeekCache(key);
+  if(cached){
+    state.previewKey=key;
+    state.previewData=cached;
+    state.previewLoading=false;
+    state.previewError=false;
+    renderPreview();
+    return;
+  }
+  state.previewKey=key;
+  state.previewData=null;
+  state.previewLoading=true;
+  state.previewError=false;
+  renderPreview();
+  previewTimer=setTimeout(loadPreview,Math.max(0,Number(delay)||0));
+}
+
+async function loadPreview(){
+  if(!state.previewOpen) return;
+  const it=state.items[state.sel];
+  const key=peekCacheKey(it);
+  const ref=sessionKey(it);
+  if(!it || !key || !ref) return;
+  const token=++state.previewToken;
+  try{
+    const params=new URLSearchParams({id:ref,turns:"6"});
+    const response=await fetch("/api/session-peek?"+params.toString());
+    if(!response.ok) throw new Error("peek failed");
+    const payload=await response.json();
+    if(token!==state.previewToken || !state.previewOpen || peekCacheKey(state.items[state.sel])!==key) return;
+    const data=normalizePeekPayload(payload,it);
+    rememberPeek(key,data);
+    state.previewData=data;
+    state.previewLoading=false;
+    state.previewError=false;
+    renderPreview();
+  }catch(e){
+    if(token!==state.previewToken || !state.previewOpen || peekCacheKey(state.items[state.sel])!==key) return;
+    state.previewData=null;
+    state.previewLoading=false;
+    state.previewError=true;
+    renderPreview();
+  }
+}
+
+function normalizePeekPayload(payload,it){
+  const turns=Array.isArray(payload&&payload.turns)?payload.turns:[];
+  return {
+    title:String(payload&&payload.title||it&&it.title||it&&it.ref||"未命名会话"),
+    project:String(payload&&payload.project||projectName(it)||""),
+    mtime:String(payload&&payload.mtime||it&&it.mtime||""),
+    turns:turns.map((turn)=>({
+      role:String(turn&&turn.role||"assistant").toLowerCase()==="user"?"user":"assistant",
+      text:peekSnippetText(turn&&turn.text)
+    })).filter((turn)=>turn.text.trim()).slice(-6)
+  };
+}
+
+function peekSnippetText(text){
+  return String(text||"").replace(/\\r\\n/g,"\\n").replace(/\\r/g,"\\n").slice(0,400);
+}
+
+function renderPreview(){
+  const panel=$("peek");
+  if(!panel) return;
+  document.body.classList.toggle("peek-open",!!state.previewOpen);
+  panel.setAttribute("aria-hidden",state.previewOpen?"false":"true");
+  if(!state.previewOpen) return;
+  const it=state.items[state.sel];
+  const shellData=state.previewData || {
+    title:it&&it.title||it&&it.ref||"会话预览",
+    project:projectName(it),
+    mtime:it&&it.mtime||"",
+    turns:[]
+  };
+  if(!it){
+    panel.innerHTML=renderPeekShell(shellData,"<div class='peek-state'>暂无可预览会话</div>");
+    return;
+  }
+  if(state.previewError){
+    panel.innerHTML=renderPeekShell(shellData,"<div class='peek-state err'>无法载入预览</div>");
+    return;
+  }
+  if(state.previewLoading && !state.previewData){
+    panel.innerHTML=renderPeekShell(shellData,"<div class='peek-state'><span class='spin'></span>载入预览</div>");
+    return;
+  }
+  const turns=(state.previewData&&state.previewData.turns||[]).map(renderPeekTurn).join("");
+  panel.innerHTML=renderPeekShell(shellData,turns||"<div class='peek-state'>暂无可预览对话</div>");
+}
+
+function renderPeekShell(data,body){
+  const meta=[data&&data.project,relTime(data&&data.mtime)].filter(Boolean).join(" · ");
+  return "<div class='peek-head'>"+
+    "<div class='peek-headtext'><div class='peek-title'>"+esc(data&&data.title||"会话预览")+"</div><div class='peek-meta'>"+esc(meta)+"</div></div>"+
+    "<button class='peek-close' data-peek-close='1' type='button' title='关闭预览' aria-label='关闭预览'>×</button>"+
+  "</div><div class='peek-body'>"+body+"</div>";
+}
+
+function renderPeekTurn(turn){
+  const role=turn.role==="user"?"user":"assistant";
+  const label=role==="user"?"User":"Assistant";
+  return "<div class='peek-turn "+role+"' aria-label='"+label+"'>"+esc(turn.text)+"</div>";
+}
+
 function updateHint(){
   const it=state.items[state.sel];
   const k=it?engineKey(it):(state.scope==="trae"?"trae":"codex");
@@ -686,7 +892,11 @@ function updateHint(){
   const primary=k==="trae"
     ? "Trae 无法恢复"+sep+"<kbd>⌘↵</kbd> <span class='act'>完整视图</span>"
     : "<span class='act'>点击 在 Orca 继续</span>"+sep+"<kbd>⌘↵</kbd> 完整视图";
-  $("hint").innerHTML=status+sep+primary+sep+"<kbd>↑↓</kbd> 选择"+sep+"<kbd>⌘/</kbd> 快捷键"+sep+"<kbd>esc</kbd> 清除";
+  const preview=state.previewOpen
+    ? "<kbd>←</kbd> <span class='act'>关闭预览</span>"+sep+"<kbd>esc</kbd> 关闭预览"
+    : "<kbd>→</kbd> 预览"+sep+"<kbd>⌘P</kbd> 预览";
+  const escapeHint=state.previewOpen?"":sep+"<kbd>esc</kbd> 清除";
+  $("hint").innerHTML=status+sep+primary+sep+preview+sep+"<kbd>↑↓</kbd> 选择"+sep+"<kbd>⌘/</kbd> 快捷键"+escapeHint;
 }
 
 function statusText(){
@@ -710,6 +920,7 @@ function move(d){
   for(const el of document.querySelectorAll(".row")){ el.classList.toggle("sel", Number(el.dataset.i)===state.sel); }
   scrollSelected();
   updateHint();
+  if(state.previewOpen) schedulePreviewLoad(200);
 }
 
 function scrollSelected(){
@@ -843,6 +1054,11 @@ function toggleShortcuts(){
 
 function handleCommandKey(e){
   if(!(e.metaKey||e.ctrlKey)) return false;
+  if(String(e.key||"").toLowerCase()==="p"){
+    e.preventDefault();
+    openPreview();
+    return true;
+  }
   if(e.key==="/"){
     e.preventDefault();
     toggleShortcuts();
@@ -859,7 +1075,9 @@ function handleCommandKey(e){
 $("q").addEventListener("input",schedule);
 $("q").addEventListener("keydown",(e)=>{
   if(state.shortcutsOpen && e.key==="Escape"){ e.preventDefault(); closeShortcuts(); return; }
+  if(state.previewOpen && (e.key==="Escape"||e.key==="ArrowLeft")){ e.preventDefault(); closePreview(); return; }
   if(handleCommandKey(e)) return;
+  if(e.key==="ArrowRight"){ e.preventDefault(); openPreview(); return; }
   if(e.key==="ArrowDown"){ e.preventDefault(); move(1); }
   else if(e.key==="ArrowUp"){ e.preventDefault(); move(-1); }
   else if(e.key==="Enter"){ e.preventDefault(); if(e.metaKey||e.ctrlKey) openFull(state.items[state.sel]); }
@@ -874,6 +1092,7 @@ $("list").addEventListener("click",(e)=>{
     state.sel=Number(r.dataset.i);
     for(const el of document.querySelectorAll(".row")){ el.classList.toggle("sel", el===r); }
     updateHint();
+    if(state.previewOpen) schedulePreviewLoad(0);
     const it=state.items[state.sel];
     if(action.dataset.action==="pin") togglePin(it);
     else if(action.dataset.action==="copy") copyResumeCommand(it);
@@ -884,7 +1103,12 @@ $("list").addEventListener("click",(e)=>{
   state.sel=Number(r.dataset.i);
   for(const el of document.querySelectorAll(".row")){ el.classList.toggle("sel", el===r); }
   updateHint();
+  if(state.previewOpen) schedulePreviewLoad(0);
   if(e.metaKey||e.ctrlKey) openFull(state.items[state.sel]); else resumeOrOpen(state.items[state.sel]);
+});
+$("peek").addEventListener("click",(e)=>{
+  const close=e.target.closest("[data-peek-close]");
+  if(close){ e.preventDefault(); closePreview(); }
 });
 $("scopes").addEventListener("click",(e)=>{
   const b=e.target.closest("[data-scope]"); if(!b) return;
@@ -897,8 +1121,10 @@ $("ambient").addEventListener("click",(e)=>{
 $("shortcuts").addEventListener("click",(e)=>{ if(e.target===$("shortcuts")) closeShortcuts(); });
 document.addEventListener("keydown",(e)=>{
   if(e.defaultPrevented) return;
-  if(handleCommandKey(e)) return;
   if(state.shortcutsOpen && e.key==="Escape"){ e.preventDefault(); closeShortcuts(); }
+  else if(state.previewOpen && (e.key==="Escape"||e.key==="ArrowLeft")){ e.preventDefault(); closePreview(); }
+  else if(handleCommandKey(e)) return;
+  else if(e.key==="ArrowRight"){ e.preventDefault(); openPreview(); }
 });
 document.addEventListener("visibilitychange",()=>{
   if(document.hidden) clearTimeout(ambientTimer);

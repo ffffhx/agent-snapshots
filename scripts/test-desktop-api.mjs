@@ -66,6 +66,7 @@ try {
     ["GET /api/activity returns per-day engine aggregations", () => assertActivity(viewerUrl)],
     ["GET /api/images and /api/image return image entries safely", () => assertImages(viewerUrl)],
     ["GET /api/session-head validates missing and real ids", () => assertSessionHead(viewerUrl)],
+    ["GET /api/session-peek returns lightweight redacted turns", () => assertSessionPeek(viewerUrl)],
     ["launcher prefs reject missing CSRF and persist pin changes", () => assertLauncherPrefs(viewerUrl, origin, csrfToken)],
     ["reveal-in-file rejects unsafe requests without opening Finder", () => assertRevealInFile(viewerUrl, origin, csrfToken)],
     ["POST routes reject disallowed origins", () => assertBadOriginRejected(viewerUrl, csrfToken)],
@@ -180,6 +181,27 @@ async function assertSessionHead(viewerUrl) {
   assert(response.status === 200, `/api/session-head should return 200 for ${id}, got ${response.status}`);
   assert(typeof payload.complete === "boolean", "session head should include complete boolean");
   assert(typeof payload.turnCount === "number" && payload.turnCount >= 0, "session head should include numeric turnCount");
+}
+
+async function assertSessionPeek(viewerUrl) {
+  const missing = await fetch(`${viewerUrl}/api/session-peek`, {
+    signal: AbortSignal.timeout(2000),
+  });
+  assert(missing.status === 400, `missing session-peek id should return 400, got ${missing.status}`);
+
+  const sessions = await fetchJson(`${viewerUrl}/api/sessions?source=all&limit=1&completeOnly=0`);
+  assert(Array.isArray(sessions) && sessions.length > 0, "fixture should provide a real session");
+  const id = sessions[0].ref || `codex:${sessions[0].id}`;
+  const { response, payload } = await fetchJsonResponse(`${viewerUrl}/api/session-peek?id=${encodeURIComponent(id)}&turns=1`);
+  assert(response.status === 200, `/api/session-peek should return 200 for ${id}, got ${response.status}`);
+  assert(typeof payload.title === "string" && payload.title.length > 0, "session peek should include title");
+  assert(typeof payload.project === "string", "session peek should include project string");
+  assertValidIso(payload.mtime, "session peek mtime");
+  assert(Array.isArray(payload.turns), "session peek should include turns array");
+  assert(payload.turns.length === 1, `turns=1 should return one turn, got ${payload.turns.length}`);
+  assert(payload.turns[0].role === "assistant", "turns=1 should return the last assistant message from the fixture");
+  assert(payload.turns[0].text === "The image fixture is available.", "session peek should return plain turn text");
+  assert(payload.turns.every((turn) => typeof turn.text === "string" && turn.text.length <= 400), "peek turn text should be capped at 400 chars");
 }
 
 async function assertLauncherPrefs(viewerUrl, origin, csrfToken) {

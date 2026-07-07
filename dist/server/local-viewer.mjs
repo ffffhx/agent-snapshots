@@ -269,6 +269,26 @@ export async function serveLocalViewer({ codexHome, claudeHome, traeHome, traeAp
                 sendJson(response, head);
                 return;
             }
+            if (url.pathname === "/api/session-peek") {
+                const id = url.searchParams.get("id");
+                if (!id) {
+                    sendJson(response, { error: "missing id" }, 400);
+                    return;
+                }
+                const turnLimit = Math.min(20, readPositiveInteger(url.searchParams.get("turns") || "6", "turns"));
+                const peek = await readSessionPeek(id, {
+                    codexHome,
+                    claudeHome,
+                    traeHome,
+                    traeAppHome,
+                    traeRecordingsDir,
+                    loadSnapshot,
+                    cache: sessionHeadCache,
+                    turnLimit,
+                });
+                sendJson(response, peek);
+                return;
+            }
             if (url.pathname === "/api/resume-in-orca") {
                 if (!allowMutationRequest(request, response, csrfToken)) {
                     return;
@@ -690,6 +710,54 @@ async function rememberSessionHead(id, snapshot, cache) {
         head,
     });
     return head;
+}
+async function readSessionPeek(id, { codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir, loadSnapshot, cache, turnLimit }) {
+    const snapshot = await loadSnapshot(id, {
+        codexHome,
+        claudeHome,
+        traeHome,
+        traeAppHome,
+        traeRecordingsDir,
+        includeTools: false,
+        includeToolOutput: false,
+        redact: true,
+    });
+    if (cache) {
+        await rememberSessionHead(id, snapshot, cache);
+    }
+    const filePath = typeof snapshot?.filePath === "string" ? snapshot.filePath : "";
+    const fileInfo = filePath ? await stat(filePath).catch(() => null) : null;
+    return {
+        title: redactText(snapshot?.title || snapshot?.id || id),
+        project: snapshotProjectName(snapshot),
+        mtime: sessionLastEventAt(snapshot, fileInfo),
+        turns: sessionPeekTurns(snapshot?.turns || [], turnLimit),
+    };
+}
+function snapshotProjectName(snapshot) {
+    const raw = String(snapshot?.displayCwd || snapshot?.cwd || "").trim();
+    if (!raw) {
+        return "";
+    }
+    const normalized = normalizeSessionPath(raw).replace(/\/+$/, "");
+    const leaf = normalized.split("/").filter(Boolean).pop() || raw;
+    return redactText(leaf);
+}
+function sessionPeekTurns(turns, turnLimit) {
+    const limit = Math.max(1, Math.min(20, Number(turnLimit) || 6));
+    return (Array.isArray(turns) ? turns : [])
+        .filter((turn) => {
+        const role = String(turn?.role || "").toLowerCase();
+        return turn?.kind !== "tool" && (role === "user" || role === "assistant") && String(turn?.text || "").trim();
+    })
+        .slice(-limit)
+        .map((turn) => ({
+        role: String(turn.role).toLowerCase() === "user" ? "user" : "assistant",
+        text: peekSnippetText(turn.text),
+    }));
+}
+function peekSnippetText(value) {
+    return redactText(String(value || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n")).slice(0, 400);
 }
 function isSnapshotComplete(snapshot) {
     if (snapshot?.complete === true) {
