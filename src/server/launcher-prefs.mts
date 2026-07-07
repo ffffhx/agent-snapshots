@@ -11,8 +11,15 @@ export interface LauncherPinnedSession {
   pinnedAt: string;
 }
 
+export interface LauncherUsageRecord {
+  count: number;
+  last: string;
+}
+
 export interface LauncherPrefs {
   pinned: LauncherPinnedSession[];
+  accesses: Record<string, LauncherUsageRecord>;
+  projects: Record<string, LauncherUsageRecord>;
 }
 
 export interface LauncherPinInput {
@@ -21,7 +28,15 @@ export interface LauncherPinInput {
   pinned?: unknown;
 }
 
+export interface LauncherTouchInput {
+  ref?: unknown;
+  cwd?: unknown;
+  at?: unknown;
+}
+
 const PINNED_LIMIT = 20;
+const ACCESS_REF_LIMIT = 200;
+const ACCESS_PROJECT_LIMIT = 50;
 const PREFS_PATH = join(process.env.AGENT_SNAPSHOT_PREFS_DIR || join(homedir(), ".agent-snapshot"), "launcher-prefs.json");
 
 export async function readLauncherPrefs(): Promise<LauncherPrefs> {
@@ -29,7 +44,7 @@ export async function readLauncherPrefs(): Promise<LauncherPrefs> {
     const raw = await readFile(PREFS_PATH, "utf8");
     return normalizePrefs(JSON.parse(raw));
   } catch {
-    return { pinned: [] };
+    return emptyLauncherPrefs();
   }
 }
 
@@ -49,9 +64,29 @@ export async function setLauncherSessionPinned(input: LauncherPinInput): Promise
     });
   }
 
-  const next = { pinned: nextPinned.slice(-PINNED_LIMIT) };
+  const next = normalizePrefs({ ...prefs, pinned: nextPinned.slice(-PINNED_LIMIT) });
   await writeLauncherPrefs(next);
   return { ok: true, pinned: next.pinned };
+}
+
+export async function recordLauncherAccess(input: LauncherTouchInput): Promise<{ ok: true; prefs: LauncherPrefs } | { ok: false; error: string }> {
+  const parsed = normalizeTouchInput(input);
+  if (!parsed.ok) {
+    return parsed;
+  }
+
+  const prefs = await readLauncherPrefs();
+  const next = normalizePrefs({
+    ...prefs,
+    accesses: incrementUsageRecord(prefs.accesses, parsed.ref, parsed.at),
+    projects: parsed.cwd ? incrementUsageRecord(prefs.projects, parsed.cwd, parsed.at) : prefs.projects,
+  });
+  await writeLauncherPrefs(next);
+  return { ok: true, prefs: next };
+}
+
+function emptyLauncherPrefs(): LauncherPrefs {
+  return { pinned: [], accesses: {}, projects: {} };
 }
 
 function normalizePrefs(value: unknown): LauncherPrefs {
@@ -75,6 +110,8 @@ function normalizePrefs(value: unknown): LauncherPrefs {
     pinned: normalized
       .sort((a, b) => new Date(a.pinnedAt).getTime() - new Date(b.pinnedAt).getTime())
       .slice(-PINNED_LIMIT),
+    accesses: normalizeUsageMap((value as LauncherPrefs | null)?.accesses, ACCESS_REF_LIMIT, normalizeSessionRef),
+    projects: normalizeUsageMap((value as LauncherPrefs | null)?.projects, ACCESS_PROJECT_LIMIT, normalizeProjectKey),
   };
 }
 
@@ -110,6 +147,72 @@ function normalizePinInput(input: LauncherPinInput): { ok: true; ref: string; en
 function normalizeEngine(value: unknown): LauncherEngine | null {
   const text = String(value || "").trim().toLowerCase();
   return text === "codex" || text === "claude" || text === "trae" ? text : null;
+}
+
+function normalizeTouchInput(input: LauncherTouchInput): { ok: true; ref: string; cwd: string; at: string } | { ok: false; error: string } {
+  const ref = normalizeSessionRef(input.ref);
+  if (!ref) {
+    return { ok: false, error: "invalid ref" };
+  }
+
+  return {
+    ok: true,
+    ref,
+    cwd: normalizeProjectKey(input.cwd),
+    at: validDateText(input.at) || new Date().toISOString(),
+  };
+}
+
+function normalizeSessionRef(value: unknown): string {
+  const text = String(value || "").trim();
+  const match = /^(codex|claude|trae):(.+)$/i.exec(text);
+  const engine = match ? normalizeEngine(match[1]) : null;
+  const id = String(match?.[2] || "").trim();
+  return engine && id ? `${engine}:${id}` : "";
+}
+
+function normalizeProjectKey(value: unknown): string {
+  return String(value || "").trim().slice(0, 2048);
+}
+
+function incrementUsageRecord(records: Record<string, LauncherUsageRecord>, key: string, at: string): Record<string, LauncherUsageRecord> {
+  const current = records[key];
+  return {
+    ...records,
+    [key]: {
+      count: Math.min(999999, Math.max(0, Math.floor(Number(current?.count) || 0)) + 1),
+      last: at,
+    },
+  };
+}
+
+function normalizeUsageMap(
+  value: unknown,
+  limit: number,
+  normalizeKey: (value: unknown) => string,
+): Record<string, LauncherUsageRecord> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+
+  const entries: Array<[string, LauncherUsageRecord]> = [];
+  for (const [rawKey, rawRecord] of Object.entries(value)) {
+    const key = normalizeKey(rawKey);
+    if (!key || !rawRecord || typeof rawRecord !== "object" || Array.isArray(rawRecord)) {
+      continue;
+    }
+
+    const record = rawRecord as Partial<LauncherUsageRecord>;
+    const count = Math.min(999999, Math.max(0, Math.floor(Number(record.count) || 0)));
+    const last = validDateText(record.last);
+    if (count <= 0 || !last) {
+      continue;
+    }
+    entries.push([key, { count, last }]);
+  }
+
+  entries.sort((a, b) => new Date(b[1].last).getTime() - new Date(a[1].last).getTime());
+  return Object.fromEntries(entries.slice(0, limit));
 }
 
 function validDateText(value: unknown): string {

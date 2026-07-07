@@ -186,6 +186,30 @@ async function assertLauncherPrefs(viewerUrl, origin, csrfToken) {
   });
   assert([400, 403].includes(noCsrf.status), `launcher prefs pin without CSRF should be rejected, got ${noCsrf.status}`);
 
+  const noTouchCsrf = await fetch(`${viewerUrl}/api/launcher-prefs/touch`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      origin,
+    },
+    body: JSON.stringify({ ref: "codex:desktop-api-prefs-fake", cwd: path.join(tempDir, "fake-project") }),
+    signal: AbortSignal.timeout(2000),
+  });
+  assert([400, 403].includes(noTouchCsrf.status), `launcher prefs touch without CSRF should be rejected, got ${noTouchCsrf.status}`);
+
+  const touchRef = `codex:${SESSION_ID}`;
+  const touchCwd = path.join(tempDir, "codex", "fixture-project");
+  const touch = await fetchJson(`${viewerUrl}/api/launcher-prefs/touch`, {
+    method: "POST",
+    headers: mutationHeaders(origin, csrfToken),
+    body: JSON.stringify({ ref: touchRef, cwd: touchCwd }),
+  });
+  assert(touch.ok === true, `touch should return ok=true: ${JSON.stringify(touch)}`);
+
+  const afterTouch = await fetchJson(`${viewerUrl}/api/launcher-prefs`);
+  assert(afterTouch.accesses?.[touchRef]?.count === 1, "touched ref should persist access count");
+  assert(afterTouch.projects?.[touchCwd]?.count === 1, "touched cwd should persist project count");
+
   const ref = "codex:desktop-api-prefs-fake";
   const pin = await fetchJson(`${viewerUrl}/api/launcher-prefs/pin`, {
     method: "POST",

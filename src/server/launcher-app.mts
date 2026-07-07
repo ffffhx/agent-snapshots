@@ -112,6 +112,7 @@ html,body{height:100%;background:transparent;color:var(--ink);font-family:var(--
 .qact.pinact{font:700 13px/1 var(--sans)}
 .qact.pinact.active{border-color:rgba(255,211,107,0.34);background:rgba(255,211,107,0.12)}
 .pin-marker{display:inline-grid;place-items:center;width:17px;height:17px;flex:0 0 auto;font-size:10.5px;line-height:1;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.35))}
+.freq-marker{display:inline-grid;place-items:center;width:14px;height:14px;flex:0 0 auto;color:#ffd36b;font-size:10px;line-height:1;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.38))}
 .empty{display:grid;place-items:center;height:100%;min-height:180px;padding:28px;color:var(--faint);font:600 13px/1.5 var(--mono);text-align:center}
 .spin{width:15px;height:15px;border:2px solid rgba(233,220,196,0.2);border-top-color:var(--seal);border-radius:99px;animation:sp .8s linear infinite;margin-right:8px;display:inline-block;vertical-align:-2px}
 @keyframes sp{to{transform:rotate(360deg)}}
@@ -162,7 +163,7 @@ const $=(id)=>document.getElementById(id);
 const esc=(v)=>String(v==null?"":v).replace(/[&<>"']/g,(c)=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const SCOPES=["all","codex","claude","trae"];
 const SCOPE_LABELS={all:"全部",codex:"Codex",claude:"Claude",trae:"Trae"};
-const state={items:[],sel:0,scope:"all",query:"",mode:"recent",token:0,loading:false,searchMs:0,matched:0,pinnedPrefs:[],pinnedSet:new Set(),pinnedCount:0,liveCount:0,recentCount:0,quota:null,ambientLiveCount:0,shortcutsOpen:false};
+const state={items:[],sel:0,scope:"all",query:"",mode:"recent",token:0,loading:false,searchMs:0,matched:0,pinnedPrefs:[],pinnedSet:new Set(),accessPrefs:{},projectPrefs:{},pinnedCount:0,liveCount:0,recentCount:0,quota:null,ambientLiveCount:0,shortcutsOpen:false};
 let timer=0;
 let ambientTimer=0;
 let ambientToken=0;
@@ -227,10 +228,18 @@ function schedule(){
 async function fetchLauncherPrefs(){
   try{
     const r=await fetch("/api/launcher-prefs").then(x=>x.ok?x.json():null);
-    return normalizePinnedPrefs(r&&r.pinned);
+    return normalizeLauncherPrefs(r);
   }catch(e){
-    return [];
+    return normalizeLauncherPrefs(null);
   }
+}
+
+function normalizeLauncherPrefs(prefs){
+  return {
+    pinned:normalizePinnedPrefs(prefs&&prefs.pinned),
+    accesses:normalizeUsagePrefs(prefs&&prefs.accesses),
+    projects:normalizeUsagePrefs(prefs&&prefs.projects)
+  };
 }
 
 function normalizePinnedPrefs(pinned){
@@ -250,6 +259,26 @@ function normalizePinnedPrefs(pinned){
 function setPinnedPrefs(pinned){
   state.pinnedPrefs=normalizePinnedPrefs(pinned);
   state.pinnedSet=new Set(state.pinnedPrefs.map((item)=>item.ref));
+}
+
+function setLauncherPrefs(prefs){
+  const normalized=normalizeLauncherPrefs(prefs);
+  state.accessPrefs=normalized.accesses;
+  state.projectPrefs=normalized.projects;
+  setPinnedPrefs(normalized.pinned);
+}
+
+function normalizeUsagePrefs(records){
+  const out={};
+  if(!records || typeof records!=="object" || Array.isArray(records)) return out;
+  for(const key of Object.keys(records)){
+    const item=records[key];
+    const count=Math.max(0,Math.floor(Number(item&&item.count)||0));
+    const last=String(item&&item.last||"");
+    if(!key || count<=0 || !Number.isFinite(new Date(last).getTime())) continue;
+    out[key]={count,last};
+  }
+  return out;
 }
 
 function isPinnedItem(it){
@@ -316,11 +345,11 @@ async function run(){
       const src=state.scope==="all"?"all":state.scope;
       const prefs=await fetchLauncherPrefs();
       if(token!==state.token) return;
-      setPinnedPrefs(prefs);
+      setLauncherPrefs(prefs);
       const liveParams=new URLSearchParams({limit:"40",completeOnly:"0",liveOnly:"1",source:src});
       const recentParams=new URLSearchParams({limit:"40",completeOnly:"1",source:src});
       const [pinnedResult,liveResult,recentResult]=await Promise.allSettled([
-        resolvePinnedRows(prefs,src),
+        resolvePinnedRows(prefs.pinned,src),
         fetch("/api/sessions?"+liveParams.toString()).then(x=>x.json()),
         fetch("/api/sessions?"+recentParams.toString()).then(x=>x.json())
       ]);
@@ -348,7 +377,7 @@ async function run(){
       fetchLauncherPrefs()
     ]);
     if(token!==state.token) return;
-    if(prefsResult.status==="fulfilled") setPinnedPrefs(prefsResult.value);
+    if(prefsResult.status==="fulfilled") setLauncherPrefs(prefsResult.value);
     if(searchResult.status==="rejected") throw searchResult.reason;
     const r=searchResult.value;
     state.items=Array.isArray(r.results)?r.results:[];
@@ -361,6 +390,7 @@ async function run(){
 function mergeRecent(pinnedRows,liveRows,recentRows){
   const seen=new Set();
   const items=[];
+  const recentCandidates=[];
   let pinnedCount=0;
   let liveCount=0;
   let recentCount=0;
@@ -380,10 +410,56 @@ function mergeRecent(pinnedRows,liveRows,recentRows){
   for(const item of recentRows){
     const key=sessionKey(item); if(key && seen.has(key)) continue;
     if(key) seen.add(key);
+    recentCandidates.push(item);
+  }
+  for(const item of rankRecentRows(recentCandidates)){
     items.push(item);
     recentCount+=1;
   }
   return {items,pinnedCount,liveCount,recentCount};
+}
+
+function rankRecentRows(rows){
+  const now=Date.now();
+  const todayStart=new Date();
+  todayStart.setHours(0,0,0,0);
+  const todayMs=todayStart.getTime();
+  const oldCutoff=now-7*86400000;
+  return (rows||[]).map((item,index)=>{
+    const mtime=sessionMtimeMs(item);
+    const key=sessionKey(item);
+    const cwd=String(item&& (item.cwd||item.displayCwd) || "").trim();
+    const refBoost=decayedUsageBoost(state.accessPrefs[key],now,30*60000,4*3600000);
+    const projectBoost=decayedUsageBoost(state.projectPrefs[cwd],now,20*60000,3*3600000);
+    const boost=Math.min(6*3600000,refBoost+projectBoost);
+    let score=mtime+boost;
+    if(mtime>0 && mtime<oldCutoff && score>=todayMs) score=todayMs-1;
+    return {
+      item:Object.assign({},item,{_frecencyBoosted:boost>=60000,_frecencyScore:score}),
+      index,
+      mtime,
+      score
+    };
+  }).sort((a,b)=>{
+    if(b.score!==a.score) return b.score-a.score;
+    if(b.mtime!==a.mtime) return b.mtime-a.mtime;
+    return a.index-b.index;
+  }).map((entry)=>entry.item);
+}
+
+function decayedUsageBoost(record,now,unitMs,maxMs){
+  if(!record) return 0;
+  const count=Math.max(0,Number(record.count)||0);
+  const last=new Date(record.last||0).getTime();
+  if(count<=0 || !Number.isFinite(last) || last<=0) return 0;
+  const ageDays=Math.max(0,(now-last)/86400000);
+  const weight=count*Math.exp(-ageDays/14);
+  return Math.min(maxMs,weight*unitMs);
+}
+
+function sessionMtimeMs(it){
+  const t=new Date(it&&it.mtime||0).getTime();
+  return Number.isFinite(t)?t:0;
 }
 
 function normalizePercent(v){
@@ -551,6 +627,7 @@ function emptyMessage(){
 function row(it,i){
   const k=engineKey(it);
   const title=it.title||it.ref||"未命名会话";
+  const rowTitle=(it&&it._frecencyBoosted?"常用 · ":"")+title;
   const proj=(it.displayCwd||it.cwd||"").split("/").filter(Boolean).pop()||"";
   const snip=it.snippet?highlight(it.snippet,it.terms):"";
   const sub=[proj,relTime(it.mtime)].filter(Boolean).join(" · ");
@@ -558,14 +635,15 @@ function row(it,i){
   const hint=k==="trae"?"⌘↵ 查看":"点击 Orca 继续";
   const pinned=isPinnedItem(it);
   const pinMarker=pinned?"<span class='pin-marker' title='已置顶' aria-label='已置顶'>⭐</span>":"";
+  const freqMarker=it&&it._frecencyBoosted?"<span class='freq-marker' title='常用' aria-label='常用'>⚡</span>":"";
   const live=isRunning(it)?"<span class='live-chip'><span class='live-dot'></span>进行中</span>":"";
   const pin=actionButton("pin",pinned?"取消置顶":"置顶","⭐","pinact"+(pinned?" active":""));
   const copy=k==="trae"?"":actionButton("copy","复制恢复命令",iconCopy());
   const actions="<span class='actions'>"+pin+copy+actionButton("open","完整视图",iconOpen())+"</span>";
-  return "<div class='row"+(i===state.sel?" sel":"")+"' data-i='"+i+"'>"+
+  return "<div class='row"+(i===state.sel?" sel":"")+"' data-i='"+i+"' title='"+esc(rowTitle)+"'>"+
     "<span class='badge "+k+"'>"+badgeChar(k)+"</span>"+
     "<div class='rc'><div class='rt'>"+esc(title)+"</div><div class='rs'>"+subLine+"</div></div>"+
-    "<div class='racc'>"+pinMarker+live+"<span class='age'>"+esc(relTime(it.mtime))+"</span><span class='rowhint'>"+hint+"</span>"+actions+"</div>"+
+    "<div class='racc'>"+pinMarker+freqMarker+live+"<span class='age'>"+esc(relTime(it.mtime))+"</span><span class='rowhint'>"+hint+"</span>"+actions+"</div>"+
   "</div>";
 }
 
@@ -641,7 +719,19 @@ function scrollSelected(){
 
 function openFull(it){
   if(!it) return;
+  touchLauncherAccess(it);
   window.open("/?session="+encodeURIComponent(it.ref||""),"_blank");
+}
+
+function touchLauncherAccess(it){
+  const ref=sessionKey(it);
+  if(!ref) return;
+  fetch("/api/launcher-prefs/touch",{
+    method:"POST",
+    headers:{"content-type":"application/json","${MUTATION_CSRF_HEADER}":window.CSRF},
+    body:JSON.stringify({ref,cwd:it.cwd||it.displayCwd||""}),
+    keepalive:true
+  }).catch(()=>{});
 }
 
 function resumeCommand(it){

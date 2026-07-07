@@ -3,6 +3,8 @@ import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 const PINNED_LIMIT = 20;
+const ACCESS_REF_LIMIT = 200;
+const ACCESS_PROJECT_LIMIT = 50;
 const PREFS_PATH = join(process.env.AGENT_SNAPSHOT_PREFS_DIR || join(homedir(), ".agent-snapshot"), "launcher-prefs.json");
 export async function readLauncherPrefs() {
     try {
@@ -10,7 +12,7 @@ export async function readLauncherPrefs() {
         return normalizePrefs(JSON.parse(raw));
     }
     catch {
-        return { pinned: [] };
+        return emptyLauncherPrefs();
     }
 }
 export async function setLauncherSessionPinned(input) {
@@ -27,9 +29,26 @@ export async function setLauncherSessionPinned(input) {
             pinnedAt: new Date().toISOString(),
         });
     }
-    const next = { pinned: nextPinned.slice(-PINNED_LIMIT) };
+    const next = normalizePrefs({ ...prefs, pinned: nextPinned.slice(-PINNED_LIMIT) });
     await writeLauncherPrefs(next);
     return { ok: true, pinned: next.pinned };
+}
+export async function recordLauncherAccess(input) {
+    const parsed = normalizeTouchInput(input);
+    if (!parsed.ok) {
+        return parsed;
+    }
+    const prefs = await readLauncherPrefs();
+    const next = normalizePrefs({
+        ...prefs,
+        accesses: incrementUsageRecord(prefs.accesses, parsed.ref, parsed.at),
+        projects: parsed.cwd ? incrementUsageRecord(prefs.projects, parsed.cwd, parsed.at) : prefs.projects,
+    });
+    await writeLauncherPrefs(next);
+    return { ok: true, prefs: next };
+}
+function emptyLauncherPrefs() {
+    return { pinned: [], accesses: {}, projects: {} };
 }
 function normalizePrefs(value) {
     const pinned = Array.isArray(value?.pinned)
@@ -50,6 +69,8 @@ function normalizePrefs(value) {
         pinned: normalized
             .sort((a, b) => new Date(a.pinnedAt).getTime() - new Date(b.pinnedAt).getTime())
             .slice(-PINNED_LIMIT),
+        accesses: normalizeUsageMap(value?.accesses, ACCESS_REF_LIMIT, normalizeSessionRef),
+        projects: normalizeUsageMap(value?.projects, ACCESS_PROJECT_LIMIT, normalizeProjectKey),
     };
 }
 function normalizePinInput(input) {
@@ -80,6 +101,59 @@ function normalizePinInput(input) {
 function normalizeEngine(value) {
     const text = String(value || "").trim().toLowerCase();
     return text === "codex" || text === "claude" || text === "trae" ? text : null;
+}
+function normalizeTouchInput(input) {
+    const ref = normalizeSessionRef(input.ref);
+    if (!ref) {
+        return { ok: false, error: "invalid ref" };
+    }
+    return {
+        ok: true,
+        ref,
+        cwd: normalizeProjectKey(input.cwd),
+        at: validDateText(input.at) || new Date().toISOString(),
+    };
+}
+function normalizeSessionRef(value) {
+    const text = String(value || "").trim();
+    const match = /^(codex|claude|trae):(.+)$/i.exec(text);
+    const engine = match ? normalizeEngine(match[1]) : null;
+    const id = String(match?.[2] || "").trim();
+    return engine && id ? `${engine}:${id}` : "";
+}
+function normalizeProjectKey(value) {
+    return String(value || "").trim().slice(0, 2048);
+}
+function incrementUsageRecord(records, key, at) {
+    const current = records[key];
+    return {
+        ...records,
+        [key]: {
+            count: Math.min(999999, Math.max(0, Math.floor(Number(current?.count) || 0)) + 1),
+            last: at,
+        },
+    };
+}
+function normalizeUsageMap(value, limit, normalizeKey) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+        return {};
+    }
+    const entries = [];
+    for (const [rawKey, rawRecord] of Object.entries(value)) {
+        const key = normalizeKey(rawKey);
+        if (!key || !rawRecord || typeof rawRecord !== "object" || Array.isArray(rawRecord)) {
+            continue;
+        }
+        const record = rawRecord;
+        const count = Math.min(999999, Math.max(0, Math.floor(Number(record.count) || 0)));
+        const last = validDateText(record.last);
+        if (count <= 0 || !last) {
+            continue;
+        }
+        entries.push([key, { count, last }]);
+    }
+    entries.sort((a, b) => new Date(b[1].last).getTime() - new Date(a[1].last).getTime());
+    return Object.fromEntries(entries.slice(0, limit));
 }
 function validDateText(value) {
     const text = String(value || "").trim();

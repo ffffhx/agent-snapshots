@@ -18,7 +18,7 @@ import { resumeSessionInOrca } from "./orca-bridge.mjs";
 import { readClaudeBlockUsageEstimate, readCodexQuotaSnapshot } from "./quota-meter.mjs";
 import { buildUsageAnalytics } from "./usage-analytics.mjs";
 import { listImageEntries, readImageBytes } from "./image-index.mjs";
-import { readLauncherPrefs, setLauncherSessionPinned } from "./launcher-prefs.mjs";
+import { readLauncherPrefs, recordLauncherAccess, setLauncherSessionPinned } from "./launcher-prefs.mjs";
 const execFileAsync = promisify(execFile);
 export async function serveLocalViewer({ codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir, host, port, defaultServerLimit, snapshotLogoSvg, shareConfig, listSessions, loadSnapshot, searchSessions, applySafetyChecksOption, snapshotApiResponse, publishAllSnapshots, publishSnapshot, createShareRequestPayload, stableSnapshotShareId, renderMarkdown, renderHtml, readPositiveInteger, readNonNegativeInteger, safeFileName, }) {
     const csrfToken = createMutationCsrfToken();
@@ -281,6 +281,9 @@ export async function serveLocalViewer({ codexHome, claudeHome, traeHome, traeAp
                     return;
                 }
                 const result = await resumeSessionInOrca({ engine: refMatch[1], sessionId: refMatch[2], cwd, title: url.searchParams.get("title") || "" });
+                if (result.ok) {
+                    await recordLauncherAccess({ ref: id, cwd });
+                }
                 sendJson(response, result, result.ok ? 200 : 400);
                 return;
             }
@@ -305,6 +308,22 @@ export async function serveLocalViewer({ codexHome, claudeHome, traeHome, traeAp
                     return;
                 }
                 const result = await setLauncherSessionPinned(body);
+                sendJson(response, result, result.ok ? 200 : 400);
+                return;
+            }
+            if (url.pathname === "/api/launcher-prefs/touch") {
+                if (!allowMutationRequest(request, response, csrfToken)) {
+                    return;
+                }
+                let body;
+                try {
+                    body = await readJsonRequestBody(request);
+                }
+                catch (error) {
+                    sendJson(response, { ok: false, error: error instanceof Error ? error.message : String(error) }, 400);
+                    return;
+                }
+                const result = await recordLauncherAccess(body);
                 sendJson(response, result, result.ok ? 200 : 400);
                 return;
             }
