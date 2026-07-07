@@ -31,6 +31,7 @@ export function renderLauncherApp(csrfToken) {
         <svg class="mark" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#c33f28"/><g transform="rotate(-5 32 32)"><rect x="18.5" y="15" width="27" height="33" rx="3" fill="#f6ecd6"/><g fill="#c9bb98"><rect x="22.5" y="21" width="19" height="2" rx="1"/><rect x="22.5" y="25.5" width="17" height="2" rx="1"/><rect x="22.5" y="30" width="19" height="2" rx="1"/></g><circle cx="40.5" cy="42.5" r="6.2" fill="#a82f1c"/><circle cx="40.5" cy="42.5" r="6.2" fill="none" stroke="#fff3df" stroke-width="0.9" stroke-opacity="0.85"/></g></svg>
         Agent Snapshots
       </span>
+      <span id="ambient" class="ambient" hidden></span>
       <span id="hint" class="hint"></span>
     </footer>
   </main>
@@ -110,7 +111,20 @@ html,body{height:100%;background:transparent;color:var(--ink);font-family:var(--
 .foot{display:flex;align-items:center;justify-content:space-between;gap:12px;height:42px;flex:0 0 auto;padding:0 14px;border-top:1px solid var(--line-2);background:linear-gradient(0deg,rgba(14,10,6,0.62),rgba(14,10,6,0.16));-webkit-app-region:drag}
 .brand{display:inline-flex;align-items:center;gap:8px;flex:0 0 auto;color:#c3b596;font:700 11px/1 var(--mono);letter-spacing:0.03em}
 .mark{width:18px;height:18px;border-radius:5px}
-.hint{display:flex;align-items:center;justify-content:flex-end;min-width:0;overflow:hidden;color:#cdc0a1;font:600 11.5px/1 var(--mono);white-space:nowrap}
+.ambient{display:inline-flex;align-items:center;gap:10px;flex:0 0 auto;min-width:0;color:var(--dim);font:700 10.5px/1 var(--mono);white-space:nowrap;-webkit-app-region:no-drag}
+.ambient[hidden]{display:none}
+.quota-meters{display:inline-flex;align-items:center;gap:7px;min-width:0}
+.quota-meter{display:inline-flex;align-items:center;gap:4px;color:var(--faint)}
+.quota-label{color:#a99b7f;font-weight:800}
+.quota-track{width:34px;height:4px;overflow:hidden;border-radius:99px;background:rgba(233,220,196,0.11);box-shadow:inset 0 0 0 1px rgba(233,220,196,0.05)}
+.quota-fill{display:block;height:100%;border-radius:inherit;background:#7ccf88}
+.quota-meter.warn .quota-fill{background:#d7a247}
+.quota-meter.danger .quota-fill{background:#dc604b}
+.quota-pct{min-width:24px;color:#bbae91;text-align:right}
+.ambient-live{display:inline-flex;align-items:center;gap:5px;height:22px;border:1px solid rgba(124,207,136,0.2);border-radius:99px;background:rgba(124,207,136,0.1);color:#bfe6c4;padding:0 8px;font:800 10.5px/1 var(--mono);cursor:pointer;appearance:none;-webkit-appearance:none}
+.ambient-live:hover{border-color:rgba(124,207,136,0.32);background:rgba(124,207,136,0.15);color:#d5f0d8}
+.ambient-live:focus-visible{outline:2px solid rgba(124,207,136,0.46);outline-offset:2px}
+.hint{display:flex;align-items:center;justify-content:flex-end;flex:1 1 auto;min-width:0;overflow:hidden;color:#cdc0a1;font:600 11.5px/1 var(--mono);white-space:nowrap}
 .hint .stat{min-width:0;overflow:hidden;color:var(--dim);text-overflow:ellipsis}
 .hint .sep{color:rgba(233,220,196,0.26);margin:0 7px;font-style:normal}
 .hint .act{color:var(--seal);font-weight:800}
@@ -125,6 +139,9 @@ html,body{height:100%;background:transparent;color:var(--ink);font-family:var(--
 .shortcut-list{display:grid;grid-template-columns:72px minmax(0,1fr);gap:9px 16px;align-items:center}
 .shortcut-list span{display:inline-flex;align-items:center;justify-content:center;min-height:22px;border:1px solid rgba(233,220,196,0.2);border-radius:7px;background:rgba(233,220,196,0.07);color:#eadfc6;font:800 11px/1 var(--mono)}
 .shortcut-list b{min-width:0;color:var(--dim);font:700 12px/1.25 var(--sans)}
+@media (max-width:760px){
+  .quota-meters{display:none}
+}
 @media (prefers-reduced-motion:reduce){
   .spin,.live-dot{animation:none}
   .row,.scope,.rowhint,.actions{transition:none}
@@ -137,8 +154,11 @@ const $=(id)=>document.getElementById(id);
 const esc=(v)=>String(v==null?"":v).replace(/[&<>"']/g,(c)=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const SCOPES=["all","codex","claude","trae"];
 const SCOPE_LABELS={all:"全部",codex:"Codex",claude:"Claude",trae:"Trae"};
-const state={items:[],sel:0,scope:"all",query:"",mode:"recent",token:0,loading:false,searchMs:0,matched:0,liveCount:0,recentCount:0,shortcutsOpen:false};
+const state={items:[],sel:0,scope:"all",query:"",mode:"recent",token:0,loading:false,searchMs:0,matched:0,liveCount:0,recentCount:0,quota:null,ambientLiveCount:0,shortcutsOpen:false};
 let timer=0;
+let ambientTimer=0;
+let ambientToken=0;
+const AMBIENT_REFRESH_MS=60000;
 
 function relTime(v){
   if(!v) return "";
@@ -260,6 +280,111 @@ function mergeRecent(liveRows,recentRows){
     recentCount+=1;
   }
   return {items,liveCount,recentCount};
+}
+
+function normalizePercent(v){
+  const n=Number(v);
+  if(!Number.isFinite(n)) return NaN;
+  const pct=n>=0 && n<=1?n*100:n;
+  return Math.max(0,Math.min(100,pct));
+}
+
+function countLiveRows(rows){
+  const seen=new Set();
+  let count=0;
+  for(const item of rows||[]){
+    if(!isLiveCandidate(item)) continue;
+    const key=sessionKey(item);
+    if(key && seen.has(key)) continue;
+    if(key) seen.add(key);
+    count+=1;
+  }
+  return count;
+}
+
+function formatReset(v){
+  if(!v) return "重置时间未知";
+  const d=new Date(v);
+  if(!Number.isFinite(d.getTime())) return "重置时间未知";
+  const weekday=new Intl.DateTimeFormat("zh-CN",{weekday:"short"}).format(d);
+  const time=new Intl.DateTimeFormat("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false}).format(d).replace(/^24:/,"00:");
+  return weekday+" "+time+" 重置";
+}
+
+function freshnessText(v){
+  const t=relTime(v);
+  if(!t) return "快照时间未知";
+  if(t==="刚刚") return "快照刚刚更新";
+  if(/^\\d{4}-\\d{2}-\\d{2}$/.test(t)) return "快照 "+t+" 更新";
+  return "快照 "+t+"前更新";
+}
+
+function quotaMeter(label,part,updatedAt){
+  if(!part) return "";
+  const pct=normalizePercent(part.usedPercent);
+  if(!Number.isFinite(pct)) return "";
+  const shown=Math.round(pct);
+  const level=pct>85?"danger":pct>60?"warn":"ok";
+  const title=label+" "+shown+"% · "+formatReset(part.resetsAt)+" · "+freshnessText(updatedAt);
+  return "<span class='quota-meter "+level+"' title='"+esc(title)+"'>"+
+    "<span class='quota-label'>"+esc(label)+"</span>"+
+    "<span class='quota-track'><span class='quota-fill' style='width:"+shown+"%'></span></span>"+
+    "<span class='quota-pct'>"+shown+"%</span>"+
+  "</span>";
+}
+
+function quotaMeters(){
+  const q=state.quota;
+  if(!q || q.available===false) return "";
+  const html=[
+    quotaMeter("5h",q.primary,q.updatedAt),
+    quotaMeter("周",q.secondary,q.updatedAt)
+  ].filter(Boolean).join("");
+  return html?"<span class='quota-meters'>"+html+"</span>":"";
+}
+
+function renderAmbient(){
+  const el=$("ambient");
+  const parts=[];
+  const meters=quotaMeters();
+  if(meters) parts.push(meters);
+  if(state.ambientLiveCount>0){
+    parts.push("<button class='ambient-live' data-ambient-action='live' type='button' title='显示进行中的会话' aria-label='显示进行中的会话'>"+
+      "<span class='live-dot'></span><span>"+state.ambientLiveCount+" 进行中</span>"+
+    "</button>");
+  }
+  if(!parts.length){
+    el.hidden=true;
+    el.innerHTML="";
+    return;
+  }
+  el.hidden=false;
+  el.innerHTML=parts.join("");
+}
+
+async function refreshAmbientStatus(){
+  if(document.hidden) return;
+  const token=++ambientToken;
+  const liveParams=new URLSearchParams({limit:"100",completeOnly:"0",liveOnly:"1",source:"all"});
+  const [quotaResult,liveResult]=await Promise.allSettled([
+    fetch("/api/quota").then(x=>x.ok?x.json():null),
+    fetch("/api/sessions?"+liveParams.toString()).then(x=>x.ok?x.json():[])
+  ]);
+  if(token!==ambientToken) return;
+  if(quotaResult.status==="fulfilled" && quotaResult.value && quotaResult.value.available!==false) state.quota=quotaResult.value;
+  else state.quota=null;
+  if(liveResult.status==="fulfilled" && Array.isArray(liveResult.value)) state.ambientLiveCount=countLiveRows(liveResult.value);
+  else state.ambientLiveCount=0;
+  renderAmbient();
+}
+
+function scheduleAmbientRefresh(delay){
+  clearTimeout(ambientTimer);
+  if(document.hidden) return;
+  ambientTimer=setTimeout(async()=>{
+    await refreshAmbientStatus();
+    scheduleAmbientRefresh(AMBIENT_REFRESH_MS);
+  },delay);
 }
 
 function render(loading){
@@ -453,6 +578,13 @@ function setScope(scope){
   if(changed) run();
 }
 
+function showLiveSessions(){
+  $("q").value="";
+  if(state.scope!=="all") setScope("all");
+  else run();
+  $("q").focus();
+}
+
 function openShortcuts(){
   state.shortcutsOpen=true;
   $("shortcuts").hidden=false;
@@ -515,13 +647,26 @@ $("scopes").addEventListener("click",(e)=>{
   const b=e.target.closest("[data-scope]"); if(!b) return;
   setScope(b.dataset.scope);
 });
+$("ambient").addEventListener("click",(e)=>{
+  const b=e.target.closest("[data-ambient-action]"); if(!b) return;
+  if(b.dataset.ambientAction==="live") showLiveSessions();
+});
 $("shortcuts").addEventListener("click",(e)=>{ if(e.target===$("shortcuts")) closeShortcuts(); });
 document.addEventListener("keydown",(e)=>{
   if(e.defaultPrevented) return;
   if(handleCommandKey(e)) return;
   if(state.shortcutsOpen && e.key==="Escape"){ e.preventDefault(); closeShortcuts(); }
 });
+document.addEventListener("visibilitychange",()=>{
+  if(document.hidden) clearTimeout(ambientTimer);
+  else{
+    refreshAmbientStatus();
+    scheduleAmbientRefresh(AMBIENT_REFRESH_MS);
+  }
+});
 $("q").focus();
 run();
+refreshAmbientStatus();
+scheduleAmbientRefresh(AMBIENT_REFRESH_MS);
 `;
 }
