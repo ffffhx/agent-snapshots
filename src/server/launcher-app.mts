@@ -717,8 +717,8 @@ async function resumeOrOpen(it){
     const p=new URLSearchParams({id:it.ref||"",cwd:it.cwd||it.displayCwd||"",title:it.title||""});
     const r=await fetch("/api/resume-in-orca?"+p.toString(),{method:"POST",headers:{"${MUTATION_CSRF_HEADER}":window.CSRF}});
     const d=await r.json();
-    if(r.ok&&d.ok) showToast(d.message||"已在 Orca 中恢复会话",false);
-    else showToast(d.error||"在 Orca 中恢复失败",true);
+    if(r.ok&&d.ok) showToast(d.via==="terminal"?"Orca 不可用，已在 "+(d.app||"Terminal")+" 打开":"已在 Orca 继续",false);
+    else showToast(d.error||"恢复失败",true);
   }catch(e){ showToast(String(e&&e.message||e),true); }
 }
 

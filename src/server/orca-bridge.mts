@@ -1,8 +1,7 @@
 // @ts-nocheck
 
 // Bridge to the local Orca runtime: resume a Codex session inside an Orca
-// terminal. This is the only place the read-only viewer spawns a process, and
-// it stays tightly scoped — it only ever runs `orca terminal create` with a
+// terminal. Process spawning stays tightly scoped: Orca receives argv with a
 // validated session UUID and an existing directory, never a shell string.
 
 import { execFile } from "node:child_process";
@@ -10,8 +9,10 @@ import { existsSync, statSync } from "node:fs";
 import { promisify } from "node:util";
 import os from "node:os";
 import path from "node:path";
+import { openResumeInTerminal } from "./terminal-bridge.mjs";
 
 const execFileAsync = promisify(execFile);
+const ORCA_TIMEOUT_MS = 8000;
 
 // A Codex/Claude session id is a UUID; accept only hex + dashes so it can never
 // inject into the `codex resume <id>` command Orca runs in its terminal shell.
@@ -43,7 +44,7 @@ async function bringOrcaToFront() {
     return;
   }
   try {
-    await execFileAsync("open", ["-a", "Orca"]);
+    await execFileAsync("open", ["-a", "Orca"], { timeout: 3000 });
   } catch {
     // Ignore: the tab switch already succeeded; the window just stays behind.
   }
@@ -80,7 +81,7 @@ async function findRunningTerminalHandle(orca, dir, title) {
   }
   let data;
   try {
-    const { stdout } = await execFileAsync(orca, ["terminal", "list", "--json"]);
+    const { stdout } = await execFileAsync(orca, ["terminal", "list", "--json"], { timeout: ORCA_TIMEOUT_MS });
     data = JSON.parse(stdout);
   } catch {
     return null;
@@ -96,6 +97,28 @@ async function findRunningTerminalHandle(orca, dir, title) {
     if (bare.length >= 5 && (want.includes(bare) || bare.includes(want))) return t.handle;
   }
   return null;
+}
+
+function formatOrcaError(error) {
+  if (error && error.code === "ENOENT") {
+    return "找不到 orca 命令（Orca 未安装或不在 PATH 中）";
+  }
+  if (error && error.killed) {
+    return "orca 命令执行超时";
+  }
+  return String((error && (error.stderr || error.message)) || error || "unknown error").trim().slice(0, 400);
+}
+
+async function fallbackToTerminal({ engine, sessionId, cwd, orcaError }) {
+  const orcaMessage = formatOrcaError(orcaError);
+  const fallback = await openResumeInTerminal({ engine, sessionId, cwd });
+  if (fallback.ok) {
+    return fallback;
+  }
+  const fallbackMessage = process.platform === "darwin"
+    ? "Terminal 回退失败：" + fallback.error
+    : fallback.error;
+  return { ok: false, error: `${orcaMessage}；${fallbackMessage}` };
 }
 
 export async function resumeSessionInOrca({ engine, sessionId, cwd, title }) {
@@ -129,9 +152,9 @@ export async function resumeSessionInOrca({ engine, sessionId, cwd, title }) {
   const existing = await findRunningTerminalHandle(orca, dir, title);
   if (existing) {
     try {
-      await execFileAsync(orca, ["terminal", "switch", "--terminal", existing, "--json"]);
+      await execFileAsync(orca, ["terminal", "switch", "--terminal", existing, "--json"], { timeout: ORCA_TIMEOUT_MS });
       await bringOrcaToFront();
-      return { ok: true, message: "已切换到 Orca 中正在运行的会话" };
+      return { ok: true, via: "orca", message: "已在 Orca 继续" };
     } catch {
       // Fall through to creating a fresh resume if the switch failed.
     }
@@ -147,13 +170,10 @@ export async function resumeSessionInOrca({ engine, sessionId, cwd, title }) {
       "--command", buildCommand(id),
       "--focus",
       "--json",
-    ]);
+    ], { timeout: ORCA_TIMEOUT_MS });
     await bringOrcaToFront();
-    return { ok: true, message: "已在 Orca 中打开终端并恢复会话" };
+    return { ok: true, via: "orca", message: "已在 Orca 继续" };
   } catch (error) {
-    const message = error && error.code === "ENOENT"
-      ? "找不到 orca 命令（Orca 未安装或不在 PATH 中）"
-      : String((error && (error.stderr || error.message)) || error).trim().slice(0, 400);
-    return { ok: false, error: message };
+    return await fallbackToTerminal({ engine, sessionId: id, cwd: dir, orcaError: error });
   }
 }

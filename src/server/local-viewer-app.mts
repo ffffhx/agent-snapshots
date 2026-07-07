@@ -5578,9 +5578,9 @@ async function resumeInOrca(ref, cwd, title) {
     });
     const data = await response.json();
     if (response.ok && data.ok) {
-      showToast(data.message || "已在 Orca 中恢复会话", false);
+      showToast(data.via === "terminal" ? "Orca 不可用，已在 " + (data.app || "Terminal") + " 打开" : "已在 Orca 继续", false);
     } else {
-      showToast(data.error || "在 Orca 中恢复失败", true);
+      showToast(data.error || "恢复失败", true);
     }
   } catch (error) {
     showToast(error instanceof Error ? error.message : String(error), true);
