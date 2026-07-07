@@ -10,9 +10,12 @@ const META_TABLE = "session_list_meta_v2";
 let dbPromise = null;
 let reconciling = false;
 let lastBackgroundReconcileAt = 0;
-function indexPath() {
+export function sessionListCachePath() {
     const cacheHome = process.env.XDG_CACHE_HOME || path.join(os.homedir(), ".cache");
     return path.join(cacheHome, "agent-snapshots", "search-index.v2.db");
+}
+function indexPath() {
+    return sessionListCachePath();
 }
 async function getDb() {
     if (dbPromise) {
@@ -611,6 +614,7 @@ export async function sessionListCacheStatus() {
     const rows = await sessionListCacheRowCount();
     const watermarkMs = Number(getMeta(db, "watermark_mtime_ms", "0")) || 0;
     return {
+        path: indexPath(),
         rows,
         watermark: watermarkMs ? new Date(watermarkMs).toISOString() : "",
         watermarkMs,

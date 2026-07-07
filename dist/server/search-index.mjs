@@ -22,9 +22,12 @@ const SEARCH_DOC_LIMIT = 24;
 let dbPromise = null;
 let syncing = false;
 let ftsEnabled = false;
-function indexPath() {
+export function defaultSearchIndexPath() {
     const cacheHome = process.env.XDG_CACHE_HOME || path.join(os.homedir(), ".cache");
     return path.join(cacheHome, "agent-snapshots", "search-index.v2.db");
+}
+function indexPath() {
+    return defaultSearchIndexPath();
 }
 async function getDb() {
     if (dbPromise) {

@@ -3,7 +3,7 @@
 import { execFile } from "node:child_process";
 import { existsSync, readFileSync, renameSync } from "node:fs";
 import { createHash } from "node:crypto";
-import { appendFile, mkdir, readFile, rm, unlink, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readdir, readFile, rm, stat, unlink, writeFile } from "node:fs/promises";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
@@ -14,7 +14,13 @@ import { isInterruptionMarker, renderTranscriptHtml } from "../renderers/transcr
 import { send, sendJson } from "../server/http.js";
 import { createGitHubGist } from "../server/gist-publish.mjs";
 import { serveLocalViewer } from "../server/local-viewer.mjs";
-import { listSessions, loadSnapshot, searchSessions } from "../sources/index.mjs";
+import { readCodexQuotaSnapshot } from "../server/quota-meter.mjs";
+import { defaultSearchIndexPath, searchIndexStats } from "../server/search-index.mjs";
+import { semanticIndexStatus } from "../server/semantic-index.mjs";
+import { sessionListCachePath, sessionListCacheStatus } from "../server/session-list-cache.mjs";
+import { buildWeeklyDigest, renderWeeklyDigestMarkdown } from "../server/weekly-digest.mjs";
+import { discoverCodexHomes } from "../sources/codex-homes.mjs";
+import { discoverSessionSummaryCandidates, listSessions, loadSnapshot, searchSessions } from "../sources/index.mjs";
 const packageRoot = findPackageRoot(path.dirname(fileURLToPath(import.meta.url)));
 const cliPath = fileURLToPath(import.meta.url);
 const VERSION = readPackageVersion(packageRoot);
@@ -66,6 +72,14 @@ async function main() {
         printDaemonHelp();
         return;
     }
+    if (parsed.command === "digest" && parsed.options.help) {
+        printDigestHelp();
+        return;
+    }
+    if (parsed.command === "doctor" && parsed.options.help) {
+        printDoctorHelp();
+        return;
+    }
     if (parsed.options.help || parsed.command === "help" || !parsed.command) {
         printHelp();
         return;
@@ -87,6 +101,34 @@ async function main() {
         }
     }
     const traeRecordingsDir = path.resolve(parsed.options.traeRecordingsDir || process.env.TRAE_RECORDINGS_DIR || path.join(dataDir, "trae-recordings"));
+    if (parsed.command === "digest") {
+        const digest = await buildWeeklyDigest({
+            codexHome,
+            claudeHome,
+            traeHome,
+            traeAppHome,
+            traeRecordingsDir,
+            listSessions,
+            weeks: parsed.options.weeks || 1,
+        });
+        if (parsed.options.json) {
+            console.log(JSON.stringify(digest, null, 2));
+        }
+        else {
+            process.stdout.write(renderWeeklyDigestMarkdown(digest));
+        }
+        return;
+    }
+    if (parsed.command === "doctor") {
+        const report = await buildDoctorReport({ codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir });
+        if (parsed.options.json) {
+            console.log(JSON.stringify(report, null, 2));
+        }
+        else {
+            console.log(renderDoctorReport(report));
+        }
+        return;
+    }
     if (parsed.command === "list") {
         const sessions = await listSessions({
             codexHome,
@@ -280,6 +322,7 @@ function parseArgs(args) {
         traeHome: "",
         traeRecordingsDir: "",
         recordSensitiveContext: false,
+        weeks: 0,
     };
     const positionals = [];
     for (let index = 0; index < args.length; index += 1) {
@@ -343,7 +386,7 @@ function parseArgs(args) {
             options.includeArchived = false;
             continue;
         }
-        if (arg === "--codex-home" || arg === "--claude-home" || arg === "--trae-home" || arg === "--trae-app-home" || arg === "--trae-recordings-dir" || arg === "--cwd" || arg === "--limit" || arg === "--scan-limit" || arg === "--output" || arg === "-o" || arg === "--port" || arg === "--host" || arg === "--source" || arg === "--api-url" || arg === "--site-url" || arg === "--share-token" || arg === "--expires-in-days" || arg === "--label") {
+        if (arg === "--codex-home" || arg === "--claude-home" || arg === "--trae-home" || arg === "--trae-app-home" || arg === "--trae-recordings-dir" || arg === "--cwd" || arg === "--limit" || arg === "--scan-limit" || arg === "--weeks" || arg === "--output" || arg === "-o" || arg === "--port" || arg === "--host" || arg === "--source" || arg === "--api-url" || arg === "--site-url" || arg === "--share-token" || arg === "--expires-in-days" || arg === "--label") {
             const value = args[index + 1];
             if (!value) {
                 throw new Error(`${arg} requires a value`);
@@ -371,6 +414,9 @@ function parseArgs(args) {
             }
             else if (arg === "--scan-limit") {
                 options.scanLimit = readPositiveInteger(value, "--scan-limit");
+            }
+            else if (arg === "--weeks") {
+                options.weeks = readPositiveInteger(value, "--weeks");
             }
             else if (arg === "--label") {
                 options.label = value;
@@ -634,6 +680,217 @@ function formatDaemonCommand(config) {
 }
 function readOptionalPositiveInteger(value, label) {
     return value ? readPositiveInteger(value, label) : 0;
+}
+async function buildDoctorReport({ codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir }) {
+    const now = Date.now();
+    const codexHomes = await safeDiagnostic("codexHomes", () => discoverCodexHomes(codexHome), []);
+    const codexSessions = await safeDiagnostic("codexSessions", () => listSessions({
+        codexHome,
+        claudeHome,
+        traeHome,
+        traeAppHome,
+        traeRecordingsDir,
+        limit: Number.POSITIVE_INFINITY,
+        includeArchived: true,
+        source: "codex",
+        completeOnly: false,
+    }), []);
+    const codexSessionCounts = countBy(codexSessions, (session) => session.codexHomeKey || "");
+    const claudeHomeExists = await pathExists(claudeHome);
+    const claudeProjectCount = await directoryEntryCount(path.join(claudeHome, "projects"));
+    const traeCandidates = await safeDiagnostic("traeCandidates", () => discoverSessionSummaryCandidates({
+        codexHome,
+        claudeHome,
+        traeHome,
+        traeAppHome,
+        traeRecordingsDir,
+        source: "trae",
+        includeArchived: true,
+    }), []);
+    const traeCounts = countBy(traeCandidates, (candidate) => candidate.kind || "unknown");
+    const cacheStatus = await safeDiagnostic("sessionListCache", () => sessionListCacheStatus(), null);
+    const searchStats = await safeDiagnostic("searchIndex", () => searchIndexStats(), null);
+    const semanticStatus = await safeDiagnostic("semanticIndex", () => semanticIndexStatus(), null);
+    const quota = await safeDiagnostic("quota", () => readCodexQuotaSnapshot({ codexHome }), { available: false });
+    const [orcaCli, ghCli] = await Promise.all([commandOnPath("orca"), commandOnPath("gh")]);
+    return {
+        generatedAt: new Date(now).toISOString(),
+        homes: {
+            codex: codexHomes.map((home) => ({
+                path: home.home,
+                key: home.key,
+                label: home.label || (home.primary ? "default" : ""),
+                primary: home.primary === true,
+                exists: existsSync(home.home),
+                sessionCount: Number(codexSessionCounts.get(home.key) || 0),
+            })),
+            claude: {
+                path: claudeHome,
+                exists: claudeHomeExists,
+                projectCount: claudeProjectCount,
+            },
+            trae: [
+                { label: "Trae home", path: traeHome, exists: await pathExists(traeHome), candidates: Number(traeCounts.get("trae-memory") || 0) },
+                { label: "Trae app home", path: traeAppHome, exists: await pathExists(traeAppHome), candidates: Number(traeCounts.get("trae-input-history") || 0) },
+                { label: "Trae recordings", path: traeRecordingsDir, exists: await pathExists(traeRecordingsDir), candidates: Number(traeCounts.get("trae-recorded") || 0) },
+            ],
+        },
+        sessionListCache: {
+            path: cacheStatus?.path || sessionListCachePath(),
+            rows: Number(cacheStatus?.rows || 0),
+            watermark: cacheStatus?.watermark || "",
+            watermarkAgeMs: cacheStatus?.watermarkMs ? Math.max(0, now - Number(cacheStatus.watermarkMs)) : 0,
+            lastReconcileAt: cacheStatus?.lastReconcileAt || "",
+            lastReconcileError: cacheStatus?.lastReconcileError || "",
+            available: Boolean(cacheStatus),
+        },
+        searchIndex: {
+            path: defaultSearchIndexPath(),
+            rows: Number(searchStats?.indexedSessions || 0),
+            sessionsWithTokens: Number(searchStats?.sessionsWithTokens || 0),
+            totalTokens: Number(searchStats?.totalTokens || 0),
+            available: Boolean(searchStats),
+        },
+        semanticIndex: semanticStatus || {
+            path: "",
+            exists: false,
+            available: false,
+            entries: 0,
+            model: "",
+            provider: "",
+            updatedAt: "",
+            error: "unavailable",
+        },
+        quota: {
+            found: quota?.available === true,
+            updatedAt: quota?.updatedAt || "",
+            ageMs: quota?.updatedAt ? Math.max(0, now - new Date(quota.updatedAt).getTime()) : 0,
+            weeklyPercent: quota?.secondary ? Number(quota.secondary.usedPercent || 0) : null,
+            fiveHourPercent: quota?.primary ? Number(quota.primary.usedPercent || 0) : null,
+            planType: quota?.planType || "",
+        },
+        tools: {
+            orca: orcaCli,
+            gh: ghCli,
+            terminalFallback: {
+                available: process.platform === "darwin",
+                platform: process.platform,
+            },
+        },
+    };
+}
+async function safeDiagnostic(_label, fn, fallback) {
+    try {
+        return await fn();
+    }
+    catch {
+        return fallback;
+    }
+}
+async function pathExists(filePath) {
+    try {
+        await stat(filePath);
+        return true;
+    }
+    catch {
+        return false;
+    }
+}
+async function directoryEntryCount(dirPath) {
+    try {
+        const entries = await readdir(dirPath, { withFileTypes: true });
+        return entries.filter((entry) => entry.isDirectory()).length;
+    }
+    catch {
+        return 0;
+    }
+}
+function countBy(items, keyFn) {
+    const counts = new Map();
+    for (const item of items || []) {
+        const key = keyFn(item);
+        counts.set(key, Number(counts.get(key) || 0) + 1);
+    }
+    return counts;
+}
+async function commandOnPath(command) {
+    try {
+        const { stdout } = await execFileAsync("which", [command], { timeout: 2000 });
+        const commandPath = stdout.trim().split(/\r?\n/)[0] || "";
+        return { available: Boolean(commandPath), path: commandPath };
+    }
+    catch {
+        return { available: false, path: "" };
+    }
+}
+function renderDoctorReport(report) {
+    const lines = [];
+    lines.push("Agent Snapshot Doctor");
+    lines.push(`生成时间：${formatDate(report.generatedAt)}`);
+    lines.push("");
+    lines.push(checkLine(report.homes.codex.some((home) => home.exists), "Codex homes", `${report.homes.codex.length} 个 home`));
+    for (const home of report.homes.codex) {
+        const label = home.label ? ` · ${home.label}` : "";
+        lines.push(`  ${checkSymbol(home.exists)} ${home.path}${label} · sessions ${formatInteger(home.sessionCount)}`);
+    }
+    lines.push(checkLine(report.homes.claude.exists, "Claude Code home", `${report.homes.claude.path} · projects ${formatInteger(report.homes.claude.projectCount)}`));
+    const traeExisting = report.homes.trae.filter((item) => item.exists).length;
+    lines.push(checkLine(traeExisting > 0 ? true : null, "Trae homes", `${traeExisting}/${report.homes.trae.length} 个路径存在`));
+    for (const home of report.homes.trae) {
+        lines.push(`  ${checkSymbol(home.exists)} ${home.label}: ${home.path} · candidates ${formatInteger(home.candidates)}`);
+    }
+    const cache = report.sessionListCache;
+    lines.push(checkLine(cache.available ? (cache.rows > 0 ? true : null) : false, "Session-list cache", `${cache.path} · rows ${formatInteger(cache.rows)} · watermark ${cache.watermark ? ageText(cache.watermarkAgeMs) : "无"}`));
+    const search = report.searchIndex;
+    lines.push(checkLine(search.available ? (search.rows > 0 ? true : null) : false, "Search index", `${search.path} · rows ${formatInteger(search.rows)} · token rows ${formatInteger(search.sessionsWithTokens)}`));
+    const semantic = report.semanticIndex;
+    const semanticDetail = semantic.exists
+        ? `${semantic.path} · entries ${formatInteger(semantic.entries)} · ${semantic.model || "unknown"}${semantic.updatedAt ? ` · updated ${ageText(Date.now() - new Date(semantic.updatedAt).getTime())}` : ""}`
+        : `${semantic.path || "默认路径"} · 未生成`;
+    lines.push(checkLine(semantic.available ? true : null, "Semantic index", semanticDetail));
+    const quota = report.quota;
+    const quotaDetail = quota.found
+        ? `age ${ageText(quota.ageMs)} · weekly ${formatOptionalPercent(quota.weeklyPercent)} · 5h ${formatOptionalPercent(quota.fiveHourPercent)}${quota.planType ? ` · ${quota.planType}` : ""}`
+        : "未找到 Codex rate_limits 快照";
+    lines.push(checkLine(quota.found, "Codex quota", quotaDetail));
+    lines.push(checkLine(report.tools.orca.available, "orca CLI on PATH", report.tools.orca.path || "not found"));
+    lines.push(checkLine(report.tools.gh.available, "gh CLI on PATH", report.tools.gh.path || "not found"));
+    lines.push(checkLine(report.tools.terminalFallback.available ? true : null, "Terminal fallback", report.tools.terminalFallback.available ? "darwin 可用" : `${report.tools.terminalFallback.platform} 不适用`));
+    return lines.join("\n");
+}
+function checkLine(status, label, detail) {
+    return `${checkSymbol(status)} ${label}: ${detail}`;
+}
+function checkSymbol(status) {
+    if (status === true)
+        return "✓";
+    if (status === false)
+        return "✗";
+    return "–";
+}
+function ageText(ageMs) {
+    const ms = Number(ageMs || 0);
+    if (!Number.isFinite(ms) || ms <= 0) {
+        return "刚刚";
+    }
+    const minutes = Math.floor(ms / 60_000);
+    if (minutes < 1)
+        return "刚刚";
+    if (minutes < 60)
+        return `${minutes} 分钟前`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24)
+        return `${hours} 小时前`;
+    const days = Math.floor(hours / 24);
+    if (days < 30)
+        return `${days} 天前`;
+    const months = Math.floor(days / 30);
+    if (months < 12)
+        return `${months} 个月前`;
+    return `${Math.floor(months / 12)} 年前`;
+}
+function formatOptionalPercent(value) {
+    return value === null || value === undefined ? "-" : `${Math.round(Number(value || 0))}%`;
 }
 function shellQuote(value) {
     return `'${String(value).replace(/'/g, "'\\''")}'`;
@@ -1512,6 +1769,10 @@ function formatBytes(bytes) {
         unit += 1;
     }
     return `${value >= 10 || unit === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[unit]}`;
+}
+function formatInteger(value) {
+    const number = Number(value || 0);
+    return new Intl.NumberFormat("zh-CN").format(Number.isFinite(number) ? Math.round(number) : 0);
 }
 function formatDate(value) {
     if (!value) {
@@ -2806,6 +3067,8 @@ Usage:
   agent-snapshot preview <session-id|path> [--json] [--include-tools] [--include-tool-output]
   agent-snapshot export <session-id|path> [--html|--md] [--output FILE] [--gist] [--include-tools] [--include-tool-output]
   agent-snapshot publish <session-id|path> [--api-url URL] [--share-token TOKEN] [--site-url URL]
+  agent-snapshot digest [--weeks N] [--json]
+  agent-snapshot doctor [--json]
   agent-snapshot serve [--host 127.0.0.1] [--port 4321]
   agent-snapshot daemon install|status|logs|uninstall [--host 127.0.0.1] [--port 4321]
   agent-snapshot record-trae [--host 127.0.0.1] [--port 4732]
@@ -2820,6 +3083,7 @@ Options:
   --source codex|claude|trae|all
                            Choose which local agent history to list or search. Serve shows all configured sources in the UI.
   --scan-limit N           For search only: number of recent sessions to scan. Defaults to 600
+  --weeks N                For digest only: number of complete previous weeks to include. Defaults to 1
   --include-tools          Include tool calls in previews and exports
   --include-tool-output    Include tool output as well as tool calls
   --no-redact              Disable automatic redaction
@@ -2846,9 +3110,40 @@ Examples:
   agent-snapshot export 019e457b --html -o snapshot.html
   agent-snapshot export 019e457b --gist
   agent-snapshot publish 019e457b --api-url ${DEFAULT_SNAPSHOT_SHARE_API_URL} --site-url ${DEFAULT_SNAPSHOT_SHARE_SITE_URL}
+  agent-snapshot digest --weeks 2
+  agent-snapshot doctor
   agent-snapshot serve --port 4321
   agent-snapshot daemon install
   agent-snapshot record-trae --port 4732`);
+}
+function printDigestHelp() {
+    console.log(`agent-snapshot digest
+
+Usage:
+  agent-snapshot digest [--weeks N] [--json]
+
+Prints the weekly Agent usage digest without starting the local viewer.
+By default it writes the same Markdown report used by the viewer's 周报 action.
+
+Options:
+  --weeks N     Number of complete previous weeks to include before 本周. Defaults to 1
+  --json        Print the raw digest payload
+  -h, --help    Show this help
+`);
+}
+function printDoctorHelp() {
+    console.log(`agent-snapshot doctor
+
+Usage:
+  agent-snapshot doctor [--json]
+
+Prints local environment diagnostics as an informational checklist. Missing
+optional tools are reported as ✗ or – but do not change the exit code.
+
+Options:
+  --json        Print the raw diagnostics payload
+  -h, --help    Show this help
+`);
 }
 function printDaemonHelp() {
     console.log(`agent-snapshot daemon

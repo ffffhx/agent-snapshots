@@ -125,6 +125,41 @@ export function defaultSemanticIndexPath() {
     const cacheHome = process.env.XDG_CACHE_HOME || path.join(os.homedir(), ".cache");
     return path.join(cacheHome, "agent-snapshots", "semantic-index.v2.json");
 }
+export async function semanticIndexStatus(indexPath = defaultSemanticIndexPath(), model = defaultEmbeddingModel()) {
+    const resolvedIndexPath = path.resolve(indexPath);
+    try {
+        const raw = await readFile(resolvedIndexPath, "utf8");
+        const data = JSON.parse(raw);
+        const entries = data && typeof data.entries === "object" && data.entries
+            ? Object.keys(data.entries).length
+            : 0;
+        return {
+            path: resolvedIndexPath,
+            exists: true,
+            available: data.version === INDEX_VERSION && data.provider === "ollama" && data.model === model,
+            version: data.version || 0,
+            provider: data.provider || "",
+            model: data.model || "",
+            entries,
+            updatedAt: data.updatedAt || "",
+            error: "",
+        };
+    }
+    catch (error) {
+        const code = error?.code || "";
+        return {
+            path: resolvedIndexPath,
+            exists: false,
+            available: false,
+            version: 0,
+            provider: "",
+            model,
+            entries: 0,
+            updatedAt: "",
+            error: code === "ENOENT" ? "" : error instanceof Error ? error.message : String(error),
+        };
+    }
+}
 async function ensureSemanticSessionIndex({ codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir, scanLimit = DEFAULT_SCAN_LIMIT, updateLimit = DEFAULT_UPDATE_LIMIT, cwd = "", includeArchived = true, source = "all", completeOnly = true, includeTools = false, includeToolOutput = false, model = defaultEmbeddingModel(), baseUrl = defaultOllamaBaseUrl(), indexPath = defaultSemanticIndexPath(), listSessions, loadSnapshot, embedder = embedTexts, }) {
     const sessionScanLimit = clampInteger(scanLimit, 1, MAX_SCAN_LIMIT, DEFAULT_SCAN_LIMIT);
     const sessionUpdateLimit = clampInteger(updateLimit, 0, MAX_UPDATE_LIMIT, DEFAULT_UPDATE_LIMIT);

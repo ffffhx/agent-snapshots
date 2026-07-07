@@ -164,7 +164,7 @@ function delta(current, previous) {
     const percent = previous > 0 ? (change / previous) * 100 : (current > 0 ? 100 : 0);
     return { current: Number(current || 0), previous: Number(previous || 0), change, percent };
 }
-function renderWeeklyDigestMarkdown(digest) {
+export function renderWeeklyDigestMarkdown(digest) {
     const lines = [];
     lines.push(`# Agent 使用周报（${digest.range.startDate} 至 ${digest.range.endDate}）`);
     lines.push("");

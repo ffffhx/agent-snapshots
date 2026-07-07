@@ -253,6 +253,41 @@ export function defaultSemanticIndexPath() {
   return path.join(cacheHome, "agent-snapshots", "semantic-index.v2.json");
 }
 
+export async function semanticIndexStatus(indexPath: string = defaultSemanticIndexPath(), model: string = defaultEmbeddingModel()) {
+  const resolvedIndexPath = path.resolve(indexPath);
+  try {
+    const raw = await readFile(resolvedIndexPath, "utf8");
+    const data = JSON.parse(raw) as Partial<SemanticIndexFile>;
+    const entries = data && typeof data.entries === "object" && data.entries
+      ? Object.keys(data.entries).length
+      : 0;
+    return {
+      path: resolvedIndexPath,
+      exists: true,
+      available: data.version === INDEX_VERSION && data.provider === "ollama" && data.model === model,
+      version: data.version || 0,
+      provider: data.provider || "",
+      model: data.model || "",
+      entries,
+      updatedAt: data.updatedAt || "",
+      error: "",
+    };
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException)?.code || "";
+    return {
+      path: resolvedIndexPath,
+      exists: false,
+      available: false,
+      version: 0,
+      provider: "",
+      model,
+      entries: 0,
+      updatedAt: "",
+      error: code === "ENOENT" ? "" : error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 async function ensureSemanticSessionIndex({
   codexHome,
   claudeHome,
