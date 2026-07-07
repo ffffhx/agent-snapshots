@@ -26,6 +26,7 @@ import http from "node:http";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { createQuickLookController } from "./quicklook.mjs";
 import { SettingsStore } from "./settings-store.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -57,6 +58,8 @@ let startUrl = "";
 let mainWindow = null;
 let viewerWindow = null;
 let tray = null;
+let trayMenu = null;
+let quickLook = null;
 let settings = null;
 let quitting = false;
 let launcherBoundsTimer = null;
@@ -607,7 +610,25 @@ function createTray() {
     }
     tray = new Tray(trayIcon);
     tray.setToolTip("Agent Snapshots");
-    tray.on("click", toggleLauncherWindow);
+    quickLook = createQuickLookController({
+      getBaseUrl: () => startUrl,
+      getTray: () => tray,
+      isMac,
+      onError: (...args) => console.warn(...args),
+      openLauncher: () => showLauncherWindow({ centerOnCursor: true }),
+      openSession: openViewerForSession,
+      openViewer: () => openViewerForSession(),
+      preloadPath: path.join(__dirname, "quicklook-preload.cjs"),
+    });
+    tray.on("click", async () => {
+      const shown = await quickLook?.toggle();
+      if (!shown) {
+        showTrayMenu();
+      }
+    });
+    if (isMac) {
+      tray.on("right-click", showTrayMenu);
+    }
     rebuildTrayMenu();
     startRecentTrayRefresh();
   } catch (error) {
@@ -666,7 +687,7 @@ function rebuildTrayMenu() {
   if (!tray) {
     return;
   }
-  tray.setContextMenu(Menu.buildFromTemplate([
+  trayMenu = Menu.buildFromTemplate([
     { label: "显示/隐藏启动器 (⌥Space)", click: toggleLauncherWindow },
     { label: "打开完整视图", click: () => openViewerForSession() },
     { label: "在浏览器打开", click: () => startUrl && shell.openExternal(startUrl) },
@@ -700,7 +721,19 @@ function rebuildTrayMenu() {
     },
     { type: "separator" },
     { label: "退出", click: requestQuit },
-  ]));
+  ]);
+  if (isMac) {
+    tray.setContextMenu(null);
+  } else {
+    tray.setContextMenu(trayMenu);
+  }
+}
+
+function showTrayMenu() {
+  if (!tray || !trayMenu) {
+    return;
+  }
+  tray.popUpContextMenu(trayMenu);
 }
 
 function registerGlobalShortcut() {
@@ -1087,6 +1120,7 @@ if (!app.requestSingleInstanceLock()) {
 
   app.on("before-quit", () => {
     quitting = true;
+    quickLook?.destroy();
     stopRecentTrayRefresh();
     stopCompletionPoller();
     stopServer();
