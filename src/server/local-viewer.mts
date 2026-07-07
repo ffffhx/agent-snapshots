@@ -6,6 +6,7 @@ import { stat } from "node:fs/promises";
 import { dirname, isAbsolute } from "node:path";
 import { promisify } from "node:util";
 import { send, sendJson } from "./http.js";
+import { createGitHubGist, isGitHubGistPublishError } from "./gist-publish.mjs";
 import { redactText } from "../core/privacy.js";
 import {
   allowMutationRequest,
@@ -504,6 +505,51 @@ export async function serveLocalViewer({
           shareId: stableSnapshotShareId(snapshot),
         });
         sendJson(response, result);
+        return;
+      }
+      if (url.pathname === "/api/publish-gist") {
+        if (!allowMutationRequest(request, response, csrfToken)) {
+          return;
+        }
+        let body;
+        try {
+          body = await readJsonRequestBody(request);
+        } catch (error) {
+          sendJson(response, { ok: false, error: error instanceof Error ? error.message : String(error) }, 400);
+          return;
+        }
+        const id = String(body?.id || "").trim();
+        if (!id) {
+          sendJson(response, { ok: false, error: "missing id" }, 400);
+          return;
+        }
+        try {
+          const snapshot = await loadSnapshot(id, {
+            codexHome,
+            claudeHome,
+            traeHome,
+            traeAppHome,
+            traeRecordingsDir,
+            includeTools: false,
+            includeToolOutput: false,
+            redact: true,
+          });
+          const result = await createGitHubGist(renderHtml(snapshot), { publicGist: false });
+          sendJson(response, { ok: true, url: result.gistUrl });
+        } catch (error) {
+          if (isGitHubGistPublishError(error)) {
+            const status = error.code === "gh_not_authenticated"
+              ? 401
+              : error.code === "gh_not_installed"
+                ? 503
+                : error.code === "network_failure"
+                  ? 502
+                  : 500;
+            sendJson(response, { ok: false, code: error.code, error: error.message }, status);
+            return;
+          }
+          throw error;
+        }
         return;
       }
       if (url.pathname === "/api/share-payload") {

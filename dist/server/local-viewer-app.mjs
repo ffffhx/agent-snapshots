@@ -38,25 +38,70 @@ export function renderServerApp(csrfToken, shareConfig = {}) {
           <div class="switches">
             <label title="自动脱敏常见敏感内容"><input id="redact" type="checkbox" checked> 脱敏</label>
           </div>
-          <div class="appearance" role="group" aria-label="外观设置">
-            <div class="appx-seg" role="group" aria-label="主题">
+          <div class="appearance" role="group" aria-label="外观快捷设置">
+            <div class="appx-seg theme-quick" role="group" aria-label="主题快捷切换">
               <button class="appx" type="button" data-theme-set="light" title="纸（浅色）">纸</button>
               <button class="appx" type="button" data-theme-set="sepia" title="褐（护眼）">褐</button>
               <button class="appx" type="button" data-theme-set="dark" title="暗（深色）">暗</button>
             </div>
-            <div class="appx-seg" role="group" aria-label="正文字号">
-              <button class="appx" type="button" data-font-step="-1" title="缩小正文字号">A－</button>
-              <button class="appx" type="button" data-font-step="1" title="放大正文字号">A＋</button>
+            <div class="settings-shell">
+              <button id="settingsToggle" class="appx settings-button" type="button" title="设置" aria-label="设置" aria-haspopup="dialog" aria-expanded="false" aria-controls="settingsPopover">⚙</button>
+              <div id="settingsPopover" class="settings-popover" role="dialog" aria-label="设置" hidden>
+                <div class="settings-head">
+                  <b>设置</b>
+                  <button id="settingsClose" class="settings-close" type="button" title="关闭设置">关闭</button>
+                </div>
+                <section class="settings-section" aria-label="主题">
+                  <span class="settings-label">主题</span>
+                  <div class="appx-seg settings-seg" role="group" aria-label="主题">
+                    <button class="appx" type="button" data-theme-set="light" title="纸（浅色）">纸</button>
+                    <button class="appx" type="button" data-theme-set="sepia" title="褐（护眼）">褐</button>
+                    <button class="appx" type="button" data-theme-set="dark" title="暗（深色）">暗</button>
+                  </div>
+                </section>
+                <section class="settings-section" aria-label="阅读字号">
+                  <span class="settings-label">阅读字号</span>
+                  <div class="settings-control-row">
+                    <button class="appx" type="button" data-font-step="-1" title="缩小正文字号">A－</button>
+                    <span id="readScaleValue" class="settings-value">100%</span>
+                    <button class="appx" type="button" data-font-step="1" title="放大正文字号">A＋</button>
+                  </div>
+                </section>
+                <section class="settings-section" aria-label="密度">
+                  <span class="settings-label">密度</span>
+                  <div class="appx-seg settings-seg" role="group" aria-label="密度">
+                    <button class="appx" type="button" data-density-set="comfortable" title="宽松阅读密度">宽松</button>
+                    <button class="appx" type="button" data-density-set="compact" title="紧凑阅读密度">紧凑</button>
+                  </div>
+                </section>
+                <section class="settings-section" aria-label="当前视图详略">
+                  <span class="settings-label">当前视图</span>
+                  <div class="appx-seg settings-seg view-mode-seg" role="group" aria-label="当前视图详略">
+                    <button class="appx" type="button" data-view-verbosity="standard" title="标准视图（Ctrl+O）">标准</button>
+                    <button class="appx" type="button" data-view-verbosity="detailed" title="详细视图（Ctrl+O）">详细</button>
+                    <button class="appx" type="button" data-view-verbosity="summary" title="摘要视图（Ctrl+O）">摘要</button>
+                  </div>
+                </section>
+                <section class="settings-section" aria-label="默认视图详略">
+                  <span class="settings-label">默认视图</span>
+                  <div class="appx-seg settings-seg view-mode-seg" role="group" aria-label="默认视图详略">
+                    <button class="appx" type="button" data-default-view-verbosity="standard" title="默认标准视图">标准</button>
+                    <button class="appx" type="button" data-default-view-verbosity="detailed" title="默认详细视图">详细</button>
+                    <button class="appx" type="button" data-default-view-verbosity="summary" title="默认摘要视图">摘要</button>
+                  </div>
+                </section>
+                <section class="settings-section" aria-label="大纲">
+                  <span class="settings-label">大纲</span>
+                  <button id="toggleOutline" class="appx settings-wide-button" type="button" title="打开/收起大纲（Ctrl+M）" aria-pressed="false">打开大纲</button>
+                </section>
+                <label class="settings-toggle-row" title="没有保存过大纲状态时默认打开大纲面板">
+                  <span>大纲面板默认开启</span>
+                  <input id="defaultOutlineOpen" type="checkbox">
+                </label>
+              </div>
             </div>
-            <button class="appx" type="button" data-density-toggle title="切换阅读密度（宽松/紧凑）">密</button>
           </div>
           <div class="reading-tools" role="group" aria-label="阅读工具">
-            <div class="appx-seg view-mode-seg" role="group" aria-label="视图详略">
-              <button class="appx" type="button" data-view-verbosity="standard" title="标准视图（Ctrl+O）">标准</button>
-              <button class="appx" type="button" data-view-verbosity="detailed" title="详细视图（Ctrl+O）">详细</button>
-              <button class="appx" type="button" data-view-verbosity="summary" title="摘要视图（Ctrl+O）">摘要</button>
-            </div>
-            <button id="toggleOutline" class="appx" type="button" title="打开/收起大纲（Ctrl+M）" aria-pressed="false">大纲</button>
             <button id="openShortcuts" class="appx" type="button" title="快捷键（⌘/）">⌘/</button>
           </div>
           <div id="exports" class="exports"></div>
@@ -783,7 +828,7 @@ button:disabled { cursor: wait; opacity: 0.55; transform: none; box-shadow: none
 .switches label:hover { color: var(--ink); }
 .switches input { position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none; }
 .switches label:has(input:checked) { background: var(--seal); color: #fdf3ec; }
-.appearance { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 6px; padding: 3px; border: 1px solid var(--line-2); border-radius: 9px; background: var(--panel); }
+.appearance { position: relative; display: inline-flex; flex: 0 0 auto; align-items: center; gap: 6px; padding: 3px; border: 1px solid var(--line-2); border-radius: 9px; background: var(--panel); }
 .appx-seg { display: inline-flex; gap: 2px; }
 .appx {
   min-height: 28px; min-width: 28px;
@@ -795,6 +840,106 @@ button:disabled { cursor: wait; opacity: 0.55; transform: none; box-shadow: none
 .appx:hover { background: rgba(127, 110, 80, 0.16); color: var(--ink); transform: none; }
 .appx.active { background: var(--ink); color: var(--paper); }
 .appx:focus-visible { outline: 2px solid rgba(177, 56, 42, 0.55); outline-offset: 2px; }
+.settings-shell { position: relative; display: inline-flex; }
+.settings-button { font-size: 14px; line-height: 1; }
+.settings-popover {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 45;
+  display: grid;
+  width: min(360px, calc(100vw - 32px));
+  max-height: min(680px, calc(100dvh - 112px));
+  gap: 12px;
+  overflow: auto;
+  border: 1px solid var(--line-2);
+  border-top: 3px solid var(--seal);
+  border-radius: 12px;
+  background: linear-gradient(180deg, var(--panel), var(--panel-2));
+  padding: 13px;
+  box-shadow: var(--shadow-panel);
+  scrollbar-width: thin;
+}
+.settings-popover[hidden] { display: none; }
+.settings-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-bottom: 1px solid var(--line);
+  padding: 0 2px 10px;
+}
+.settings-head b { color: var(--ink); font: 700 12px/1 var(--mono); letter-spacing: var(--track-label); }
+.settings-close {
+  min-height: 28px;
+  border: 1px solid var(--line-2);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  padding: 0 9px;
+  font: 700 10.5px/1 var(--mono);
+  letter-spacing: 0.02em;
+}
+.settings-close:hover { border-color: var(--seal); background: transparent; color: var(--seal-deep); transform: none; }
+.settings-section {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+}
+.settings-label {
+  color: var(--faint);
+  font: 700 11px/1.2 var(--mono);
+  letter-spacing: var(--track-label);
+}
+.settings-seg,
+.settings-control-row {
+  display: inline-flex;
+  min-width: 0;
+  width: fit-content;
+  max-width: 100%;
+  gap: 3px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--wash-1);
+  padding: 3px;
+}
+.settings-control-row { align-items: center; }
+.settings-value {
+  display: inline-flex;
+  min-width: 54px;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-soft);
+  font: 700 11px/1 var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+.settings-wide-button {
+  justify-self: start;
+  border: 1px solid var(--line);
+  background: var(--wash-1);
+  padding: 0 10px;
+}
+.settings-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid var(--line);
+  color: var(--ink-soft);
+  padding: 12px 2px 1px;
+  font: 700 12px/1.35 var(--sans);
+  cursor: pointer;
+  user-select: none;
+}
+.settings-toggle-row input {
+  width: 34px;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--seal);
+  cursor: pointer;
+}
 .exports { display: inline-flex; flex: 0 0 auto; flex-wrap: wrap; gap: 8px; align-items: center; }
 .exports a, .exports button {
   display: inline-flex; min-height: 34px; align-items: center;
@@ -807,6 +952,8 @@ button:disabled { cursor: wait; opacity: 0.55; transform: none; box-shadow: none
   letter-spacing: 0.03em;
 }
 .exports a:hover, .exports button:hover { border-color: var(--seal); background: transparent; color: var(--seal-deep); transform: translateY(-1px); }
+.exports button[data-publish-gist] { border-color: var(--pine); color: var(--pine); }
+.exports button[data-publish-gist]:hover { border-color: var(--pine); background: var(--pine); color: #eef5ef; }
 .exports button[data-publish-cloud] { border-color: var(--ink); background: var(--ink); color: var(--paper); }
 .exports button[data-publish-cloud]:hover { border-color: var(--seal-deep); background: var(--seal-deep); color: #fdf3ec; }
 .publish-status {
@@ -1671,6 +1818,10 @@ pre {
   .sidebar { border-right: 0; border-bottom: 2px solid var(--ink); }
   .mh-row { flex-wrap: wrap; }
   .mh-row h2 { flex-basis: 100%; }
+  .settings-popover { position: fixed; top: 92px; right: 12px; left: 12px; width: auto; max-height: calc(100dvh - 112px); }
+  .settings-section { grid-template-columns: 1fr; gap: 7px; }
+  .settings-seg, .settings-control-row { width: 100%; }
+  .settings-seg .appx { flex: 1 1 0; }
   .turns { gap: 32px; }
   .user .message-card, .assistant .message-card, .tool .message-card { max-width: 100%; }
   .body { font-size: 17px; }
@@ -1897,7 +2048,7 @@ const state = {
   statsRequestToken: 0,
   statsRate: { in: 0, out: 0 },
   gallery: { open: false, source: "all", items: [], offset: 0, limit: 36, loading: false, hasMore: true, error: "", requestToken: 0, lightboxOpen: false, lightboxIndex: 0 },
-  reading: { verbosity: "standard", outlineOpen: false, outlineItems: [], outlineVisible: new Set(), outlineTargets: new Map(), outlineActiveId: "", shortcutsOpen: false },
+  reading: { verbosity: "standard", outlineOpen: false, outlineItems: [], outlineVisible: new Set(), outlineTargets: new Map(), outlineActiveId: "", shortcutsOpen: false, settingsOpen: false },
   liveTail: { active: false, ref: "", timer: 0, token: 0, head: null, polling: false, following: true, needsFollowPrompt: false },
 };
 const SOURCE_MODULES = [
@@ -1922,6 +2073,8 @@ const DENSITY_KEY = "agent-snapshot.density.v1";
 const READ_SCALE_KEY = "agent-snapshot.read-scale.v1";
 const VIEW_VERBOSITY_KEY = "agent-snapshot.view-verbosity.v1";
 const OUTLINE_OPEN_KEY = "agent-snapshot.outline-open.v1";
+const DEFAULT_VIEW_VERBOSITY_KEY = "agent-snapshot.default-view-verbosity.v1";
+const DEFAULT_OUTLINE_OPEN_KEY = "agent-snapshot.default-outline-open.v1";
 const THEMES = ["light", "sepia", "dark"];
 const VIEW_VERBOSITIES = ["standard", "detailed", "summary"];
 const VIEW_VERBOSITY_LABELS = { standard: "标准", detailed: "详细", summary: "摘要" };
@@ -3665,6 +3818,31 @@ function currentTheme() {
   return THEMES.includes(stored) ? stored : "light";
 }
 
+function setSettingsOpen(open, options = {}) {
+  state.reading.settingsOpen = Boolean(open);
+  const popover = $("settingsPopover");
+  const toggle = $("settingsToggle");
+  if (popover) {
+    popover.hidden = !state.reading.settingsOpen;
+  }
+  if (toggle) {
+    toggle.classList.toggle("active", state.reading.settingsOpen);
+    toggle.setAttribute("aria-expanded", state.reading.settingsOpen ? "true" : "false");
+  }
+  if (state.reading.settingsOpen) {
+    syncSettingsControls();
+  } else if (options.focus !== false) {
+    toggle?.focus();
+  }
+}
+
+function closeSettingsPopover(options = {}) {
+  if (!state.reading.settingsOpen) {
+    return;
+  }
+  setSettingsOpen(false, options);
+}
+
 function applyTheme(theme) {
   const value = THEMES.includes(theme) ? theme : "light";
   document.documentElement.setAttribute("data-theme", value);
@@ -3682,6 +3860,11 @@ function applyDensity(density) {
   const value = density === "compact" ? "compact" : "comfortable";
   document.documentElement.setAttribute("data-density", value);
   localStorage.setItem(DENSITY_KEY, value);
+  for (const button of document.querySelectorAll("[data-density-set]")) {
+    const active = button.dataset.densitySet === value;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", active ? "true" : "false");
+  }
   const toggle = document.querySelector("[data-density-toggle]");
   if (toggle) {
     toggle.classList.toggle("active", value === "compact");
@@ -3703,6 +3886,10 @@ function applyReadScale(scale) {
   const rounded = Math.round(value * 100) / 100;
   document.documentElement.style.setProperty("--read-scale", String(rounded));
   localStorage.setItem(READ_SCALE_KEY, String(rounded));
+  const valueEl = $("readScaleValue");
+  if (valueEl) {
+    valueEl.textContent = Math.round(rounded * 100) + "%";
+  }
 }
 
 function stepReadScale(direction) {
@@ -3713,11 +3900,25 @@ function initAppearance() {
   applyTheme(currentTheme());
   applyDensity(currentDensity());
   applyReadScale(currentReadScale());
+  $("settingsToggle")?.addEventListener("click", () => setSettingsOpen(!state.reading.settingsOpen, { focus: false }));
+  $("settingsClose")?.addEventListener("click", () => closeSettingsPopover());
+  document.addEventListener("click", (event) => {
+    if (!state.reading.settingsOpen) {
+      return;
+    }
+    if (event.target?.closest?.(".settings-shell")) {
+      return;
+    }
+    closeSettingsPopover({ focus: false });
+  });
   for (const button of document.querySelectorAll("[data-theme-set]")) {
     button.addEventListener("click", () => applyTheme(button.dataset.themeSet));
   }
   for (const button of document.querySelectorAll("[data-font-step]")) {
     button.addEventListener("click", () => stepReadScale(Number(button.dataset.fontStep) || 1));
+  }
+  for (const button of document.querySelectorAll("[data-density-set]")) {
+    button.addEventListener("click", () => applyDensity(button.dataset.densitySet));
   }
   const density = document.querySelector("[data-density-toggle]");
   if (density) {
@@ -3729,9 +3930,30 @@ var outlineObserver = null;
 var outlineRaf = 0;
 var outlineRebuildTimer = 0;
 
-function currentVerbosity() {
+function storedVerbosityChoice() {
   const stored = localStorage.getItem(VIEW_VERBOSITY_KEY);
+  return VIEW_VERBOSITIES.includes(stored) ? stored : "";
+}
+
+function defaultVerbosity() {
+  const stored = localStorage.getItem(DEFAULT_VIEW_VERBOSITY_KEY);
   return VIEW_VERBOSITIES.includes(stored) ? stored : "standard";
+}
+
+function currentVerbosity() {
+  return storedVerbosityChoice() || defaultVerbosity();
+}
+
+function applyDefaultVerbosity(mode, options = {}) {
+  const value = VIEW_VERBOSITIES.includes(mode) ? mode : "standard";
+  localStorage.setItem(DEFAULT_VIEW_VERBOSITY_KEY, value);
+  syncDefaultVerbosityControls(value);
+  if (!storedVerbosityChoice()) {
+    applyVerbosity(value, { persist: false });
+  }
+  if (options.toast) {
+    showToast("默认视图已设为" + VIEW_VERBOSITY_LABELS[value], false);
+  }
 }
 
 function applyVerbosity(mode, options = {}) {
@@ -3757,6 +3979,14 @@ function applyVerbosity(mode, options = {}) {
   scheduleOutlineRebuild();
 }
 
+function syncDefaultVerbosityControls(value = defaultVerbosity()) {
+  for (const button of document.querySelectorAll("[data-default-view-verbosity]")) {
+    const active = button.dataset.defaultViewVerbosity === value;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", active ? "true" : "false");
+  }
+}
+
 function cycleVerbosity() {
   const index = VIEW_VERBOSITIES.indexOf(state.reading.verbosity);
   const next = VIEW_VERBOSITIES[(index + 1) % VIEW_VERBOSITIES.length] || "standard";
@@ -3774,6 +4004,46 @@ function applyVerbosityToContent(root) {
   if (state.reading.verbosity === "detailed") {
     setTranscriptDetailsOpen(root, true);
   }
+}
+
+function storedOutlineChoice() {
+  const stored = localStorage.getItem(OUTLINE_OPEN_KEY);
+  return stored === "1" || stored === "0" ? stored : "";
+}
+
+function defaultOutlineOpen() {
+  return localStorage.getItem(DEFAULT_OUTLINE_OPEN_KEY) === "1";
+}
+
+function currentOutlineOpen() {
+  const stored = storedOutlineChoice();
+  return stored ? stored === "1" : defaultOutlineOpen();
+}
+
+function applyDefaultOutlineOpen(open, options = {}) {
+  const value = Boolean(open);
+  localStorage.setItem(DEFAULT_OUTLINE_OPEN_KEY, value ? "1" : "0");
+  syncDefaultOutlineControls(value);
+  if (!storedOutlineChoice()) {
+    setOutlineOpen(value, false);
+  }
+  if (options.toast) {
+    showToast(value ? "默认打开大纲" : "默认收起大纲", false);
+  }
+}
+
+function syncDefaultOutlineControls(value = defaultOutlineOpen()) {
+  const input = $("defaultOutlineOpen");
+  if (input) {
+    input.checked = Boolean(value);
+  }
+}
+
+function syncSettingsControls() {
+  syncDefaultVerbosityControls();
+  syncDefaultOutlineControls();
+  applyDensity(currentDensity());
+  applyReadScale(currentReadScale());
 }
 
 function afterTranscriptContentMutated(root, options = {}) {
@@ -3794,6 +4064,8 @@ function setOutlineOpen(open, persist = true) {
   if (toggle) {
     toggle.classList.toggle("active", state.reading.outlineOpen);
     toggle.setAttribute("aria-pressed", state.reading.outlineOpen ? "true" : "false");
+    toggle.textContent = state.reading.outlineOpen ? "收起大纲" : "打开大纲";
+    toggle.title = state.reading.outlineOpen ? "收起大纲（Ctrl+M）" : "打开大纲（Ctrl+M）";
   }
   if (persist) {
     localStorage.setItem(OUTLINE_OPEN_KEY, state.reading.outlineOpen ? "1" : "0");
@@ -4099,10 +4371,16 @@ function isTypingTarget(target) {
 
 function initReadingExperience() {
   applyVerbosity(currentVerbosity(), { persist: false, forceDetails: true });
-  setOutlineOpen(localStorage.getItem(OUTLINE_OPEN_KEY) === "1", false);
+  syncDefaultVerbosityControls();
+  setOutlineOpen(currentOutlineOpen(), false);
+  syncDefaultOutlineControls();
   for (const button of document.querySelectorAll("[data-view-verbosity]")) {
     button.addEventListener("click", () => applyVerbosity(button.dataset.viewVerbosity, { toast: true }));
   }
+  for (const button of document.querySelectorAll("[data-default-view-verbosity]")) {
+    button.addEventListener("click", () => applyDefaultVerbosity(button.dataset.defaultViewVerbosity, { toast: true }));
+  }
+  $("defaultOutlineOpen")?.addEventListener("change", (event) => applyDefaultOutlineOpen(event.target.checked, { toast: true }));
   $("toggleOutline").addEventListener("click", toggleOutline);
   $("closeOutline").addEventListener("click", () => setOutlineOpen(false));
   $("openShortcuts").addEventListener("click", openShortcuts);
@@ -4726,7 +5004,7 @@ function renderSnapshot(snapshot) {
   const resumeButton = snapshot.engine !== "trae"
     ? "<button type='button' class='resume-orca' data-resume-orca='" + esc(snapshot.ref || "") + "' data-resume-cwd='" + esc(snapshot.cwd || snapshot.displayCwd || "") + "' data-resume-title='" + esc(snapshot.title || "") + "' title='在 Orca 中打开终端并恢复此会话'>↗ 在 Orca 继续</button>"
     : "";
-  $("exports").innerHTML = resumeButton + "<a href='/export?" + options.toString() + "&format=html' target='_blank' rel='noopener noreferrer'>导出 HTML</a><a href='/export?" + options.toString() + "&format=md' target='_blank' rel='noopener noreferrer'>导出 Markdown</a><button type='button' data-publish-cloud='1'>发布分享</button><span id='publishStatus' class='publish-status'></span>";
+  $("exports").innerHTML = resumeButton + "<a href='/export?" + options.toString() + "&format=html' target='_blank' rel='noopener noreferrer'>导出 HTML</a><a href='/export?" + options.toString() + "&format=md' target='_blank' rel='noopener noreferrer'>导出 Markdown</a><button type='button' data-publish-gist='1'>Gist</button><button type='button' data-publish-cloud='1'>发布分享</button><span id='publishStatus' class='publish-status'></span>";
   renderTranscriptTurns(snapshot.transcriptHtml || "<div class='meta'>没有找到可分享的用户或助手消息。</div>");
   loadSessionCommits(snapshot, state.requestToken);
   renderSessionSearch();
@@ -5663,6 +5941,74 @@ async function publishSelectedSession() {
   }
 }
 
+function gistPublishToastMessage(code, fallback) {
+  if (code === "gh_not_installed") {
+    return "未找到 GitHub CLI（gh），请先安装后重试";
+  }
+  if (code === "gh_not_authenticated") {
+    return "GitHub CLI 未登录，请先运行 gh auth login";
+  }
+  if (code === "network_failure") {
+    return "网络连接失败，Gist 发布未完成";
+  }
+  return fallback || "Gist 发布失败";
+}
+
+async function publishSelectedSessionGist() {
+  if (!state.selected) {
+    return;
+  }
+  const status = $("publishStatus");
+  const button = document.querySelector("[data-publish-gist]");
+  if (button) button.disabled = true;
+  if (status) {
+    status.textContent = "正在发布 Gist...";
+    status.classList.remove("error", "warning");
+  }
+  try {
+    const { response, payload } = await fetchJsonRequest("/api/publish-gist", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "${MUTATION_CSRF_HEADER}": csrfToken,
+      },
+      body: JSON.stringify({ id: state.selected }),
+    }, "发布 Gist");
+    if (!response.ok || !payload.ok) {
+      const message = gistPublishToastMessage(payload.code, payload.error || "Gist 发布失败：HTTP " + response.status);
+      if (status) {
+        status.textContent = message;
+        status.classList.add("error");
+        status.classList.remove("warning");
+      }
+      showToast(message, true);
+      return;
+    }
+    const gistUrl = String(payload.url || "");
+    if (!gistUrl) {
+      throw new Error("Gist 发布响应未返回链接。");
+    }
+    const copied = await copyShareUrlToClipboard(gistUrl);
+    if (status) {
+      status.classList.toggle("warning", !copied);
+      status.classList.remove("error");
+      status.innerHTML = (copied ? "Gist 已发布，链接已复制：" : "Gist 已发布，复制失败，请手动复制：") +
+        " <a href='" + esc(gistUrl) + "' target='_blank' rel='noopener noreferrer'>" + esc(gistUrl) + "</a>";
+    }
+    showToast(copied ? "Gist 已发布，链接已复制" : "Gist 已发布，复制链接失败", !copied);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (status) {
+      status.textContent = message;
+      status.classList.add("error");
+      status.classList.remove("warning");
+    }
+    showToast(message, true);
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
 function formatRiskTurns(risk) {
   const turns = Array.isArray(risk.turns) ? risk.turns : [];
   const visibleTurns = turns.slice(0, 18).join(", ");
@@ -5954,6 +6300,11 @@ document.addEventListener("keydown", (event) => {
     closeShortcuts();
     return;
   }
+  if (event.key === "Escape" && state.reading.settingsOpen) {
+    event.preventDefault();
+    closeSettingsPopover();
+    return;
+  }
   if (event.key === "Escape" && state.search.open) {
     event.preventDefault();
     closeSearchDialog(false);
@@ -5964,6 +6315,10 @@ document.addEventListener("keydown", (event) => {
   }
 });
 $("exports").addEventListener("click", (event) => {
+  if (event.target.closest("[data-publish-gist]")) {
+    publishSelectedSessionGist();
+    return;
+  }
   if (event.target.closest("[data-publish-cloud]")) {
     publishSelectedSession();
     return;

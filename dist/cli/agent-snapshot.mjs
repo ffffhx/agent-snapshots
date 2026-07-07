@@ -3,7 +3,7 @@
 import { execFile } from "node:child_process";
 import { existsSync, readFileSync, renameSync } from "node:fs";
 import { createHash } from "node:crypto";
-import { appendFile, mkdir, mkdtemp, readFile, rm, unlink, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, rm, unlink, writeFile } from "node:fs/promises";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
@@ -12,6 +12,7 @@ import { promisify } from "node:util";
 import { sanitizeSnapshotHtml as sanitizeSnapshotTurnHtml, stripAppDirectives as stripCodexAppDirectives, } from "../shared/sanitize.js";
 import { isInterruptionMarker, renderTranscriptHtml } from "../renderers/transcript.js";
 import { send, sendJson } from "../server/http.js";
+import { createGitHubGist } from "../server/gist-publish.mjs";
 import { serveLocalViewer } from "../server/local-viewer.mjs";
 import { listSessions, loadSnapshot, searchSessions } from "../sources/index.mjs";
 const packageRoot = findPackageRoot(path.dirname(fileURLToPath(import.meta.url)));
@@ -681,72 +682,6 @@ async function publishSnapshot(snapshot, { apiUrl, token, siteUrl, expiresInDays
         throw new Error("Publish response did not include a share id and URL");
     }
     return payload;
-}
-async function createGitHubGist(html, { publicGist = false } = {}) {
-    const tempDir = await mkdtemp(path.join(os.tmpdir(), "agent-snapshot-gist-"));
-    const filePath = path.join(tempDir, "index.html");
-    try {
-        await writeFile(filePath, html, "utf8");
-        return await createGitHubGistFromFile(filePath, { publicGist });
-    }
-    finally {
-        await rm(tempDir, { recursive: true, force: true });
-    }
-}
-async function createGitHubGistFromFile(filePath, { publicGist = false } = {}) {
-    const ghBin = process.env.AGENT_SNAPSHOT_GH_BIN || "gh";
-    const args = ["gist", "create", "--filename", "index.html"];
-    if (publicGist) {
-        args.push("--public");
-    }
-    args.push(filePath);
-    let result;
-    try {
-        result = await execFileAsync(ghBin, args, { maxBuffer: 2 * 1024 * 1024 });
-    }
-    catch (error) {
-        throw new Error(formatGitHubGistError(error));
-    }
-    const output = [result.stdout, result.stderr].filter(Boolean).join("\n");
-    const gistUrl = parseGistUrl(output);
-    const gistId = gistIdFromUrl(gistUrl);
-    if (!gistUrl || !gistId) {
-        throw new Error("gh gist create 未返回可识别的 Gist 地址，请确认 GitHub CLI 可用并重试。");
-    }
-    return {
-        gistUrl,
-        previewUrl: "https://gistpreview.github.io/?" + gistId + "/index.html",
-    };
-}
-function formatGitHubGistError(error) {
-    const code = error?.code || error?.cause?.code || "";
-    const message = [error?.stderr, error?.stdout, error?.message].filter(Boolean).join("\n").trim();
-    const hint = "请先运行：brew install gh && gh auth login";
-    if (code === "ENOENT") {
-        return "未找到 GitHub CLI（gh）。" + hint;
-    }
-    if (/not logged in|authentication|auth login|gh auth/i.test(message)) {
-        return "GitHub CLI 未登录或认证失败。" + hint + (message ? "\n" + message : "");
-    }
-    return "创建 GitHub Gist 失败。" + hint + (message ? "\n" + message : "");
-}
-function parseGistUrl(output) {
-    const match = String(output || "").match(/https:\/\/gist\.github\.com\/[^\s]+/);
-    return match ? match[0].replace(/[),.;]+$/, "") : "";
-}
-function gistIdFromUrl(url) {
-    if (!url) {
-        return "";
-    }
-    try {
-        const parsed = new URL(url);
-        const parts = parsed.pathname.split("/").filter(Boolean);
-        return parts[parts.length - 1] || "";
-    }
-    catch {
-        const parts = String(url).split(/[/?#]/).filter(Boolean);
-        return parts[parts.length - 1] || "";
-    }
 }
 function createShareRequestPayload(snapshot, { apiUrl, siteUrl, expiresInDays, shareId }) {
     const normalizedApiUrl = resolveShareApiUrl(apiUrl);
