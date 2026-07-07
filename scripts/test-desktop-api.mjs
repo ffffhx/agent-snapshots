@@ -11,6 +11,8 @@ const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 const CSRF_HEADER = "x-agent-snapshot-csrf";
 const SESSION_ID = "desktop-api-session-001";
 const PNG_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=";
+const PEEK_SECRET = "sk-desktopPeekSecretToken1234567890";
+const LONG_EMOJI_TEXT = "\u{1F600}".repeat(405);
 
 const tempDir = await mkdtemp(path.join(os.tmpdir(), "agent-snapshots-desktop-api-"));
 let serverProcess;
@@ -224,6 +226,16 @@ async function assertSessionPeek(viewerUrl) {
   });
   assert(missing.status === 400, `missing session-peek id should return 400, got ${missing.status}`);
 
+  const invalid = await fetch(`${viewerUrl}/api/session-peek?id=${encodeURIComponent("codex:../../outside.jsonl")}`, {
+    signal: AbortSignal.timeout(2000),
+  });
+  assert(invalid.status === 400, `invalid session-peek id should return 400, got ${invalid.status}`);
+
+  const notFound = await fetch(`${viewerUrl}/api/session-peek?id=${encodeURIComponent("codex:not-a-real-session")}`, {
+    signal: AbortSignal.timeout(2000),
+  });
+  assert(notFound.status === 404, `unknown session-peek id should return 404, got ${notFound.status}`);
+
   const sessions = await fetchJson(`${viewerUrl}/api/sessions?source=all&limit=1&completeOnly=0`);
   assert(Array.isArray(sessions) && sessions.length > 0, "fixture should provide a real session");
   const id = sessions[0].ref || `codex:${sessions[0].id}`;
@@ -237,6 +249,15 @@ async function assertSessionPeek(viewerUrl) {
   assert(payload.turns[0].role === "assistant", "turns=1 should return the last assistant message from the fixture");
   assert(payload.turns[0].text === "The image fixture is available.", "session peek should return plain turn text");
   assert(payload.turns.every((turn) => typeof turn.text === "string" && turn.text.length <= 400), "peek turn text should be capped at 400 chars");
+
+  const allTurns = await fetchJson(`${viewerUrl}/api/session-peek?id=${encodeURIComponent(id)}&turns=3`);
+  const redactedTurn = allTurns.turns.find((turn) => String(turn.text || "").includes("REDACTED"));
+  assert(redactedTurn, "peek should use the same text redaction policy as snapshots");
+  assert(!JSON.stringify(allTurns).includes(PEEK_SECRET), "peek payload should not leak raw secrets");
+  const emojiTurn = allTurns.turns.find((turn) => Array.from(String(turn.text || "")).every((char) => char === "\u{1F600}"));
+  assert(emojiTurn, "peek should include the long emoji fixture turn");
+  assert(Array.from(emojiTurn.text).length === 400, `peek should truncate by code point, got ${Array.from(emojiTurn.text).length}`);
+  assert(!emojiTurn.text.includes("\uFFFD"), "peek truncation should not introduce replacement characters");
 }
 
 async function assertLauncherPrefs(viewerUrl, origin, csrfToken) {
@@ -298,6 +319,32 @@ async function assertLauncherPrefs(viewerUrl, origin, csrfToken) {
 
   const afterUnpin = await fetchJson(`${viewerUrl}/api/launcher-prefs`);
   assert(!afterUnpin.pinned.some((item) => item.ref === ref), "pinned ref should be removed after unpin");
+
+  const concurrentPins = Array.from({ length: 6 }, (_, index) => `codex:desktop-api-race-pin-${index}`);
+  const concurrentTouches = Array.from({ length: 6 }, (_, index) => ({
+    ref: `codex:desktop-api-race-touch-${index}`,
+    cwd: path.join(tempDir, "race-project", String(index)),
+  }));
+  await Promise.all([
+    ...concurrentPins.map((pinRef) => fetchJson(`${viewerUrl}/api/launcher-prefs/pin`, {
+      method: "POST",
+      headers: mutationHeaders(origin, csrfToken),
+      body: JSON.stringify({ ref: pinRef, engine: "codex", pinned: true }),
+    })),
+    ...concurrentTouches.map((touchItem) => fetchJson(`${viewerUrl}/api/launcher-prefs/touch`, {
+      method: "POST",
+      headers: mutationHeaders(origin, csrfToken),
+      body: JSON.stringify(touchItem),
+    })),
+  ]);
+  const afterConcurrent = await fetchJson(`${viewerUrl}/api/launcher-prefs`);
+  for (const pinRef of concurrentPins) {
+    assert(afterConcurrent.pinned.some((item) => item.ref === pinRef), `concurrent pin should persist ${pinRef}`);
+  }
+  for (const touchItem of concurrentTouches) {
+    assert(afterConcurrent.accesses?.[touchItem.ref]?.count === 1, `concurrent touch ref should persist ${touchItem.ref}`);
+    assert(afterConcurrent.projects?.[touchItem.cwd]?.count === 1, `concurrent touch cwd should persist ${touchItem.cwd}`);
+  }
 }
 
 async function assertRevealInFile(viewerUrl, origin, csrfToken) {
@@ -460,6 +507,24 @@ async function writeCodexFixture(codexHome) {
           { type: "input_text", text: "Inspect this desktop API fixture image." },
           { type: "input_image", image_url: PNG_DATA_URL, detail: "low" },
         ],
+      },
+    },
+    {
+      type: "response_item",
+      timestamp: "2026-06-01T00:00:01.500Z",
+      payload: {
+        type: "message",
+        role: "user",
+        content: [{ type: "input_text", text: `Use this API key only in tests: ${PEEK_SECRET}` }],
+      },
+    },
+    {
+      type: "response_item",
+      timestamp: "2026-06-01T00:00:01.750Z",
+      payload: {
+        type: "message",
+        role: "user",
+        content: [{ type: "input_text", text: LONG_EMOJI_TEXT }],
       },
     },
     {

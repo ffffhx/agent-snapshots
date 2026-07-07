@@ -6,6 +6,7 @@ const PINNED_LIMIT = 20;
 const ACCESS_REF_LIMIT = 200;
 const ACCESS_PROJECT_LIMIT = 50;
 const PREFS_PATH = join(process.env.AGENT_SNAPSHOT_PREFS_DIR || join(homedir(), ".agent-snapshot"), "launcher-prefs.json");
+let prefsMutationQueue = Promise.resolve();
 export async function readLauncherPrefs() {
     try {
         const raw = await readFile(PREFS_PATH, "utf8");
@@ -20,32 +21,42 @@ export async function setLauncherSessionPinned(input) {
     if (!parsed.ok) {
         return parsed;
     }
-    const prefs = await readLauncherPrefs();
-    const nextPinned = prefs.pinned.filter((item) => item.ref !== parsed.ref);
-    if (parsed.pinned) {
-        nextPinned.push({
-            ref: parsed.ref,
-            engine: parsed.engine,
-            pinnedAt: new Date().toISOString(),
-        });
-    }
-    const next = normalizePrefs({ ...prefs, pinned: nextPinned.slice(-PINNED_LIMIT) });
-    await writeLauncherPrefs(next);
-    return { ok: true, pinned: next.pinned };
+    return mutateLauncherPrefs(async (prefs) => {
+        const nextPinned = prefs.pinned.filter((item) => item.ref !== parsed.ref);
+        if (parsed.pinned) {
+            nextPinned.push({
+                ref: parsed.ref,
+                engine: parsed.engine,
+                pinnedAt: new Date().toISOString(),
+            });
+        }
+        const next = normalizePrefs({ ...prefs, pinned: nextPinned.slice(-PINNED_LIMIT) });
+        await writeLauncherPrefs(next);
+        return { ok: true, pinned: next.pinned };
+    });
 }
 export async function recordLauncherAccess(input) {
     const parsed = normalizeTouchInput(input);
     if (!parsed.ok) {
         return parsed;
     }
-    const prefs = await readLauncherPrefs();
-    const next = normalizePrefs({
-        ...prefs,
-        accesses: incrementUsageRecord(prefs.accesses, parsed.ref, parsed.at),
-        projects: parsed.cwd ? incrementUsageRecord(prefs.projects, parsed.cwd, parsed.at) : prefs.projects,
+    return mutateLauncherPrefs(async (prefs) => {
+        const next = normalizePrefs({
+            ...prefs,
+            accesses: incrementUsageRecord(prefs.accesses, parsed.ref, parsed.at),
+            projects: parsed.cwd ? incrementUsageRecord(prefs.projects, parsed.cwd, parsed.at) : prefs.projects,
+        });
+        await writeLauncherPrefs(next);
+        return { ok: true, prefs: next };
     });
-    await writeLauncherPrefs(next);
-    return { ok: true, prefs: next };
+}
+async function mutateLauncherPrefs(mutator) {
+    const run = prefsMutationQueue.catch(() => undefined).then(async () => {
+        const prefs = await readLauncherPrefs();
+        return mutator(prefs);
+    });
+    prefsMutationQueue = run.then(() => undefined, () => undefined);
+    return run;
 }
 function emptyLauncherPrefs() {
     return { pinned: [], accesses: {}, projects: {} };

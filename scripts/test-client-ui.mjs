@@ -142,6 +142,9 @@ async function launcherRuntime() {
       "formatReset",
       "freshnessText",
       "quotaMeter",
+      "isTypingTarget",
+      "shouldOpenPreviewFromSearchInput",
+      "peekSnippetText",
       "resumeCommand",
       "setScope",
     ],
@@ -162,6 +165,9 @@ function runCalls() { return runCallCount; }
       "rankRecentRows",
       "decayedUsageBoost",
       "quotaMeter",
+      "isTypingTarget",
+      "shouldOpenPreviewFromSearchInput",
+      "peekSnippetText",
       "resumeCommand",
       "setScope",
     ],
@@ -257,6 +263,25 @@ test("launcher quota meter classes switch at green amber red thresholds", async 
   assert.match(quotaMeter("5h", { usedPercent: 60.1, resetsAt }, updatedAt), /quota-meter warn/);
   assert.match(quotaMeter("5h", { usedPercent: 85, resetsAt }, updatedAt), /quota-meter warn/);
   assert.match(quotaMeter("5h", { usedPercent: 85.1, resetsAt }, updatedAt), /quota-meter danger/);
+});
+
+test("launcher ArrowRight preview shortcut respects search input caret", async () => {
+  await withDom(`<body><input id="q" value="abcdef"><button id="button"></button></body>`, async () => {
+    const { isTypingTarget, shouldOpenPreviewFromSearchInput, peekSnippetText } = await launcherRuntime();
+    const input = document.getElementById("q");
+    input.setSelectionRange(2, 2);
+    assert.equal(shouldOpenPreviewFromSearchInput(input), false, "middle-caret ArrowRight should move the caret");
+    input.setSelectionRange(6, 6);
+    assert.equal(shouldOpenPreviewFromSearchInput(input), true, "end-caret ArrowRight should open preview");
+    input.setSelectionRange(1, 4);
+    assert.equal(shouldOpenPreviewFromSearchInput(input), false, "range selection should not open preview");
+    assert.equal(isTypingTarget(input), true, "document shortcut should ignore focused input events");
+    assert.equal(isTypingTarget(document.getElementById("button")), false, "document shortcut can run outside typing controls");
+
+    const longEmoji = "\u{1F600}".repeat(405);
+    assert.equal(Array.from(peekSnippetText(longEmoji)).length, 400, "client preview truncates by code point");
+    assert.equal(peekSnippetText(longEmoji).includes("\uFFFD"), false, "client preview should not introduce replacement characters");
+  });
 });
 
 // --- Viewer ----------------------------------------------------------------

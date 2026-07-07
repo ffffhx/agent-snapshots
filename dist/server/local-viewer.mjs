@@ -295,22 +295,33 @@ export async function serveLocalViewer({ codexHome, claudeHome, traeHome, traeAp
                 return;
             }
             if (url.pathname === "/api/session-peek") {
-                const id = url.searchParams.get("id");
+                const rawId = url.searchParams.get("id") || "";
+                const id = normalizePeekSessionRef(rawId);
                 if (!id) {
-                    sendJson(response, { error: "missing id" }, 400);
+                    sendJson(response, { error: rawId ? "invalid id" : "missing id" }, 400);
                     return;
                 }
                 const turnLimit = Math.min(20, readPositiveInteger(url.searchParams.get("turns") || "6", "turns"));
-                const peek = await readSessionPeek(id, {
-                    codexHome,
-                    claudeHome,
-                    traeHome,
-                    traeAppHome,
-                    traeRecordingsDir,
-                    loadSnapshot,
-                    cache: sessionHeadCache,
-                    turnLimit,
-                });
+                let peek;
+                try {
+                    peek = await readSessionPeek(id, {
+                        codexHome,
+                        claudeHome,
+                        traeHome,
+                        traeAppHome,
+                        traeRecordingsDir,
+                        loadSnapshot,
+                        cache: sessionHeadCache,
+                        turnLimit,
+                    });
+                }
+                catch (error) {
+                    if (isSessionNotFoundError(error)) {
+                        sendJson(response, { error: "session not found" }, 404);
+                        return;
+                    }
+                    throw error;
+                }
                 sendJson(response, peek);
                 return;
             }
@@ -753,11 +764,28 @@ async function readSessionPeek(id, { codexHome, claudeHome, traeHome, traeAppHom
     const filePath = typeof snapshot?.filePath === "string" ? snapshot.filePath : "";
     const fileInfo = filePath ? await stat(filePath).catch(() => null) : null;
     return {
-        title: redactText(snapshot?.title || snapshot?.id || id),
+        title: redactText(snapshot?.title || snapshot?.id || "会话预览"),
         project: snapshotProjectName(snapshot),
         mtime: sessionLastEventAt(snapshot, fileInfo),
         turns: sessionPeekTurns(snapshot?.turns || [], turnLimit),
     };
+}
+function normalizePeekSessionRef(value) {
+    const text = String(value || "").trim();
+    const match = /^(codex|claude|trae):(.+)$/i.exec(text);
+    if (!match) {
+        return "";
+    }
+    const engine = match[1].toLowerCase();
+    const id = String(match[2] || "").trim();
+    if (!id || id.length > 256 || /\.jsonl$/i.test(id) || /[\x00-\x1f\x7f\\/]/.test(id)) {
+        return "";
+    }
+    return `${engine}:${id}`;
+}
+function isSessionNotFoundError(error) {
+    const message = error instanceof Error ? error.message : String(error || "");
+    return /\bsession not found\b/i.test(message) || /\bsession file not found\b/i.test(message);
 }
 function snapshotProjectName(snapshot) {
     const raw = String(snapshot?.displayCwd || snapshot?.cwd || "").trim();
@@ -782,7 +810,8 @@ function sessionPeekTurns(turns, turnLimit) {
     }));
 }
 function peekSnippetText(value) {
-    return redactText(String(value || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n")).slice(0, 400);
+    const text = redactText(String(value || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n"));
+    return Array.from(text).slice(0, 400).join("");
 }
 function isSnapshotComplete(snapshot) {
     if (snapshot?.complete === true) {

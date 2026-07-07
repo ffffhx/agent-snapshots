@@ -833,7 +833,7 @@ function normalizePeekPayload(payload,it){
 }
 
 function peekSnippetText(text){
-  return String(text||"").replace(/\\r\\n/g,"\\n").replace(/\\r/g,"\\n").slice(0,400);
+  return Array.from(String(text||"").replace(/\\r\\n/g,"\\n").replace(/\\r/g,"\\n")).slice(0,400).join("");
 }
 
 function renderPreview(){
@@ -1067,12 +1067,26 @@ function handleCommandKey(e){
   return false;
 }
 
+function isTypingTarget(target){
+  const el=target&&target.closest?target.closest("input,textarea,select,[contenteditable='true']"):null;
+  return !!el;
+}
+
+function shouldOpenPreviewFromSearchInput(input){
+  if(!input) return true;
+  const value=String(input.value||"");
+  const start=Number(input.selectionStart);
+  const end=Number(input.selectionEnd);
+  if(!Number.isFinite(start)||!Number.isFinite(end)) return true;
+  return start===end && end>=value.length;
+}
+
 $("q").addEventListener("input",schedule);
 $("q").addEventListener("keydown",(e)=>{
   if(state.shortcutsOpen && e.key==="Escape"){ e.preventDefault(); closeShortcuts(); return; }
   if(state.previewOpen && (e.key==="Escape"||e.key==="ArrowLeft")){ e.preventDefault(); closePreview(); return; }
   if(handleCommandKey(e)) return;
-  if(e.key==="ArrowRight"){ e.preventDefault(); openPreview(); return; }
+  if(e.key==="ArrowRight" && shouldOpenPreviewFromSearchInput(e.currentTarget)){ e.preventDefault(); openPreview(); return; }
   if(e.key==="ArrowDown"){ e.preventDefault(); move(1); }
   else if(e.key==="ArrowUp"){ e.preventDefault(); move(-1); }
   else if(e.key==="Enter"){ e.preventDefault(); if(e.metaKey||e.ctrlKey) openFull(state.items[state.sel]); }
@@ -1119,13 +1133,14 @@ document.addEventListener("keydown",(e)=>{
   if(state.shortcutsOpen && e.key==="Escape"){ e.preventDefault(); closeShortcuts(); }
   else if(state.previewOpen && (e.key==="Escape"||e.key==="ArrowLeft")){ e.preventDefault(); closePreview(); }
   else if(handleCommandKey(e)) return;
-  else if(e.key==="ArrowRight"){ e.preventDefault(); openPreview(); }
+  else if(e.key==="ArrowRight" && !isTypingTarget(e.target)){ e.preventDefault(); openPreview(); }
 });
 document.addEventListener("visibilitychange",()=>{
-  if(document.hidden) clearTimeout(ambientTimer);
+  if(document.hidden){ clearTimeout(ambientTimer); clearTimeout(previewTimer); state.previewToken+=1; }
   else{
     refreshAmbientStatus();
     scheduleAmbientRefresh(AMBIENT_REFRESH_MS);
+    if(state.previewOpen) schedulePreviewLoad(0);
   }
 });
 $("q").focus();
