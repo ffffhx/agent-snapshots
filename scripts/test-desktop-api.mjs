@@ -81,6 +81,7 @@ try {
     ["multi-home Codex sessions list and round-trip refs", () => assertMultiHomeCodex(viewerUrl)],
     ["GET /api/session-peek returns lightweight redacted turns", () => assertSessionPeek(viewerUrl)],
     ["launcher prefs reject missing CSRF and persist pin changes", () => assertLauncherPrefs(viewerUrl, origin, csrfToken)],
+    ["session notes CRUD is local-only and capped", () => assertSessionNotes(viewerUrl, origin, csrfToken)],
     ["reveal-in-file rejects unsafe requests without opening Finder", () => assertRevealInFile(viewerUrl, origin, csrfToken)],
     ["POST routes reject disallowed origins", () => assertBadOriginRejected(viewerUrl, csrfToken)],
     ["claude quota starts a new block at the exact 5h boundary", () => assertClaudeQuotaBlockBoundary(path.join(tempDir, "claude-block-home"))],
@@ -374,6 +375,79 @@ async function assertLauncherPrefs(viewerUrl, origin, csrfToken) {
     assert(afterConcurrent.accesses?.[touchItem.ref]?.count === 1, `concurrent touch ref should persist ${touchItem.ref}`);
     assert(afterConcurrent.projects?.[touchItem.cwd]?.count === 1, `concurrent touch cwd should persist ${touchItem.cwd}`);
   }
+}
+
+async function assertSessionNotes(viewerUrl, origin, csrfToken) {
+  const noteRef = `codex:${SESSION_ID}`;
+  const initial = await fetchJson(`${viewerUrl}/api/session-notes?id=${encodeURIComponent(noteRef)}`);
+  assert(Object.keys(initial).length === 0, `empty note response should be {}, got ${JSON.stringify(initial)}`);
+
+  const noCsrf = await fetch(`${viewerUrl}/api/session-notes`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      origin,
+    },
+    body: JSON.stringify({ id: noteRef, text: "missing csrf" }),
+    signal: AbortSignal.timeout(2000),
+  });
+  assert([400, 403].includes(noCsrf.status), `session notes without CSRF should be rejected, got ${noCsrf.status}`);
+
+  const sentinel = "LOCAL_ONLY_NOTE_SENTINEL";
+  const longText = `${sentinel} ${"x".repeat(2100)}`;
+  const saved = await fetchJson(`${viewerUrl}/api/session-notes`, {
+    method: "POST",
+    headers: mutationHeaders(origin, csrfToken),
+    body: JSON.stringify({ id: noteRef, text: longText }),
+  });
+  assert(saved.ok === true, `note save should return ok=true: ${JSON.stringify(saved)}`);
+  assert(Array.from(saved.text || "").length === 2000, "note text should be capped at 2000 code points");
+  assertValidIso(saved.updatedAt, "note updatedAt");
+
+  const loaded = await fetchJson(`${viewerUrl}/api/session-notes?id=${encodeURIComponent(noteRef)}`);
+  assert(loaded.text === saved.text, "GET session note should return saved text");
+  assert(loaded.updatedAt === saved.updatedAt, "GET session note should return saved updatedAt");
+
+  const prefs = await fetchJson(`${viewerUrl}/api/launcher-prefs`);
+  assert(Array.isArray(prefs.noteRefs), "launcher prefs should include noteRefs");
+  assert(prefs.noteRefs.includes(noteRef), "launcher prefs noteRefs should include saved note ref");
+  assert(typeof prefs.notePreviews?.[noteRef] === "string", "launcher prefs should include note preview text");
+  assert(prefs.notePreviews[noteRef].includes(sentinel), "note preview should include the note summary");
+  assert(Array.from(prefs.notePreviews[noteRef]).length <= 80, "note preview should be capped at 80 chars");
+
+  const exportHtml = await fetchText(`${viewerUrl}/export?id=${encodeURIComponent(noteRef)}&format=html&redact=1&includeTools=1&includeToolOutput=0`);
+  assert(!exportHtml.includes(sentinel), "HTML export should not include local session notes");
+
+  const sharePayload = await fetchJson(`${viewerUrl}/api/share-payload?id=${encodeURIComponent(noteRef)}&redact=1&includeTools=1&includeToolOutput=0`, {
+    method: "POST",
+    headers: mutationHeaders(origin, csrfToken),
+  });
+  assert(!JSON.stringify(sharePayload).includes(sentinel), "share payload should not include local session notes");
+
+  const deleted = await fetchJson(`${viewerUrl}/api/session-notes`, {
+    method: "POST",
+    headers: mutationHeaders(origin, csrfToken),
+    body: JSON.stringify({ id: noteRef, text: "  \n  " }),
+  });
+  assert(deleted.ok === true && deleted.deleted === true, `empty note text should delete: ${JSON.stringify(deleted)}`);
+
+  const afterDelete = await fetchJson(`${viewerUrl}/api/session-notes?id=${encodeURIComponent(noteRef)}`);
+  assert(Object.keys(afterDelete).length === 0, "deleted note should return empty object");
+
+  for (let index = 0; index < 501; index += 1) {
+    const capRef = `codex:desktop-note-cap-${String(index).padStart(3, "0")}`;
+    const result = await fetchJson(`${viewerUrl}/api/session-notes`, {
+      method: "POST",
+      headers: mutationHeaders(origin, csrfToken),
+      body: JSON.stringify({ id: capRef, text: `cap note ${index}` }),
+    });
+    assert(result.ok === true, `cap note write should succeed for ${capRef}: ${JSON.stringify(result)}`);
+  }
+
+  const afterCap = await fetchJson(`${viewerUrl}/api/launcher-prefs`);
+  assert(afterCap.noteRefs.length === 500, `noteRefs should be capped at 500, got ${afterCap.noteRefs.length}`);
+  assert(!afterCap.noteRefs.includes("codex:desktop-note-cap-000"), "oldest note should be dropped after cap");
+  assert(afterCap.noteRefs.includes("codex:desktop-note-cap-500"), "newest note should remain after cap");
 }
 
 async function assertRevealInFile(viewerUrl, origin, csrfToken) {

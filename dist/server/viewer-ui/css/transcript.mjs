@@ -39,6 +39,123 @@ export const transcriptCss = `/* 目标 callout */
 .risk.medium b { color: var(--amber); }
 .risk span { line-height: 1.4; font-size: 13px; }
 .risk em { color: var(--muted); font-style: normal; font-size: 12.5px; line-height: 1.4; overflow-wrap: anywhere; }
+.session-note[hidden] { display: none; }
+.session-note {
+  margin: 12px clamp(20px, 2.2vw, 40px) 0;
+}
+.session-note-card {
+  display: grid;
+  gap: 12px;
+  max-width: 960px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--seal);
+  border-radius: 10px;
+  background: linear-gradient(180deg, var(--panel), var(--panel-2));
+  box-shadow: var(--shadow-soft);
+  padding: 12px 14px 14px;
+}
+.session-note-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+.session-note-head > div:first-child {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+.session-note-head b {
+  color: var(--seal);
+  font: 800 10px/1 var(--mono);
+  letter-spacing: 0.14em;
+}
+.session-note-head time,
+.session-note-head span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--faint);
+  font: 700 11px/1.25 var(--mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.session-note-actions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 6px;
+}
+.session-note-actions button,
+.session-note-foot button {
+  min-height: 28px;
+  border: 1px solid var(--line-2);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink-soft);
+  padding: 0 10px;
+  font: 700 11px/1 var(--mono);
+}
+.session-note-actions button:hover,
+.session-note-foot button:hover {
+  border-color: var(--seal);
+  color: var(--seal-deep);
+  transform: none;
+}
+.session-note-foot button {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--paper);
+}
+.session-note-foot button:hover {
+  border-color: var(--seal-deep);
+  background: var(--seal-deep);
+  color: #fdf3ec;
+}
+.session-note-foot button:disabled {
+  border-color: var(--line);
+  background: var(--wash-1);
+  color: var(--faint);
+}
+.session-note-text {
+  max-width: 86ch;
+  color: var(--ink);
+  font: 400 15.5px/1.7 var(--serif);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.session-note textarea {
+  width: 100%;
+  min-height: 132px;
+  resize: vertical;
+  border: 1px solid var(--line-2);
+  border-radius: 9px;
+  background: var(--field-bg);
+  color: var(--ink);
+  padding: 11px 12px;
+  font: 500 14px/1.55 var(--sans);
+  outline: 0;
+}
+.session-note textarea:focus {
+  border-color: rgba(177, 56, 42, 0.48);
+  background: var(--panel);
+  box-shadow: 0 0 0 3px rgba(177, 56, 42, 0.12);
+}
+.session-note-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--faint);
+  font: 700 11px/1 var(--mono);
+}
+.session-note-foot b {
+  color: var(--muted);
+}
+.session-note-error {
+  color: var(--red);
+  font: 700 11px/1.35 var(--mono);
+}
 .commit-card {
   justify-content: center;
 }

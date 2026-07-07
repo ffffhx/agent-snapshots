@@ -6,6 +6,7 @@ import { searchOverlayJs } from "./search-overlay.mjs";
 import { settingsReadingJs } from "./settings-reading.mjs";
 import { sessionsSidebarJs } from "./sessions-sidebar.mjs";
 import { transcriptLiveTailJs } from "./transcript-live-tail.mjs";
+import { sessionNotesJs } from "./session-notes.mjs";
 import { sharingActionsJs } from "./sharing-actions.mjs";
 import { bindingsShortcutsJs } from "./bindings-shortcuts.mjs";
 
@@ -17,6 +18,7 @@ export function serverJs() {
     settingsReadingJs,
     sessionsSidebarJs,
     transcriptLiveTailJs,
+    sessionNotesJs,
     sharingActionsJs,
     bindingsShortcutsJs,
   ].join("");

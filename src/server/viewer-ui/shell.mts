@@ -122,6 +122,7 @@ export function renderServerApp(csrfToken, shareConfig = {}) {
       </div>
       <div id="goal" class="goal"></div>
       <div id="risks" class="risks"></div>
+      <div id="sessionNote" class="session-note" hidden></div>
       <div id="turns" class="turns" tabindex="-1" aria-label="正文记录"></div>
       <button id="followLatest" class="follow-latest" type="button" hidden>↓ 跟随最新</button>
     </section>

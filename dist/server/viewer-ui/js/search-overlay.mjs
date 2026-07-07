@@ -642,6 +642,9 @@ async function previewSession(id, turn) {
   state.selected = id;
   renderSessions();
   showViewerLoading("正在预览会话...");
+  if (typeof prepareSessionNoteLoad === "function") {
+    prepareSessionNoteLoad(id);
+  }
   try {
     const params = new URLSearchParams({
       id,

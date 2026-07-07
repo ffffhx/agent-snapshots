@@ -5,6 +5,9 @@ import { dirname, join } from "node:path";
 const PINNED_LIMIT = 20;
 const ACCESS_REF_LIMIT = 200;
 const ACCESS_PROJECT_LIMIT = 50;
+const NOTE_LIMIT = 500;
+const NOTE_TEXT_LIMIT = 2000;
+const NOTE_PREVIEW_LIMIT = 80;
 const PREFS_PATH = join(process.env.AGENT_SNAPSHOT_PREFS_DIR || join(homedir(), ".agent-snapshot"), "launcher-prefs.json");
 let prefsMutationQueue = Promise.resolve();
 export async function readLauncherPrefs() {
@@ -50,6 +53,51 @@ export async function recordLauncherAccess(input) {
         return { ok: true, prefs: next };
     });
 }
+export async function readLauncherSessionNote(id) {
+    const ref = normalizeSessionRef(id);
+    if (!ref) {
+        return { ok: false, error: "invalid id" };
+    }
+    const prefs = await readLauncherPrefs();
+    return { ok: true, note: prefs.notes[ref] || null };
+}
+export async function setLauncherSessionNote(input) {
+    const ref = normalizeSessionRef(input.id);
+    if (!ref) {
+        return { ok: false, error: "invalid id" };
+    }
+    const text = normalizeNoteText(input.text);
+    return mutateLauncherPrefs(async (prefs) => {
+        const nextNotes = { ...prefs.notes };
+        if (!text.trim()) {
+            delete nextNotes[ref];
+            const next = normalizePrefs({ ...prefs, notes: nextNotes });
+            await writeLauncherPrefs(next);
+            return { ok: true, deleted: true, noteRefs: Object.keys(next.notes) };
+        }
+        nextNotes[ref] = {
+            text,
+            updatedAt: new Date().toISOString(),
+        };
+        const next = normalizePrefs({ ...prefs, notes: nextNotes });
+        await writeLauncherPrefs(next);
+        const note = next.notes[ref];
+        return { ok: true, text: note.text, updatedAt: note.updatedAt, noteRefs: Object.keys(next.notes) };
+    });
+}
+export function launcherPrefsApiResponse(prefs) {
+    const notePreviews = {};
+    for (const [ref, note] of Object.entries(prefs.notes)) {
+        notePreviews[ref] = notePreviewText(note.text);
+    }
+    return {
+        pinned: prefs.pinned,
+        accesses: prefs.accesses,
+        projects: prefs.projects,
+        noteRefs: Object.keys(prefs.notes),
+        notePreviews,
+    };
+}
 async function mutateLauncherPrefs(mutator) {
     const run = prefsMutationQueue.catch(() => undefined).then(async () => {
         const prefs = await readLauncherPrefs();
@@ -59,7 +107,7 @@ async function mutateLauncherPrefs(mutator) {
     return run;
 }
 function emptyLauncherPrefs() {
-    return { pinned: [], accesses: {}, projects: {} };
+    return { pinned: [], accesses: {}, projects: {}, notes: {} };
 }
 function normalizePrefs(value) {
     const pinned = Array.isArray(value?.pinned)
@@ -82,6 +130,7 @@ function normalizePrefs(value) {
             .slice(-PINNED_LIMIT),
         accesses: normalizeUsageMap(value?.accesses, ACCESS_REF_LIMIT, normalizeSessionRef),
         projects: normalizeUsageMap(value?.projects, ACCESS_PROJECT_LIMIT, normalizeProjectKey),
+        notes: normalizeNotesMap(value?.notes, NOTE_LIMIT),
     };
 }
 function normalizePinInput(input) {
@@ -132,6 +181,10 @@ function normalizeSessionRef(value) {
     const id = String(match?.[2] || "").trim();
     return engine && id ? `${engine}:${id}` : "";
 }
+function normalizeNoteText(value) {
+    const text = String(value ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+    return Array.from(text).slice(0, NOTE_TEXT_LIMIT).join("");
+}
 function normalizeProjectKey(value) {
     return String(value || "").trim().slice(0, 2048);
 }
@@ -165,6 +218,44 @@ function normalizeUsageMap(value, limit, normalizeKey) {
     }
     entries.sort((a, b) => new Date(b[1].last).getTime() - new Date(a[1].last).getTime());
     return Object.fromEntries(entries.slice(0, limit));
+}
+function normalizeNotesMap(value, limit) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+        return {};
+    }
+    const byRef = new Map();
+    let index = 0;
+    for (const [rawKey, rawNote] of Object.entries(value)) {
+        const ref = normalizeSessionRef(rawKey);
+        if (!ref) {
+            index += 1;
+            continue;
+        }
+        const rawRecord = rawNote && typeof rawNote === "object" && !Array.isArray(rawNote)
+            ? rawNote
+            : { text: String(rawNote ?? "") };
+        const text = normalizeNoteText(rawRecord.text);
+        if (!text.trim()) {
+            index += 1;
+            continue;
+        }
+        const updatedAt = validDateText(rawRecord.updatedAt) || new Date(0).toISOString();
+        const time = new Date(updatedAt).getTime();
+        const current = byRef.get(ref);
+        if (!current || time > current.time || (time === current.time && index > current.index)) {
+            byRef.set(ref, { note: { text, updatedAt }, index, time });
+        }
+        index += 1;
+    }
+    const entries = Array.from(byRef.entries()).sort((a, b) => {
+        const delta = b[1].time - a[1].time;
+        return delta || b[1].index - a[1].index;
+    });
+    return Object.fromEntries(entries.slice(0, limit).map(([ref, entry]) => [ref, entry.note]));
+}
+function notePreviewText(value) {
+    const compact = String(value || "").replace(/\s+/g, " ").trim();
+    return Array.from(compact).slice(0, NOTE_PREVIEW_LIMIT).join("");
 }
 function validDateText(value) {
     const text = String(value || "").trim();

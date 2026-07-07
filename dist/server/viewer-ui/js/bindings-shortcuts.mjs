@@ -187,6 +187,43 @@ $("sessionSearchInput").addEventListener("keydown", (event) => {
   }
 });
 $("sessionSearchRun").addEventListener("click", runSessionSearch);
+$("sessionNote").addEventListener("input", (event) => {
+  const input = event.target.closest("[data-session-note-input]");
+  if (!input) {
+    return;
+  }
+  const text = updateSessionNoteDraft(input.value);
+  if (input.value !== text) {
+    input.value = text;
+  }
+});
+$("sessionNote").addEventListener("focusout", (event) => {
+  if (event.target.closest("[data-session-note-input]")) {
+    saveSessionNote();
+  }
+});
+$("sessionNote").addEventListener("keydown", (event) => {
+  if (!event.target.closest("[data-session-note-input]")) {
+    return;
+  }
+  if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+    event.preventDefault();
+    saveSessionNote({ exitEditing: true });
+  }
+});
+$("sessionNote").addEventListener("click", (event) => {
+  if (event.target.closest("[data-session-note-edit]")) {
+    editSessionNote();
+    return;
+  }
+  if (event.target.closest("[data-session-note-close]")) {
+    closeSessionNote();
+    return;
+  }
+  if (event.target.closest("[data-session-note-save]")) {
+    saveSessionNote({ exitEditing: true });
+  }
+});
 $("sessionSearchResults").addEventListener("click", (event) => {
   const button = event.target.closest("[data-session-search-turn]");
   if (button) {
@@ -340,6 +377,10 @@ document.addEventListener("keydown", (event) => {
   }
 });
 $("exports").addEventListener("click", (event) => {
+  if (event.target.closest("[data-session-note-toggle]")) {
+    toggleSessionNote();
+    return;
+  }
   if (event.target.closest("[data-publish-gist]")) {
     publishSelectedSessionGist();
     return;

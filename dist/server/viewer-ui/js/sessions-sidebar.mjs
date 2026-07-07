@@ -155,6 +155,7 @@ function clearViewer(message) {
   state.requestToken += 1;
   stopLiveTail({ silent: true });
   state.currentSnapshot = null;
+  clearSessionNoteState();
   resetSessionSearchState(false);
   renderSessionSearch();
   $("title").textContent = "选择一个会话";
@@ -510,6 +511,9 @@ async function selectSession(id) {
   state.selected = id;
   renderSessions();
   showViewerLoading("正在加载会话内容...");
+  if (typeof prepareSessionNoteLoad === "function") {
+    prepareSessionNoteLoad(id);
+  }
   try {
     const response = await fetch("/api/snapshot?" + activeOptions().toString());
     const snapshot = await response.json();

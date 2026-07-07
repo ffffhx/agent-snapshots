@@ -120,6 +120,9 @@ html,body{height:100%;background:transparent;color:var(--ink);font-family:var(--
 .qact.pinact.active{border-color:rgba(255,211,107,0.34);background:rgba(255,211,107,0.12)}
 .pin-marker{display:inline-grid;place-items:center;width:17px;height:17px;flex:0 0 auto;font-size:10.5px;line-height:1;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.35))}
 .freq-marker{display:inline-grid;place-items:center;width:14px;height:14px;flex:0 0 auto;color:#ffd36b;font-size:10px;line-height:1;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.38))}
+.note-marker{position:relative;display:inline-block;width:14px;height:15px;flex:0 0 auto;border:1px solid rgba(233,220,196,0.25);border-radius:3px;background:rgba(233,220,196,0.08);box-shadow:inset 0 1px 0 rgba(255,255,255,0.08),0 1px 2px rgba(0,0,0,0.28)}
+.note-marker::before{position:absolute;left:3px;right:3px;top:4px;height:1px;background:#d7caa9;box-shadow:0 3px 0 rgba(215,202,169,0.72),0 6px 0 rgba(215,202,169,0.42);content:""}
+.note-marker::after{position:absolute;right:1px;top:1px;width:4px;height:4px;border-left:1px solid rgba(233,220,196,0.22);border-bottom:1px solid rgba(233,220,196,0.22);background:rgba(217,79,57,0.18);content:""}
 .empty{display:grid;place-items:center;height:100%;min-height:180px;padding:28px;color:var(--faint);font:600 13px/1.5 var(--mono);text-align:center}
 .spin{width:15px;height:15px;border:2px solid rgba(233,220,196,0.2);border-top-color:var(--seal);border-radius:99px;animation:sp .8s linear infinite;margin-right:8px;display:inline-block;vertical-align:-2px}
 @keyframes sp{to{transform:rotate(360deg)}}
@@ -192,7 +195,7 @@ const $=(id)=>document.getElementById(id);
 const esc=(v)=>String(v==null?"":v).replace(/[&<>"']/g,(c)=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const SCOPES=["all","codex","claude","trae"];
 const SCOPE_LABELS={all:"全部",codex:"Codex",claude:"Claude",trae:"Trae"};
-const state={items:[],sel:0,scope:"all",query:"",mode:"recent",token:0,loading:false,searchMs:0,matched:0,pinnedPrefs:[],pinnedSet:new Set(),accessPrefs:{},projectPrefs:{},pinnedCount:0,liveCount:0,recentCount:0,quota:null,ambientLiveCount:0,shortcutsOpen:false,previewOpen:false,previewLoading:false,previewError:false,previewKey:"",previewData:null,previewToken:0};
+const state={items:[],sel:0,scope:"all",query:"",mode:"recent",token:0,loading:false,searchMs:0,matched:0,pinnedPrefs:[],pinnedSet:new Set(),accessPrefs:{},projectPrefs:{},noteRefs:new Set(),notePreviews:{},pinnedCount:0,liveCount:0,recentCount:0,quota:null,ambientLiveCount:0,shortcutsOpen:false,previewOpen:false,previewLoading:false,previewError:false,previewKey:"",previewData:null,previewToken:0};
 let timer=0;
 let ambientTimer=0;
 let ambientToken=0;
@@ -273,7 +276,9 @@ function normalizeLauncherPrefs(prefs){
   return {
     pinned:normalizePinnedPrefs(prefs&&prefs.pinned),
     accesses:normalizeUsagePrefs(prefs&&prefs.accesses),
-    projects:normalizeUsagePrefs(prefs&&prefs.projects)
+    projects:normalizeUsagePrefs(prefs&&prefs.projects),
+    noteRefs:normalizeNoteRefs(prefs&&prefs.noteRefs),
+    notePreviews:normalizeNotePreviews(prefs&&prefs.notePreviews)
   };
 }
 
@@ -300,6 +305,8 @@ function setLauncherPrefs(prefs){
   const normalized=normalizeLauncherPrefs(prefs);
   state.accessPrefs=normalized.accesses;
   state.projectPrefs=normalized.projects;
+  state.noteRefs=new Set(normalized.noteRefs);
+  state.notePreviews=normalized.notePreviews;
   setPinnedPrefs(normalized.pinned);
 }
 
@@ -312,6 +319,30 @@ function normalizeUsagePrefs(records){
     const last=String(item&&item.last||"");
     if(!key || count<=0 || !Number.isFinite(new Date(last).getTime())) continue;
     out[key]={count,last};
+  }
+  return out;
+}
+
+function normalizeNoteRefs(refs){
+  if(!Array.isArray(refs)) return [];
+  const out=[];
+  const seen=new Set();
+  for(const value of refs){
+    const ref=String(value||"").trim();
+    if(!ref || seen.has(ref)) continue;
+    seen.add(ref);
+    out.push(ref);
+  }
+  return out;
+}
+
+function normalizeNotePreviews(records){
+  const out={};
+  if(!records || typeof records!=="object" || Array.isArray(records)) return out;
+  for(const key of Object.keys(records)){
+    const ref=String(key||"").trim();
+    if(!ref) continue;
+    out[ref]=Array.from(String(records[key]||"").replace(/\\s+/g," ").trim()).slice(0,80).join("");
   }
   return out;
 }
@@ -671,6 +702,9 @@ function row(it,i){
   const subLine=state.mode==="search"&&snip?snip:esc(sub);
   const hint=k==="trae"?"⌘↵ 查看":"点击 Orca 继续";
   const pinned=isPinnedItem(it);
+  const key=sessionKey(it);
+  const notePreview=key?String(state.notePreviews[key]||""):"";
+  const noteMarker=key&&state.noteRefs.has(key)?"<span class='note-marker' title='"+esc(notePreview?"备注："+notePreview:"有备注")+"' aria-label='有备注'></span>":"";
   const pinMarker=pinned?"<span class='pin-marker' title='已置顶' aria-label='已置顶'>⭐</span>":"";
   const freqMarker=it&&it._frecencyBoosted?"<span class='freq-marker' title='常用' aria-label='常用'>⚡</span>":"";
   const live=isRunning(it)?"<span class='live-chip'><span class='live-dot'></span>进行中</span>":"";
@@ -680,7 +714,7 @@ function row(it,i){
   return "<div class='row"+(i===state.sel?" sel":"")+"' data-i='"+i+"' title='"+esc(rowTitle)+"'>"+
     "<span class='badge "+k+"'>"+badgeChar(k)+"</span>"+
     "<div class='rc'><div class='rt'>"+esc(title)+"</div><div class='rs'>"+subLine+"</div></div>"+
-    "<div class='racc'>"+pinMarker+freqMarker+live+"<span class='age'>"+esc(relTime(it.mtime))+"</span><span class='rowhint'>"+hint+"</span>"+actions+"</div>"+
+    "<div class='racc'>"+noteMarker+pinMarker+freqMarker+live+"<span class='age'>"+esc(relTime(it.mtime))+"</span><span class='rowhint'>"+hint+"</span>"+actions+"</div>"+
     "<span class='peekchev' aria-hidden='true'>›</span>"+
   "</div>";
 }

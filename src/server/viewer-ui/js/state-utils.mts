@@ -31,6 +31,7 @@ const state = {
   gallery: { open: false, source: "all", items: [], offset: 0, limit: 36, loading: false, hasMore: true, error: "", requestToken: 0, lightboxOpen: false, lightboxIndex: 0 },
   reading: { verbosity: "standard", outlineOpen: false, outlineItems: [], outlineVisible: new Set(), outlineTargets: new Map(), outlineActiveId: "", shortcutsOpen: false, settingsOpen: false, sidebarCollapsed: false },
   liveTail: { active: false, ref: "", timer: 0, token: 0, head: null, polling: false, following: true, needsFollowPrompt: false },
+  notes: { ref: "", text: "", lastSavedText: "", updatedAt: "", open: false, editing: false, loading: false, saving: false, error: "", requestToken: 0, saveToken: 0 },
 };
 const SOURCE_MODULES = [
   { key: "codex", label: "Codex" },
@@ -78,6 +79,7 @@ function renderLoading(message) {
 function showViewerLoading(message) {
   stopLiveTail({ silent: true });
   state.currentSnapshot = null;
+  clearSessionNoteState();
   resetSessionSearchState(false);
   renderSessionSearch();
   clearOutline("正在加载大纲...");

@@ -204,6 +204,28 @@ export const viewerCss = `/* ---------- 阅读区 ---------- */
 .exports button[data-publish-gist]:hover { border-color: var(--pine); background: var(--pine); color: #eef5ef; }
 .exports button[data-publish-cloud] { border-color: var(--ink); background: var(--ink); color: var(--paper); }
 .exports button[data-publish-cloud]:hover { border-color: var(--seal-deep); background: var(--seal-deep); color: #fdf3ec; }
+.exports .note-toggle {
+  gap: 7px;
+}
+.note-toggle-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.28;
+}
+.exports .note-toggle.has-note {
+  border-color: rgba(177, 56, 42, 0.36);
+  background: var(--seal-soft);
+  color: var(--seal-deep);
+}
+.exports .note-toggle.has-note .note-toggle-dot {
+  opacity: 1;
+}
+.exports .note-toggle.active {
+  border-color: var(--seal);
+  color: var(--seal-deep);
+}
 .publish-status {
   display: inline-flex; align-items: center; flex-basis: 100%;
   min-height: 22px; max-width: 100%;

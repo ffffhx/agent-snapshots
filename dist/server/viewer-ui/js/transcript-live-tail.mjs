@@ -13,7 +13,8 @@ export const transcriptLiveTailJs = `function renderSnapshot(snapshot) {
   const resumeButton = snapshot.engine !== "trae"
     ? "<button type='button' class='resume-orca' data-resume-orca='" + esc(snapshot.ref || "") + "' data-resume-cwd='" + esc(snapshot.cwd || snapshot.displayCwd || "") + "' data-resume-title='" + esc(snapshot.title || "") + "' title='在 Orca 中打开终端并恢复此会话'>↗ 在 Orca 继续</button>"
     : "";
-  $("exports").innerHTML = resumeButton + "<a href='/export?" + options.toString() + "&format=html' target='_blank' rel='noopener noreferrer'>导出 HTML</a><a href='/export?" + options.toString() + "&format=md' target='_blank' rel='noopener noreferrer'>导出 Markdown</a><button type='button' data-publish-gist='1'>Gist</button><button type='button' data-publish-cloud='1'>发布分享</button><span id='publishStatus' class='publish-status'></span>";
+  $("exports").innerHTML = resumeButton + sessionNoteToolbarButton(snapshot.ref || state.selected || "") + "<a href='/export?" + options.toString() + "&format=html' target='_blank' rel='noopener noreferrer'>导出 HTML</a><a href='/export?" + options.toString() + "&format=md' target='_blank' rel='noopener noreferrer'>导出 Markdown</a><button type='button' data-publish-gist='1'>Gist</button><button type='button' data-publish-cloud='1'>发布分享</button><span id='publishStatus' class='publish-status'></span>";
+  ensureSessionNoteForSnapshot(snapshot.ref || state.selected || "");
   renderTranscriptTurns(snapshot.transcriptHtml || "<div class='meta'>没有找到可分享的用户或助手消息。</div>");
   loadSessionCommits(snapshot, state.requestToken);
   renderSessionSearch();

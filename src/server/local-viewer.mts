@@ -25,7 +25,14 @@ import { readClaudeBlockUsageEstimate, readCodexQuotaSnapshot } from "./quota-me
 import { buildUsageAnalytics } from "./usage-analytics.mjs";
 import { buildWeeklyDigest } from "./weekly-digest.mjs";
 import { listImageEntries, readImageBytes } from "./image-index.mjs";
-import { readLauncherPrefs, recordLauncherAccess, setLauncherSessionPinned } from "./launcher-prefs.mjs";
+import {
+  launcherPrefsApiResponse,
+  readLauncherPrefs,
+  readLauncherSessionNote,
+  recordLauncherAccess,
+  setLauncherSessionNote,
+  setLauncherSessionPinned,
+} from "./launcher-prefs.mjs";
 import { discoverCodexHomes, resolveCodexHomeForRef } from "../sources/codex-homes.mjs";
 
 const execFileAsync = promisify(execFile);
@@ -395,7 +402,35 @@ export async function serveLocalViewer({
           sendJson(response, { error: "method not allowed" }, 405);
           return;
         }
-        sendJson(response, await readLauncherPrefs());
+        sendJson(response, launcherPrefsApiResponse(await readLauncherPrefs()));
+        return;
+      }
+      if (url.pathname === "/api/session-notes") {
+        if (request.method === "GET") {
+          const result = await readLauncherSessionNote(url.searchParams.get("id") || "");
+          if (!result.ok) {
+            sendJson(response, { error: result.error }, 400);
+            return;
+          }
+          sendJson(response, result.note || {});
+          return;
+        }
+        if (request.method === "POST") {
+          if (!allowMutationRequest(request, response, csrfToken)) {
+            return;
+          }
+          let body;
+          try {
+            body = await readJsonRequestBody(request);
+          } catch (error) {
+            sendJson(response, { ok: false, error: error instanceof Error ? error.message : String(error) }, 400);
+            return;
+          }
+          const result = await setLauncherSessionNote(body);
+          sendJson(response, result, result.ok ? 200 : 400);
+          return;
+        }
+        sendJson(response, { error: "method not allowed" }, 405);
         return;
       }
       if (url.pathname === "/api/launcher-prefs/pin") {
