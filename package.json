@@ -68,6 +68,7 @@
     "test:static-site": "pnpm build:site && node scripts/test-static-site.mjs",
     "test:site-config": "node scripts/test-site-config.mjs",
     "test:deploy-config": "bash scripts/test-aliyun-deploy-config.sh",
+    "test:electron-e2e": "node scripts/test-electron-e2e.mjs",
     "typecheck": "tsc --noEmit",
     "test": "pnpm typecheck && pnpm test:smoke && pnpm test:local-history && pnpm test:client-ui && pnpm test:privacy && pnpm test:share-api && pnpm test:desktop-api && pnpm test:static-site && pnpm test:site-config && pnpm test:deploy-config",
     "app:dev": "pnpm build:dist && electron electron/main.mjs",
@@ -143,6 +144,7 @@
     "electron": "^43.0.0",
     "electron-builder": "^25.1.8",
     "jsdom": "^29.1.1",
+    "playwright": "^1.61.1",
     "tailwindcss": "^4.3.0",
     "typescript": "^6.0.3",
     "vite": "^8.0.14"
