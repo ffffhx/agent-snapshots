@@ -41,8 +41,16 @@ const isMac = process.platform === "darwin";
 const isWindows = process.platform === "win32";
 const supportsOpenAtLogin = isMac || isWindows;
 const supportsNotificationSilent = isMac || isWindows;
-const GLOBAL_SHORTCUT = isMac ? "Alt+Space" : "Ctrl+Shift+Space";
-const GLOBAL_SHORTCUT_LABEL = isMac ? "⌥Space" : "Ctrl+Shift+Space";
+const GLOBAL_SHORTCUT_SETTING_KEY = "globalShortcut";
+const DEFAULT_GLOBAL_SHORTCUT = isMac ? "Alt+Space" : "Ctrl+Shift+Space";
+const GLOBAL_SHORTCUT_DISABLED_LABEL = "快捷键禁用";
+const GLOBAL_SHORTCUT_PRESETS = [
+  ...(isMac ? [{ label: "⌥Space", accelerator: "Alt+Space" }] : []),
+  { label: isMac ? "⌃⇧Space" : "Ctrl+Shift+Space", accelerator: "Ctrl+Shift+Space" },
+  { label: isMac ? "⌘⇧K" : "Ctrl+Shift+K", accelerator: "CmdOrCtrl+Shift+K" },
+  { label: "F19", accelerator: "F19" },
+  { label: "禁用", accelerator: null },
+];
 const POLL_INTERVAL_MS = 5000;
 const TRAY_RECENT_REFRESH_MS = 30000;
 const DEFAULT_SETTINGS = {
@@ -79,6 +87,9 @@ let liveSessionById = new Map();
 let recentTraySessions = [];
 let unseenCompletionCount = 0;
 let sleepBlockerId = null;
+let selectedGlobalShortcut = DEFAULT_GLOBAL_SHORTCUT;
+let registeredGlobalShortcut = null;
+let globalShortcutIneffective = false;
 let updater = null;
 let updaterConfigured = false;
 const pendingDeepLinks = [];
@@ -189,6 +200,154 @@ function writeSetting(key, value) {
   } catch (error) {
     console.warn(`Failed to write setting ${key}:`, error);
   }
+}
+
+function globalShortcutPreset(accelerator) {
+  return GLOBAL_SHORTCUT_PRESETS.find((preset) => preset.accelerator === accelerator);
+}
+
+function isPresetGlobalShortcut(accelerator) {
+  return Boolean(globalShortcutPreset(accelerator));
+}
+
+function normalizeGlobalShortcutSetting(value) {
+  if (isPresetGlobalShortcut(value)) {
+    return value;
+  }
+  if (value !== undefined) {
+    console.warn(
+      `Ignoring unsupported global shortcut setting ${JSON.stringify(value)}; using ${DEFAULT_GLOBAL_SHORTCUT}.`,
+    );
+  }
+  return DEFAULT_GLOBAL_SHORTCUT;
+}
+
+function globalShortcutLabel(accelerator) {
+  return globalShortcutPreset(accelerator)?.label || String(accelerator || "");
+}
+
+function globalShortcutRadioLabel(accelerator) {
+  const label = globalShortcutLabel(accelerator);
+  if (accelerator !== null && globalShortcutIneffective && selectedGlobalShortcut === accelerator) {
+    return `${label} (未生效)`;
+  }
+  return label;
+}
+
+function selectedGlobalShortcutLabel() {
+  if (selectedGlobalShortcut === null) {
+    return GLOBAL_SHORTCUT_DISABLED_LABEL;
+  }
+  const label = globalShortcutLabel(selectedGlobalShortcut);
+  return globalShortcutIneffective ? `${label} (未生效)` : label;
+}
+
+function activeGlobalShortcutAccelerator() {
+  return globalShortcutIneffective ? null : selectedGlobalShortcut;
+}
+
+function refreshGlobalShortcutMenus() {
+  rebuildTrayMenu();
+  if (app.isReady()) {
+    buildMenu(() => startUrl);
+  }
+}
+
+function loadGlobalShortcutSetting() {
+  selectedGlobalShortcut = normalizeGlobalShortcutSetting(settings?.get(GLOBAL_SHORTCUT_SETTING_KEY, undefined));
+  registeredGlobalShortcut = null;
+  globalShortcutIneffective = false;
+}
+
+function unregisterRegisteredGlobalShortcut() {
+  if (!registeredGlobalShortcut) {
+    return;
+  }
+  try {
+    globalShortcut.unregister(registeredGlobalShortcut);
+  } catch (error) {
+    console.warn(`Failed to unregister global shortcut ${registeredGlobalShortcut}:`, error);
+  }
+  registeredGlobalShortcut = null;
+}
+
+function tryRegisterGlobalShortcut(accelerator) {
+  try {
+    return globalShortcut.register(accelerator, toggleLauncherWindow);
+  } catch (error) {
+    console.warn(`Failed to register global shortcut ${accelerator}:`, error);
+    return false;
+  }
+}
+
+function restoreGlobalShortcutAfterFailure(previousWorkingShortcut, previousSelectedShortcut, previousIneffective) {
+  if (!previousWorkingShortcut) {
+    selectedGlobalShortcut = previousIneffective ? previousSelectedShortcut : null;
+    registeredGlobalShortcut = null;
+    globalShortcutIneffective = selectedGlobalShortcut !== null;
+    writeSetting(GLOBAL_SHORTCUT_SETTING_KEY, selectedGlobalShortcut);
+    return;
+  }
+  if (tryRegisterGlobalShortcut(previousWorkingShortcut)) {
+    selectedGlobalShortcut = previousWorkingShortcut;
+    registeredGlobalShortcut = previousWorkingShortcut;
+    globalShortcutIneffective = false;
+    writeSetting(GLOBAL_SHORTCUT_SETTING_KEY, previousWorkingShortcut);
+    return;
+  }
+  console.warn(`Failed to restore previous global shortcut ${previousWorkingShortcut}.`);
+  selectedGlobalShortcut = previousSelectedShortcut;
+  registeredGlobalShortcut = null;
+  globalShortcutIneffective = selectedGlobalShortcut !== null;
+  writeSetting(GLOBAL_SHORTCUT_SETTING_KEY, selectedGlobalShortcut);
+}
+
+async function setGlobalShortcutChoice(nextShortcut) {
+  if (!isPresetGlobalShortcut(nextShortcut)) {
+    console.warn(`Ignoring unsupported global shortcut selection ${JSON.stringify(nextShortcut)}.`);
+    return;
+  }
+
+  if (
+    nextShortcut === selectedGlobalShortcut
+    && nextShortcut === registeredGlobalShortcut
+    && !globalShortcutIneffective
+  ) {
+    writeSetting(GLOBAL_SHORTCUT_SETTING_KEY, nextShortcut);
+    return;
+  }
+
+  const previousWorkingShortcut = registeredGlobalShortcut;
+  const previousSelectedShortcut = selectedGlobalShortcut;
+  const previousIneffective = globalShortcutIneffective;
+  unregisterRegisteredGlobalShortcut();
+
+  if (nextShortcut === null) {
+    selectedGlobalShortcut = null;
+    globalShortcutIneffective = false;
+    writeSetting(GLOBAL_SHORTCUT_SETTING_KEY, null);
+    refreshGlobalShortcutMenus();
+    return;
+  }
+
+  if (tryRegisterGlobalShortcut(nextShortcut)) {
+    selectedGlobalShortcut = nextShortcut;
+    registeredGlobalShortcut = nextShortcut;
+    globalShortcutIneffective = false;
+    writeSetting(GLOBAL_SHORTCUT_SETTING_KEY, nextShortcut);
+    refreshGlobalShortcutMenus();
+    return;
+  }
+
+  console.warn(`Global shortcut ${nextShortcut} is unavailable; reverting.`);
+  restoreGlobalShortcutAfterFailure(previousWorkingShortcut, previousSelectedShortcut, previousIneffective);
+  refreshGlobalShortcutMenus();
+  await dialog.showMessageBox({
+    type: "warning",
+    title: "全局快捷键",
+    message: "快捷键被占用，已回退",
+    buttons: ["好"],
+  });
 }
 
 function getAutoUpdater() {
@@ -672,6 +831,17 @@ function recentTraySubmenu() {
   });
 }
 
+function globalShortcutSubmenu() {
+  return GLOBAL_SHORTCUT_PRESETS.map((preset) => ({
+    label: globalShortcutRadioLabel(preset.accelerator),
+    type: "radio",
+    checked: selectedGlobalShortcut === preset.accelerator,
+    click: () => {
+      void setGlobalShortcutChoice(preset.accelerator);
+    },
+  }));
+}
+
 async function refreshRecentTraySessions() {
   if (!tray || !serverPort || recentTrayRefreshInFlight) {
     return;
@@ -709,12 +879,14 @@ function rebuildTrayMenu() {
     return;
   }
   trayMenu = Menu.buildFromTemplate([
-    { label: `显示/隐藏启动器 (${GLOBAL_SHORTCUT_LABEL})`, click: toggleLauncherWindow },
+    { label: `显示/隐藏启动器 (${selectedGlobalShortcutLabel()})`, click: toggleLauncherWindow },
     { label: "打开完整视图", click: () => openViewerForSession() },
     { label: "在浏览器打开", click: () => startUrl && shell.openExternal(startUrl) },
     { label: "检查更新…", click: checkForUpdatesManually },
     { type: "separator" },
     { label: "最近会话", submenu: recentTraySubmenu() },
+    { type: "separator" },
+    { label: "全局快捷键", submenu: globalShortcutSubmenu() },
     { type: "separator" },
     {
       label: "失焦自动隐藏",
@@ -763,10 +935,20 @@ function showTrayMenu() {
 }
 
 function registerGlobalShortcut() {
-  const registered = globalShortcut.register(GLOBAL_SHORTCUT, toggleLauncherWindow);
-  if (!registered) {
-    console.warn(`Failed to register global shortcut ${GLOBAL_SHORTCUT}`);
+  if (selectedGlobalShortcut === null) {
+    registeredGlobalShortcut = null;
+    globalShortcutIneffective = false;
+    return;
   }
+  if (tryRegisterGlobalShortcut(selectedGlobalShortcut)) {
+    registeredGlobalShortcut = selectedGlobalShortcut;
+    globalShortcutIneffective = false;
+    return;
+  }
+  registeredGlobalShortcut = null;
+  globalShortcutIneffective = true;
+  console.warn(`Failed to register global shortcut ${selectedGlobalShortcut}`);
+  refreshGlobalShortcutMenus();
 }
 
 function registerDeepLinkProtocol() {
@@ -978,6 +1160,10 @@ function requestQuit() {
 
 function buildMenu(getStartUrl) {
   const isMac = process.platform === "darwin";
+  const launcherAccelerator = activeGlobalShortcutAccelerator();
+  const launcherLabel = launcherAccelerator
+    ? "显示/隐藏启动器"
+    : `显示/隐藏启动器 (${selectedGlobalShortcutLabel()})`;
   const template = [
     ...(isMac
       ? [{
@@ -1054,8 +1240,8 @@ function buildMenu(getStartUrl) {
       label: "窗口",
       submenu: [
         {
-          label: "显示/隐藏启动器",
-          accelerator: GLOBAL_SHORTCUT,
+          label: launcherLabel,
+          ...(launcherAccelerator ? { accelerator: launcherAccelerator } : {}),
           click: toggleLauncherWindow,
         },
         {
@@ -1082,6 +1268,7 @@ function buildMenu(getStartUrl) {
 
 async function bootstrap() {
   settings = new SettingsStore(path.join(app.getPath("userData"), "settings.json"), DEFAULT_SETTINGS);
+  loadGlobalShortcutSetting();
   if (supportsOpenAtLogin && setting("openAtLogin")) {
     setOpenAtLogin(true, { persist: false });
   }
