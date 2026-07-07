@@ -6,22 +6,26 @@ import path from "node:path";
 import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
 const RESUME_COMMAND = {
-    codex: (id) => `codex resume ${id}`,
+    codex: (id, codexHome = "") => `${codexEnvPrefix(codexHome)}codex resume ${id}`,
     claude: (id) => `claude --resume ${id}`,
 };
 const TERMINAL_TIMEOUT_MS = 8000;
 export function shellQuote(value) {
     return "'" + String(value).replace(/'/g, "'\\''") + "'";
 }
+function codexEnvPrefix(codexHome) {
+    const home = String(codexHome || "").trim();
+    return home ? `CODEX_HOME=${shellQuote(home)} ` : "";
+}
 export function escapeAppleScriptString(value) {
     return String(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
-export function buildResumeShellCommand({ engine, sessionId, cwd }) {
+export function buildResumeShellCommand({ engine, sessionId, cwd, codexHome = "" }) {
     const buildCommand = RESUME_COMMAND[engine];
     if (!buildCommand) {
         throw new Error("unsupported engine");
     }
-    const resumeCommand = buildCommand(sessionId);
+    const resumeCommand = buildCommand(sessionId, codexHome);
     return cwd ? `cd ${shellQuote(cwd)} && ${resumeCommand}` : resumeCommand;
 }
 export function buildTerminalAppleScript(app, shellCommand) {
@@ -81,12 +85,12 @@ function osascriptArgs(lines) {
 function formatTerminalError(error) {
     return String((error && (error.stderr || error.message)) || error || "unknown error").trim().slice(0, 400);
 }
-export async function openResumeInTerminal({ engine, sessionId, cwd }) {
+export async function openResumeInTerminal({ engine, sessionId, cwd, codexHome = "" }) {
     if (process.platform !== "darwin") {
         return { ok: false, error: "当前平台不支持 Terminal 回退" };
     }
     const dir = await existingDirectoryOrNull(cwd);
-    const command = buildResumeShellCommand({ engine, sessionId, cwd: dir });
+    const command = buildResumeShellCommand({ engine, sessionId, cwd: dir, codexHome });
     const app = (await isITerm2Running()) ? "iTerm2" : "Terminal";
     const script = buildTerminalAppleScript(app, command);
     try {

@@ -413,6 +413,7 @@ function sessionHaystack(session, group) {
     session.displayCwd,
     session.id,
     session.ref,
+    session.codexHomeLabel,
     group.label,
     group.displayPath,
   ].filter(Boolean).join(" ").toLowerCase();
@@ -466,11 +467,15 @@ function renderSessionRow(session) {
   const liveDot = live ? "<span class='session-live-dot' aria-hidden='true'></span>" : "";
   const liveBadge = live ? "<span class='session-badge live'>进行中</span>" : "";
   const historyBadge = session.historyOnly ? "<span class='session-badge'>history</span>" : "";
-  return "<button class='session" + active + (live ? " live" : "") + "' data-id='" + esc(ref) + "' title='" + esc(session.title) + "'" + (active ? " aria-current='page'" : "") + ">" +
+  const origin = String(session.codexHomeLabel || "").trim();
+  const originBadge = origin ? "<span class='session-badge' title='Codex home: " + esc(origin) + "'>" + esc(origin) + "</span>" : "";
+  const title = origin ? session.title + " · " + origin : session.title;
+  return "<button class='session" + active + (live ? " live" : "") + "' data-id='" + esc(ref) + "' title='" + esc(title) + "'" + (active ? " aria-current='page'" : "") + ">" +
     liveDot +
     "<strong>" + esc(session.title) + "</strong>" +
     liveBadge +
     historyBadge +
+    originBadge +
     "<span class='session-time'>" + esc(relativeTime(session.mtime)) + "</span>" +
   "</button>";
 }

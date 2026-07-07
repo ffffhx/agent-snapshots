@@ -172,6 +172,7 @@ export async function readSearchDocument(summary, options) {
       summary.displayCwd,
       summary.id,
       summary.ref,
+      summary.codexHomeLabel,
     ].filter(Boolean).map(String),
     segments,
   };
@@ -403,6 +404,8 @@ export function matchSearchDocument(document, rawQuery, normalizedQuery, terms) 
     mtime: summary.mtime || "",
     createdAt: summary.createdAt || "",
     projectKind: summary.projectKind || "",
+    codexHomeKey: summary.codexHomeKey || "",
+    codexHomeLabel: summary.codexHomeLabel || "",
     score: Math.round(score * 100) / 100,
     role: bestSegment?.role || "metadata",
     label: bestSegment?.label || "Metadata",

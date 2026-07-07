@@ -54,9 +54,18 @@ async function bringOrcaToFront() {
 // project. Codex threads resume with `codex resume`; Claude Code conversations
 // resume by session id with `claude --resume`. (Trae has no CLI resume.)
 const RESUME_COMMAND = {
-  codex: (id) => `codex resume ${id}`,
+  codex: (id, codexHome = "") => `${codexEnvPrefix(codexHome)}codex resume ${id}`,
   claude: (id) => `claude --resume ${id}`,
 };
+
+function shellQuote(value) {
+  return "'" + String(value).replace(/'/g, "'\\''") + "'";
+}
+
+function codexEnvPrefix(codexHome) {
+  const home = String(codexHome || "").trim();
+  return home ? `CODEX_HOME=${shellQuote(home)} ` : "";
+}
 
 // Strip Orca's activity markers (✳ ✻ ● …) and collapse whitespace so a live
 // terminal's title can be compared to a session's title.
@@ -109,9 +118,9 @@ function formatOrcaError(error) {
   return String((error && (error.stderr || error.message)) || error || "unknown error").trim().slice(0, 400);
 }
 
-async function fallbackToTerminal({ engine, sessionId, cwd, orcaError }) {
+async function fallbackToTerminal({ engine, sessionId, cwd, codexHome, orcaError }) {
   const orcaMessage = formatOrcaError(orcaError);
-  const fallback = await openResumeInTerminal({ engine, sessionId, cwd });
+  const fallback = await openResumeInTerminal({ engine, sessionId, cwd, codexHome });
   if (fallback.ok) {
     return fallback;
   }
@@ -121,7 +130,7 @@ async function fallbackToTerminal({ engine, sessionId, cwd, orcaError }) {
   return { ok: false, error: `${orcaMessage}；${fallbackMessage}` };
 }
 
-export async function resumeSessionInOrca({ engine, sessionId, cwd, title }) {
+export async function resumeSessionInOrca({ engine, sessionId, cwd, title, codexHome = "" }) {
   const id = String(sessionId || "").trim();
   if (!SESSION_ID_RE.test(id)) {
     return { ok: false, error: "无效的会话 ID" };
@@ -167,13 +176,13 @@ export async function resumeSessionInOrca({ engine, sessionId, cwd, title }) {
     await execFileAsync(orca, [
       "terminal", "create",
       "--worktree", `path:${dir}`,
-      "--command", buildCommand(id),
+      "--command", buildCommand(id, codexHome),
       "--focus",
       "--json",
     ], { timeout: ORCA_TIMEOUT_MS });
     await bringOrcaToFront();
     return { ok: true, via: "orca", message: "已在 Orca 继续" };
   } catch (error) {
-    return await fallbackToTerminal({ engine, sessionId: id, cwd: dir, orcaError: error });
+    return await fallbackToTerminal({ engine, sessionId: id, cwd: dir, codexHome, orcaError: error });
   }
 }

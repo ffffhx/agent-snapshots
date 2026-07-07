@@ -217,7 +217,10 @@ function badgeChar(k){ return k==="codex"?"C":k==="claude"?"◇":"T"; }
 function bareSessionId(it){
   const id=String(it&&it.id||"").trim();
   if(id) return id;
-  return String(it&&it.ref||"").replace(/^(codex|claude|trae):/,"");
+  const ref=String(it&&it.ref||"");
+  const match=/^codex:(home-[0-9a-f]{12}):(.+)$/.exec(ref);
+  if(match) return match[2];
+  return ref.replace(/^(codex|claude|trae):/,"");
 }
 function sessionKey(it){
   const ref=String(it&&it.ref||"").trim();
@@ -660,7 +663,8 @@ function emptyMessage(){
 function row(it,i){
   const k=engineKey(it);
   const title=it.title||it.ref||"未命名会话";
-  const rowTitle=(it&&it._frecencyBoosted?"常用 · ":"")+title;
+  const origin=String(it&&it.codexHomeLabel||"").trim();
+  const rowTitle=(it&&it._frecencyBoosted?"常用 · ":"")+title+(origin?" · Codex home: "+origin:"");
   const proj=(it.displayCwd||it.cwd||"").split("/").filter(Boolean).pop()||"";
   const snip=it.snippet?highlight(it.snippet,it.terms):"";
   const sub=[proj,relTime(it.mtime)].filter(Boolean).join(" · ");

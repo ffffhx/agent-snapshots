@@ -19,6 +19,7 @@ let serverProcess;
 
 try {
   const codexHome = path.join(tempDir, "codex");
+  const extraCodexHome = path.join(tempDir, "orca", "home");
   const claudeHome = path.join(tempDir, "claude");
   const traeHome = path.join(tempDir, "trae");
   const traeAppHome = path.join(tempDir, "trae-app");
@@ -26,6 +27,12 @@ try {
   const prefsDir = path.join(tempDir, "prefs");
   const cacheHome = path.join(tempDir, "cache");
 
+  await writeCodexFixture(extraCodexHome, {
+    firstUserText: "Inspect this extra-home Codex fixture with unique keyword multiHomeCodexNeedle.",
+    assistantText: "The extra-home fixture is visible.",
+    startedAt: "2026-05-31T00:00:00.000Z",
+    sessionDate: "2026-05-31",
+  });
   await writeCodexFixture(codexHome);
   await mkdir(claudeHome, { recursive: true });
   await mkdir(traeHome, { recursive: true });
@@ -50,8 +57,10 @@ try {
     env: {
       ...process.env,
       AGENT_SNAPSHOT_PREFS_DIR: prefsDir,
+      AGENT_SNAPSHOT_EXTRA_CODEX_HOMES: extraCodexHome,
       CLAUDE_HOME: claudeHome,
       CODEX_HOME: codexHome,
+      HOME: tempDir,
       TRAE_APP_HOME: traeAppHome,
       TRAE_HOME: traeHome,
       TRAE_RECORDINGS_DIR: traeRecordingsDir,
@@ -69,6 +78,7 @@ try {
     ["GET /api/weekly-digest returns weekly markdown shape", () => assertWeeklyDigest(viewerUrl)],
     ["GET /api/images and /api/image return image entries safely", () => assertImages(viewerUrl)],
     ["GET /api/session-head validates missing and real ids", () => assertSessionHead(viewerUrl)],
+    ["multi-home Codex sessions list and round-trip refs", () => assertMultiHomeCodex(viewerUrl)],
     ["GET /api/session-peek returns lightweight redacted turns", () => assertSessionPeek(viewerUrl)],
     ["launcher prefs reject missing CSRF and persist pin changes", () => assertLauncherPrefs(viewerUrl, origin, csrfToken)],
     ["reveal-in-file rejects unsafe requests without opening Finder", () => assertRevealInFile(viewerUrl, origin, csrfToken)],
@@ -218,6 +228,25 @@ async function assertSessionHead(viewerUrl) {
   assert(response.status === 200, `/api/session-head should return 200 for ${id}, got ${response.status}`);
   assert(typeof payload.complete === "boolean", "session head should include complete boolean");
   assert(typeof payload.turnCount === "number" && payload.turnCount >= 0, "session head should include numeric turnCount");
+}
+
+async function assertMultiHomeCodex(viewerUrl) {
+  const sessions = await fetchJson(`${viewerUrl}/api/sessions?source=codex&all=1&completeOnly=0`);
+  const matching = sessions.filter((session) => session.id === SESSION_ID);
+  assert(matching.length === 2, `same Codex session id should be listed from two homes: ${JSON.stringify(matching)}`);
+  const primary = matching.find((session) => session.ref === `codex:${SESSION_ID}`);
+  const extra = matching.find((session) => /^codex:home-[0-9a-f]{12}:/.test(session.ref || ""));
+  assert(primary, "primary home session should keep the backward-compatible ref");
+  assert(extra, "extra home session should use an expanded ref with a home key");
+  assert(extra.codexHomeLabel === "orca", `extra home should carry origin label, got ${JSON.stringify(extra.codexHomeLabel)}`);
+
+  const { response, payload } = await fetchJsonResponse(`${viewerUrl}/api/session-head?id=${encodeURIComponent(extra.ref)}`);
+  assert(response.status === 200, `/api/session-head should round-trip expanded ref, got ${response.status}`);
+  assert(typeof payload.complete === "boolean", "expanded-ref session head should include complete boolean");
+
+  const search = await fetchJson(`${viewerUrl}/api/search?source=codex&noIndex=1&q=${encodeURIComponent("multiHomeCodexNeedle")}&limit=5`);
+  assert(Array.isArray(search.results), "multi-home search should return a results array");
+  assert(search.results.some((result) => result.ref === extra.ref), `live search should find extra home ref: ${JSON.stringify(search.results)}`);
 }
 
 async function assertSessionPeek(viewerUrl) {
@@ -480,18 +509,21 @@ async function assertClaudeQuotaBlockBoundary(claudeHome) {
   assert(JSON.stringify(estimate.tokens) === JSON.stringify({ input: 10, output: 5, cacheCreation: 4, cacheRead: 3 }), `active block tokens were wrong: ${JSON.stringify(estimate.tokens)}`);
 }
 
-async function writeCodexFixture(codexHome) {
-  const sessionDir = path.join(codexHome, "sessions", "2026", "06", "01");
+async function writeCodexFixture(codexHome, options = {}) {
+  const sessionDate = options.sessionDate || "2026-06-01";
+  const [year, month, day] = sessionDate.split("-");
+  const startedAt = options.startedAt || "2026-06-01T00:00:00.000Z";
+  const sessionDir = path.join(codexHome, "sessions", year, month, day);
   await mkdir(sessionDir, { recursive: true });
-  const sessionPath = path.join(sessionDir, `rollout-2026-06-01T00-00-00-${SESSION_ID}.jsonl`);
+  const sessionPath = path.join(sessionDir, `rollout-${sessionDate}T00-00-00-${SESSION_ID}.jsonl`);
   const rows = [
     {
       type: "session_meta",
-      timestamp: "2026-06-01T00:00:00.000Z",
+      timestamp: startedAt,
       payload: {
         id: SESSION_ID,
         cwd: path.join(codexHome, "fixture-project"),
-        timestamp: "2026-06-01T00:00:00.000Z",
+        timestamp: startedAt,
         model: "gpt-5",
         model_provider: "openai",
         originator: "codex",
@@ -504,7 +536,7 @@ async function writeCodexFixture(codexHome) {
         type: "message",
         role: "user",
         content: [
-          { type: "input_text", text: "Inspect this desktop API fixture image." },
+          { type: "input_text", text: options.firstUserText || "Inspect this desktop API fixture image." },
           { type: "input_image", image_url: PNG_DATA_URL, detail: "low" },
         ],
       },
@@ -533,7 +565,7 @@ async function writeCodexFixture(codexHome) {
       payload: {
         type: "message",
         role: "assistant",
-        content: [{ type: "output_text", text: "The image fixture is available." }],
+        content: [{ type: "output_text", text: options.assistantText || "The image fixture is available." }],
       },
     },
     {

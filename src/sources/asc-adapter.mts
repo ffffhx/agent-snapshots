@@ -28,10 +28,19 @@ import {
 import {
   listSessions as legacyListSessions,
   loadSnapshot as legacyLoadSnapshot,
-  searchSessions as legacySearchSessions,
+  readSearchDocument,
+  matchSearchDocument,
+  foldSearchText,
+  searchTerms,
   discoverTraeSessionSummaryCandidates,
   summarizeTraeSessionCandidate,
 } from "./local-history.mjs";
+import {
+  codexHomeCacheKey,
+  codexSessionRef,
+  discoverCodexHomes,
+  resolveCodexHomeForRef,
+} from "./codex-homes.mjs";
 
 const ASC_ENGINES = new Set(["codex", "claude"]);
 const ENGINE_LABELS = { codex: "Codex", claude: "Claude Code" };
@@ -41,10 +50,8 @@ const ENGINE_LABELS = { codex: "Codex", claude: "Claude Code" };
 // beyond that gives no better title coverage (measured) and only costs time.
 const SUMMARY_MAX_LINES = 200;
 
-// searchSessions has no ASC equivalent (ASC does not index/score documents); it
-// scans files independently and is shape-decoupled from snapshots, so it is the
-// lowest-risk thing to keep verbatim on the legacy path.
-export const searchSessions = legacySearchSessions;
+const DEFAULT_SEARCH_LIMIT = 20;
+const DEFAULT_SEARCH_SCAN_LIMIT = 600;
 
 // ---------------------------------------------------------------------------
 // Discovery / roots
@@ -127,19 +134,41 @@ export async function loadSnapshot(ref, opts) {
     return legacyLoadSnapshot(ref, opts); // trae stays on legacy
   }
   const { codexHome, claudeHome, includeTools, includeToolOutput, redact } = opts;
-  const bareRef = ref.replace(/^(codex|claude):/, "");
-  const file = await resolveAscFile(engine, bareRef, codexHome, claudeHome);
+  let selectedCodexHome = codexHome;
+  let selectedCodexHomeInfo = null;
+  let bareRef = ref.replace(/^(codex|claude):/, "");
+  if (engine === "codex") {
+    const resolved = await resolveCodexHomeForRef(ref, codexHome);
+    selectedCodexHomeInfo = resolved.home;
+    selectedCodexHome = resolved.home.home;
+    bareRef = resolved.bareRef;
+  }
+  const file = await resolveAscFile(engine, bareRef, selectedCodexHome, claudeHome);
   if (!file) {
     // Codex: not found. Claude: most commonly a history-only session that lives
     // in ~/.claude/history.jsonl with no transcript file. Either way the legacy
     // resolver owns these (history-only snapshot, descriptive errors).
-    return legacyLoadSnapshot(ref, opts);
+    const legacyRef = engine === "codex" ? `codex:${bareRef}` : ref;
+    const snapshot = await legacyLoadSnapshot(legacyRef, { ...opts, codexHome: selectedCodexHome });
+    if (engine === "codex") {
+      attachCodexHomeFields(snapshot, selectedCodexHomeInfo);
+    }
+    return snapshot;
   }
   const session = parseSessionFile(file);
   if (!session) {
-    return legacyLoadSnapshot(ref, opts);
+    const legacyRef = engine === "codex" ? `codex:${bareRef}` : ref;
+    const snapshot = await legacyLoadSnapshot(legacyRef, { ...opts, codexHome: selectedCodexHome });
+    if (engine === "codex") {
+      attachCodexHomeFields(snapshot, selectedCodexHomeInfo);
+    }
+    return snapshot;
   }
-  return ascSnapshot(session, { includeTools, includeToolOutput, redact });
+  const snapshot = ascSnapshot(session, { includeTools, includeToolOutput, redact });
+  if (engine === "codex") {
+    attachCodexHomeFields(snapshot, selectedCodexHomeInfo);
+  }
+  return snapshot;
 }
 
 async function resolveAscFile(engine, bareRef, codexHome, claudeHome) {
@@ -452,6 +481,96 @@ function addFileChangeRisks(snapshot, fileChanges, turnNumber) {
 }
 
 // ---------------------------------------------------------------------------
+// searchSessions
+// ---------------------------------------------------------------------------
+
+export async function searchSessions({
+  codexHome,
+  claudeHome,
+  traeHome,
+  traeAppHome,
+  traeRecordingsDir,
+  query,
+  limit = DEFAULT_SEARCH_LIMIT,
+  scanLimit = DEFAULT_SEARCH_SCAN_LIMIT,
+  cwd = "",
+  includeArchived = true,
+  source = "all",
+  completeOnly = true,
+  includeTools = false,
+  includeToolOutput = false,
+}) {
+  const cleanQuery = String(query || "").trim();
+  const normalizedQuery = foldSearchText(cleanQuery);
+  const terms = searchTerms(cleanQuery);
+  const resultLimit = positiveIntegerOrDefault(limit, DEFAULT_SEARCH_LIMIT);
+  const sessionScanLimit = positiveIntegerOrDefault(scanLimit, DEFAULT_SEARCH_SCAN_LIMIT);
+
+  if (!normalizedQuery || !terms.length) {
+    return {
+      query: cleanQuery,
+      terms: [],
+      scanned: 0,
+      matched: 0,
+      failed: 0,
+      scanLimit: sessionScanLimit,
+      results: [],
+    };
+  }
+
+  const homes = { codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir };
+  const sessions = await listSessions({
+    ...homes,
+    limit: sessionScanLimit,
+    cwd,
+    includeArchived,
+    source,
+    completeOnly,
+  });
+  const results = [];
+  let failed = 0;
+
+  for (const session of sessions) {
+    try {
+      const document = await readSearchDocument(session, {
+        ...homes,
+        includeTools,
+        includeToolOutput,
+      });
+      const match = matchSearchDocument(document, cleanQuery, normalizedQuery, terms);
+      if (match) {
+        results.push(match);
+      }
+    } catch {
+      failed += 1;
+    }
+  }
+
+  results.sort((a, b) => {
+    const score = b.score - a.score;
+    if (score) {
+      return score;
+    }
+    return new Date(b.mtime || 0).getTime() - new Date(a.mtime || 0).getTime();
+  });
+
+  return {
+    query: cleanQuery,
+    terms,
+    scanned: sessions.length,
+    matched: results.length,
+    failed,
+    scanLimit: sessionScanLimit,
+    results: results.slice(0, resultLimit),
+  };
+}
+
+function positiveIntegerOrDefault(value, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? Math.floor(number) : fallback;
+}
+
+// ---------------------------------------------------------------------------
 // listSessions
 // ---------------------------------------------------------------------------
 
@@ -470,8 +589,12 @@ export async function listSessions(opts) {
     return legacyListSessions(opts);
   }
 
+  const codexHomes = await discoverCodexHomes(codexHome);
+
   if (source === "codex" || source === "claude") {
-    const summaries = ascListEngine(source, { codexHome, claudeHome, cwd, includeArchived }, { limit, completeOnly });
+    const summaries = source === "codex"
+      ? listCodexHomes(codexHomes, { claudeHome, cwd, includeArchived }, { limit, completeOnly })
+      : ascListEngine(source, { codexHome, claudeHome, cwd, includeArchived }, { limit, completeOnly });
     const history = source === "claude" ? await listClaudeHistoryOnly(opts) : [];
     const filtered = applyListFilters([...summaries, ...history], { completeOnly, limit });
     return filtered;
@@ -480,7 +603,7 @@ export async function listSessions(opts) {
   if (source === "all") {
     // codex + claude via ASC; trae still via legacy. Merge by mtime desc and
     // dedupe by ref (engine-prefixed id), mirroring the legacy "all" semantics.
-    const codex = ascListEngine("codex", { codexHome, claudeHome, cwd, includeArchived }, { limit, completeOnly });
+    const codex = listCodexHomes(codexHomes, { claudeHome, cwd, includeArchived }, { limit, completeOnly });
     const claude = ascListEngine("claude", { codexHome, claudeHome, cwd, includeArchived }, { limit, completeOnly });
     const claudeHistory = await listClaudeHistoryOnly(opts);
     let trae = [];
@@ -505,6 +628,20 @@ export async function listSessions(opts) {
 
   // Unknown source: defer to legacy for safety.
   return legacyListSessions(opts);
+}
+
+function listCodexHomes(codexHomes, { claudeHome, cwd, includeArchived }, { limit, completeOnly } = {}) {
+  const summaries = [];
+  for (const homeInfo of codexHomes) {
+    summaries.push(...ascListEngine("codex", {
+      codexHome: homeInfo.home,
+      claudeHome,
+      cwd,
+      includeArchived,
+      codexHomeInfo: homeInfo,
+    }, { limit, completeOnly }));
+  }
+  return summaries;
 }
 
 async function listClaudeHistoryOnly(opts) {
@@ -535,7 +672,7 @@ function isCompleteSessionSummary(summary) {
   return Number(summary?.messageCount) > 0;
 }
 
-function ascListEngine(engine, { codexHome, claudeHome, cwd, includeArchived = true }, { limit, completeOnly } = {}) {
+function ascListEngine(engine, { codexHome, claudeHome, cwd, includeArchived = true, codexHomeInfo = null }, { limit, completeOnly } = {}) {
   const cwdFilter = cwd ? path.resolve(cwd) : "";
   // Newest-first so we can stop once we have enough: the legacy lister reads
   // only headers, so full-parsing the whole corpus per list call is a big
@@ -554,7 +691,7 @@ function ascListEngine(engine, { codexHome, claudeHome, cwd, includeArchived = t
     if (!session) {
       continue;
     }
-    const summary = projectSummary(session, file);
+    const summary = projectSummary(session, file, codexHomeInfo);
     if (cwdFilter && summary.cwd && !path.resolve(summary.cwd).startsWith(cwdFilter)) {
       continue;
     }
@@ -580,8 +717,11 @@ export async function discoverSessionSummaryCandidates({
 }) {
   const candidates = [];
   if (source === "all" || source === "codex") {
-    for (const file of discoverFor("codex", codexHome, claudeHome, { includeArchived })) {
-      candidates.push(ascSummaryCandidate(file));
+    const codexHomes = await discoverCodexHomes(codexHome);
+    for (const homeInfo of codexHomes) {
+      for (const file of discoverFor("codex", homeInfo.home, claudeHome, { includeArchived })) {
+        candidates.push(ascSummaryCandidate({ ...file, codexHomeInfo: homeInfo }));
+      }
     }
   }
   if (source === "all" || source === "claude") {
@@ -598,6 +738,7 @@ export async function discoverSessionSummaryCandidates({
 
 function ascSummaryCandidate(file) {
   const filePath = file.path || file.filePath || "";
+  const homeInfo = file.codexHomeInfo || null;
   return {
     key: `${file.engine || "codex"}:${filePath}`,
     engine: file.engine || "codex",
@@ -608,6 +749,9 @@ function ascSummaryCandidate(file) {
     mtime: new Date(Number(file.mtimeMs || 0)).toISOString(),
     size: Number(file.sizeBytes || file.size || 0),
     sizeBytes: Number(file.sizeBytes || file.size || 0),
+    codexHomeKey: homeInfo ? codexHomeCacheKey(homeInfo) : "",
+    codexHomeLabel: homeInfo?.label || "",
+    codexHomePrimary: homeInfo ? homeInfo.primary === true : true,
   };
 }
 
@@ -620,6 +764,9 @@ export async function summarizeSessionCandidate(candidate, { codexHome, claudeHo
     engine: candidate.engine || "codex",
     mtimeMs: Number(candidate.mtimeMs || 0),
     sizeBytes: Number(candidate.sizeBytes || candidate.size || 0),
+    codexHomeKey: candidate.codexHomeKey || "",
+    codexHomeLabel: candidate.codexHomeLabel || "",
+    codexHomePrimary: candidate.codexHomePrimary !== false,
   };
   const session = parseSessionFile(file, { maxLines: SUMMARY_MAX_LINES });
   if (!session) {
@@ -630,7 +777,7 @@ export async function summarizeSessionCandidate(candidate, { codexHome, claudeHo
 
 // Project an ASC NormalizedSession into the legacy list-summary shape that the
 // CLI/server/site consume.
-function projectSummary(session, file) {
+function projectSummary(session, file, codexHomeInfo = null) {
   const engine = session.engine;
   let messageCount = 0;
   let toolCallCount = 0;
@@ -660,6 +807,7 @@ function projectSummary(session, file) {
 
   const cwd = session.cwd || "";
   const filePath = session.filePath || file.path;
+  const homeInfo = engine === "codex" ? codexHomeInfoFromFile(file, codexHomeInfo) : null;
   // Redact the list title too (the snapshot title is already redacted), so a
   // path/secret in a first message doesn't leak into the sidebar.
   const title = redactText(stripCodexAppDirectives(session.title || "")) || session.id;
@@ -677,7 +825,7 @@ function projectSummary(session, file) {
     riskCount,
     engine,
     engineLabel: ENGINE_LABELS[engine] || engine,
-    ref: `${engine}:${session.id}`,
+    ref: engine === "codex" ? codexSessionRef(session.id, homeInfo) : `${engine}:${session.id}`,
     displayCwd: redactText(cwd),
     displayFilePath: redactText(filePath),
   };
@@ -692,7 +840,41 @@ function projectSummary(session, file) {
     summary.modelProvider = session.modelProvider || "";
     summary.source = session.source || "";
     summary.projectKind = projectKindForCodexCwd(cwd);
+    attachCodexHomeFields(summary, homeInfo);
   }
 
   return summary;
+}
+
+function codexHomeInfoFromFile(file, fallback = null) {
+  if (fallback) {
+    return fallback;
+  }
+  if (file?.codexHomeInfo) {
+    return file.codexHomeInfo;
+  }
+  if (file?.codexHomeKey) {
+    return {
+      home: "",
+      key: file.codexHomeKey,
+      label: file.codexHomeLabel || "",
+      primary: file.codexHomePrimary !== false,
+    };
+  }
+  return { home: "", key: "", label: "", primary: true };
+}
+
+function attachCodexHomeFields(target, homeInfo) {
+  if (!target || !homeInfo) {
+    return target;
+  }
+  const key = codexHomeCacheKey(homeInfo);
+  target.codexHomeKey = key;
+  target.ref = codexSessionRef(target.id || target.ref || "", homeInfo);
+  if (homeInfo.label) {
+    target.codexHomeLabel = homeInfo.label;
+  } else {
+    delete target.codexHomeLabel;
+  }
+  return target;
 }

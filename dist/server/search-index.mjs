@@ -15,14 +15,16 @@
 import path from "node:path";
 import os from "node:os";
 import { mkdir } from "node:fs/promises";
-import { listSessions, readSearchDocument, matchSearchDocument, foldSearchText, searchTerms, extractSessionTokenUsage, } from "../sources/local-history.mjs";
+import { readSearchDocument, matchSearchDocument, foldSearchText, searchTerms, extractSessionTokenUsage, } from "../sources/local-history.mjs";
+import { listSessions } from "../sources/index.mjs";
+import { codexHomeKeys, discoverCodexHomes } from "../sources/codex-homes.mjs";
 const SEARCH_DOC_LIMIT = 24;
 let dbPromise = null;
 let syncing = false;
 let ftsEnabled = false;
 function indexPath() {
     const cacheHome = process.env.XDG_CACHE_HOME || path.join(os.homedir(), ".cache");
-    return path.join(cacheHome, "agent-snapshots", "search-index.v1.db");
+    return path.join(cacheHome, "agent-snapshots", "search-index.v2.db");
 }
 async function getDb() {
     if (dbPromise) {
@@ -36,9 +38,11 @@ async function getDb() {
         db.exec("PRAGMA journal_mode = WAL");
         db.exec("PRAGMA synchronous = NORMAL");
         db.exec(`CREATE TABLE IF NOT EXISTS docs (
-      ref TEXT PRIMARY KEY,
+      cache_key TEXT PRIMARY KEY,
+      ref TEXT,
       engine TEXT,
       source TEXT,
+      home_key TEXT DEFAULT '',
       title TEXT,
       cwd TEXT,
       display_cwd TEXT,
@@ -112,6 +116,12 @@ function engineKey(engine) {
 function refOf(summary) {
     return summary.ref || `${summary.engine || "codex"}:${summary.id}`;
 }
+function homeKeyOf(summary) {
+    return engineKey(summary?.engine) === "codex" ? String(summary?.codexHomeKey || "") : "";
+}
+function docKeyOf(summary) {
+    return [engineKey(summary?.engine), homeKeyOf(summary), refOf(summary)].join("\0");
+}
 function likeEscape(value) {
     return String(value).replace(/[\\%_]/g, (char) => "\\" + char);
 }
@@ -120,6 +130,16 @@ export async function indexRowCount() {
     const row = db.prepare("SELECT COUNT(*) AS c FROM docs").get();
     return Number(row?.c || 0);
 }
+export async function searchIndexCoversCodexHomes({ codexHome, source = "all" } = {}) {
+    if (source && source !== "all" && engineKey(source) !== "codex") {
+        return true;
+    }
+    const db = await getDb();
+    const homes = await discoverCodexHomes(codexHome);
+    const activeKey = Array.from(codexHomeKeys(homes)).sort().join(",");
+    const row = db.prepare("SELECT value FROM meta WHERE key = 'codex_home_keys'").get();
+    return String(row?.value || "") === activeKey;
+}
 // Incrementally bring the index up to date with the on-disk sessions. Reads at
 // most `updateLimit` changed/new sessions per call so it can run in the
 // background without blocking; the rest are reported as `pending`.
@@ -127,12 +147,12 @@ export async function syncSearchIndex({ codexHome, claudeHome, traeHome, traeApp
     const db = await getDb();
     const homes = { codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir };
     const sessions = await listSessions({ ...homes, limit: scanLimit, cwd, includeArchived, source, completeOnly });
-    const getStmt = db.prepare("SELECT mtime FROM docs WHERE ref = ?");
+    const getStmt = db.prepare("SELECT mtime FROM docs WHERE cache_key = ?");
     const upsert = db.prepare(`INSERT INTO docs
-    (ref, engine, source, title, cwd, display_cwd, mtime, fold, fields_json, segments_json, summary_json, tokens_total, tokens_input, tokens_output, model, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(ref) DO UPDATE SET
-      engine=excluded.engine, source=excluded.source, title=excluded.title, cwd=excluded.cwd,
+    (cache_key, ref, engine, source, home_key, title, cwd, display_cwd, mtime, fold, fields_json, segments_json, summary_json, tokens_total, tokens_input, tokens_output, model, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(cache_key) DO UPDATE SET
+      ref=excluded.ref, engine=excluded.engine, source=excluded.source, home_key=excluded.home_key, title=excluded.title, cwd=excluded.cwd,
       display_cwd=excluded.display_cwd, mtime=excluded.mtime, fold=excluded.fold,
       fields_json=excluded.fields_json, segments_json=excluded.segments_json, summary_json=excluded.summary_json,
       tokens_total=excluded.tokens_total, tokens_input=excluded.tokens_input, tokens_output=excluded.tokens_output,
@@ -169,7 +189,8 @@ export async function syncSearchIndex({ codexHome, claudeHome, traeHome, traeApp
     };
     for (const summary of sessions) {
         const ref = refOf(summary);
-        const existing = getStmt.get(ref);
+        const cacheKey = docKeyOf(summary);
+        const existing = getStmt.get(cacheKey);
         const mtime = summary.mtime || "";
         if (existing && existing.mtime === mtime) {
             indexed += 1;
@@ -187,9 +208,11 @@ export async function syncSearchIndex({ codexHome, claudeHome, traeHome, traeApp
                 tokens = await extractSessionTokenUsage(summary);
             }
             writeBuffer.push([
+                cacheKey,
                 ref,
                 summary.engine || "codex",
                 engineKey(summary.engine),
+                homeKeyOf(summary),
                 summary.title || "",
                 summary.cwd || "",
                 summary.displayCwd || summary.cwd || "",
@@ -218,16 +241,16 @@ export async function syncSearchIndex({ codexHome, claudeHome, traeHome, traeApp
     // When this pass saw the complete, unfiltered session list, evict rows for
     // sessions that no longer exist on disk (the FTS triggers mirror deletes).
     if (source === "all" && !cwd && includeArchived && sessions.length < scanLimit && pending === 0) {
-        const liveRefs = new Set(sessions.map((summary) => refOf(summary)));
-        const staleRefs = db.prepare("SELECT ref FROM docs").all()
-            .map((row) => row.ref)
-            .filter((ref) => !liveRefs.has(ref));
-        if (staleRefs.length) {
-            const del = db.prepare("DELETE FROM docs WHERE ref = ?");
+        const liveKeys = new Set(sessions.map((summary) => docKeyOf(summary)));
+        const staleKeys = db.prepare("SELECT cache_key FROM docs").all()
+            .map((row) => row.cache_key)
+            .filter((key) => !liveKeys.has(key));
+        if (staleKeys.length) {
+            const del = db.prepare("DELETE FROM docs WHERE cache_key = ?");
             db.exec("BEGIN IMMEDIATE");
             try {
-                for (const ref of staleRefs) {
-                    del.run(ref);
+                for (const key of staleKeys) {
+                    del.run(key);
                 }
                 db.exec("COMMIT");
             }
@@ -240,6 +263,11 @@ export async function syncSearchIndex({ codexHome, claudeHome, traeHome, traeApp
                 }
             }
         }
+    }
+    if (source === "all" && !cwd && includeArchived) {
+        const codexHomes = await discoverCodexHomes(codexHome);
+        db.prepare("INSERT INTO meta (key, value) VALUES ('codex_home_keys', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+            .run(Array.from(codexHomeKeys(codexHomes)).sort().join(","));
     }
     return { scanned: sessions.length, indexed, updated, pending, failed, total: await indexRowCount() };
 }

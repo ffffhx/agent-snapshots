@@ -7,8 +7,11 @@ import {
   discoverSessionSummaryCandidates,
   summarizeSessionCandidate,
 } from "../sources/index.mjs";
+import { codexHomeKeys, discoverCodexHomes } from "../sources/codex-homes.mjs";
 
 const RECENT_ACTIVE_MS = 10 * 60 * 1000;
+const CACHE_TABLE = "session_list_cache_v2";
+const META_TABLE = "session_list_meta_v2";
 
 let dbPromise = null;
 let reconciling = false;
@@ -16,7 +19,7 @@ let lastBackgroundReconcileAt = 0;
 
 function indexPath() {
   const cacheHome = process.env.XDG_CACHE_HOME || path.join(os.homedir(), ".cache");
-  return path.join(cacheHome, "agent-snapshots", "search-index.v1.db");
+  return path.join(cacheHome, "agent-snapshots", "search-index.v2.db");
 }
 
 async function getDb() {
@@ -30,10 +33,12 @@ async function getDb() {
     const db = new DatabaseSync(dbFile);
     db.exec("PRAGMA journal_mode = WAL");
     db.exec("PRAGMA synchronous = NORMAL");
-    db.exec(`CREATE TABLE IF NOT EXISTS session_list_cache (
-      ref TEXT PRIMARY KEY,
+    db.exec(`CREATE TABLE IF NOT EXISTS ${CACHE_TABLE} (
+      cache_key TEXT PRIMARY KEY,
+      ref TEXT,
       id TEXT,
       engine TEXT,
+      home_key TEXT DEFAULT '',
       title TEXT,
       cwd TEXT,
       display_cwd TEXT,
@@ -51,10 +56,12 @@ async function getDb() {
       candidate_json TEXT,
       updated_at INTEGER DEFAULT 0
     )`);
-    db.exec("CREATE INDEX IF NOT EXISTS session_list_cache_engine ON session_list_cache(engine)");
-    db.exec("CREATE INDEX IF NOT EXISTS session_list_cache_mtime ON session_list_cache(mtime_ms)");
-    db.exec("CREATE INDEX IF NOT EXISTS session_list_cache_path_key ON session_list_cache(path_key)");
-    db.exec("CREATE TABLE IF NOT EXISTS session_list_meta (key TEXT PRIMARY KEY, value TEXT)");
+    db.exec(`CREATE INDEX IF NOT EXISTS session_list_cache_v2_ref ON ${CACHE_TABLE}(ref)`);
+    db.exec(`CREATE INDEX IF NOT EXISTS session_list_cache_v2_engine ON ${CACHE_TABLE}(engine)`);
+    db.exec(`CREATE INDEX IF NOT EXISTS session_list_cache_v2_home ON ${CACHE_TABLE}(home_key)`);
+    db.exec(`CREATE INDEX IF NOT EXISTS session_list_cache_v2_mtime ON ${CACHE_TABLE}(mtime_ms)`);
+    db.exec(`CREATE INDEX IF NOT EXISTS session_list_cache_v2_path_key ON ${CACHE_TABLE}(path_key)`);
+    db.exec(`CREATE TABLE IF NOT EXISTS ${META_TABLE} (key TEXT PRIMARY KEY, value TEXT)`);
     return db;
   })();
   return dbPromise;
@@ -67,6 +74,21 @@ function engineKey(engine) {
 
 function refOf(summary) {
   return summary.ref || `${engineKey(summary.engine)}:${summary.id}`;
+}
+
+function homeKeyOf(summary, candidate = null) {
+  const engine = engineKey(summary?.engine || candidate?.engine);
+  if (engine === "codex") {
+    return String(summary?.codexHomeKey || candidate?.codexHomeKey || "").trim();
+  }
+  return "";
+}
+
+function cacheKeyOf(summary, candidate = null) {
+  const ref = refOf(summary);
+  const engine = engineKey(summary?.engine || candidate?.engine);
+  const homeKey = homeKeyOf(summary, candidate);
+  return [engine, homeKey, ref].join("\0");
 }
 
 function numberTime(value) {
@@ -163,6 +185,9 @@ function cacheCandidate(candidate) {
     mtime: candidate.mtime || isoTime(candidate.mtimeMs),
     size: Number(candidate.size || candidate.sizeBytes || 0),
     sizeBytes: Number(candidate.sizeBytes || candidate.size || 0),
+    codexHomeKey: String(candidate.codexHomeKey || ""),
+    codexHomeLabel: String(candidate.codexHomeLabel || ""),
+    codexHomePrimary: candidate.codexHomePrimary !== false,
   };
   if (Array.isArray(candidate.fileInfos)) {
     out.fileInfos = candidate.fileInfos;
@@ -188,6 +213,9 @@ function fallbackCandidate(summary) {
     mtime: summary.mtime || isoTime(mtimeMs),
     size: Number(summary.size || 0),
     sizeBytes: Number(summary.size || 0),
+    codexHomeKey: summary.codexHomeKey || "",
+    codexHomeLabel: summary.codexHomeLabel || "",
+    codexHomePrimary: !summary.codexHomeLabel,
   });
 }
 
@@ -195,33 +223,37 @@ function upsertRows(db, candidate, summaries) {
   const cachedCandidate = cacheCandidate(candidate);
   const pathKey = cachedCandidate.key;
   const now = Date.now();
-  const refs = [];
-  const upsert = db.prepare(`INSERT INTO session_list_cache
-    (ref, id, engine, title, cwd, display_cwd, mtime, mtime_ms, size, file_path, path_key,
+  const cacheKeys = [];
+  const upsert = db.prepare(`INSERT INTO ${CACHE_TABLE}
+    (cache_key, ref, id, engine, home_key, title, cwd, display_cwd, mtime, mtime_ms, size, file_path, path_key,
       candidate_mtime_ms, candidate_size, list_complete, complete, live, summary_json, candidate_json, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(ref) DO UPDATE SET
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(cache_key) DO UPDATE SET
       id=excluded.id, engine=excluded.engine, title=excluded.title, cwd=excluded.cwd,
+      ref=excluded.ref, home_key=excluded.home_key,
       display_cwd=excluded.display_cwd, mtime=excluded.mtime, mtime_ms=excluded.mtime_ms,
       size=excluded.size, file_path=excluded.file_path, path_key=excluded.path_key,
       candidate_mtime_ms=excluded.candidate_mtime_ms, candidate_size=excluded.candidate_size,
       list_complete=excluded.list_complete, complete=excluded.complete, live=excluded.live,
       summary_json=excluded.summary_json, candidate_json=excluded.candidate_json, updated_at=excluded.updated_at`);
-  const selectPathRefs = db.prepare("SELECT ref FROM session_list_cache WHERE path_key = ?");
-  const delRef = db.prepare("DELETE FROM session_list_cache WHERE ref = ?");
-  const delAll = db.prepare("DELETE FROM session_list_cache WHERE path_key = ?");
+  const selectPathRefs = db.prepare(`SELECT cache_key FROM ${CACHE_TABLE} WHERE path_key = ?`);
+  const delRef = db.prepare(`DELETE FROM ${CACHE_TABLE} WHERE cache_key = ?`);
+  const delAll = db.prepare(`DELETE FROM ${CACHE_TABLE} WHERE path_key = ?`);
   db.exec("BEGIN IMMEDIATE");
   try {
     for (const original of summaries || []) {
       const summary = stampSummary(original);
       const ref = refOf(summary);
-      refs.push(ref);
+      const cacheKey = cacheKeyOf(summary, cachedCandidate);
+      cacheKeys.push(cacheKey);
       const state = deriveRuntimeState(summary);
       const mtimeMs = numberTime(summary.mtime) || Number(cachedCandidate.mtimeMs || 0);
       upsert.run(
+        cacheKey,
         ref,
         summary.id || ref.replace(/^(codex|claude|trae):/, ""),
         engineKey(summary.engine),
+        homeKeyOf(summary, cachedCandidate),
         summary.title || "",
         summary.cwd || "",
         summary.displayCwd || summary.cwd || "",
@@ -240,11 +272,11 @@ function upsertRows(db, candidate, summaries) {
         now,
       );
     }
-    if (refs.length) {
-      const keep = new Set(refs);
+    if (cacheKeys.length) {
+      const keep = new Set(cacheKeys);
       for (const row of selectPathRefs.all(pathKey)) {
-        if (!keep.has(row.ref)) {
-          delRef.run(row.ref);
+        if (!keep.has(row.cache_key)) {
+          delRef.run(row.cache_key);
         }
       }
     } else {
@@ -272,12 +304,12 @@ async function upsertFallbackSummaries(summaries) {
 }
 
 function setMeta(db, key, value) {
-  db.prepare(`INSERT INTO session_list_meta (key, value) VALUES (?, ?)
+  db.prepare(`INSERT INTO ${META_TABLE} (key, value) VALUES (?, ?)
     ON CONFLICT(key) DO UPDATE SET value = excluded.value`).run(key, String(value));
 }
 
 function getMeta(db, key, fallback = "") {
-  const row = db.prepare("SELECT value FROM session_list_meta WHERE key = ?").get(key);
+  const row = db.prepare(`SELECT value FROM ${META_TABLE} WHERE key = ?`).get(key);
   return row?.value ?? fallback;
 }
 
@@ -325,10 +357,10 @@ function updateRowStatOnly(db, row, candidate) {
   });
   const state = deriveRuntimeState(summary);
   const cachedCandidate = cacheCandidate(candidate);
-  db.prepare(`UPDATE session_list_cache SET
+  db.prepare(`UPDATE ${CACHE_TABLE} SET
     mtime = ?, mtime_ms = ?, size = ?, file_path = ?, candidate_mtime_ms = ?,
     candidate_size = ?, complete = ?, live = ?, summary_json = ?, candidate_json = ?, updated_at = ?
-    WHERE ref = ?`).run(
+    WHERE cache_key = ?`).run(
     summary.mtime || isoTime(cachedCandidate.mtimeMs),
     numberTime(summary.mtime) || Number(cachedCandidate.mtimeMs || 0),
     Number(summary.size || cachedCandidate.size || 0),
@@ -340,16 +372,16 @@ function updateRowStatOnly(db, row, candidate) {
     JSON.stringify(summary),
     JSON.stringify(cachedCandidate),
     Date.now(),
-    row.ref,
+    row.cache_key,
   );
-  return db.prepare("SELECT * FROM session_list_cache WHERE ref = ?").get(row.ref) || null;
+  return db.prepare(`SELECT * FROM ${CACHE_TABLE} WHERE cache_key = ?`).get(row.cache_key) || null;
 }
 
 async function refreshRowIfNeeded(db, row, homes, { parseChanged = true, parseIfListIncomplete = false } = {}) {
   const candidate = rowCandidate(row) || fallbackCandidate(rowSummary(row) || {});
   const refreshed = await refreshCandidateStats(candidate);
   if (!refreshed) {
-    db.prepare("DELETE FROM session_list_cache WHERE path_key = ?").run(row.path_key);
+    db.prepare(`DELETE FROM ${CACHE_TABLE} WHERE path_key = ?`).run(row.path_key);
     return null;
   }
   const changed = Number(refreshed.mtimeMs || 0) !== Number(row.candidate_mtime_ms || 0)
@@ -363,11 +395,20 @@ async function refreshRowIfNeeded(db, row, homes, { parseChanged = true, parseIf
   }
   const summaries = await summarizeSessionCandidate(refreshed, homes);
   upsertRows(db, refreshed, summaries);
-  return db.prepare("SELECT * FROM session_list_cache WHERE ref = ?").get(row.ref) || null;
+  return db.prepare(`SELECT * FROM ${CACHE_TABLE} WHERE cache_key = ?`).get(row.cache_key) || null;
 }
 
 function matchesSource(row, source) {
   return !source || source === "all" || engineKey(row.engine) === engineKey(source);
+}
+
+function matchesActiveHome(row, homes) {
+  if (engineKey(row.engine) !== "codex") {
+    return true;
+  }
+  const active = homes?.activeCodexHomeKeys || codexHomeKeys(homes?.codexHomes || []);
+  const rowHomeKey = String(row.home_key || rowSummary(row)?.codexHomeKey || "").trim();
+  return Boolean(rowHomeKey && active.has(rowHomeKey));
 }
 
 function matchesCwd(summary, cwd) {
@@ -407,8 +448,9 @@ function filterSummariesForRequest(summaries, { source, cwd, completeOnly, liveO
 
 async function readCachedSessions({ codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir, source, cwd, completeOnly, liveOnly, limit, offset }) {
   const db = await getDb();
-  const rows = db.prepare("SELECT * FROM session_list_cache ORDER BY mtime_ms DESC").all();
-  const homes = { codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir };
+  const codexHomes = await discoverCodexHomes(codexHome);
+  const homes = { codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir, codexHomes, activeCodexHomeKeys: codexHomeKeys(codexHomes) };
+  const rows = db.prepare(`SELECT * FROM ${CACHE_TABLE} ORDER BY mtime_ms DESC`).all();
   const out = [];
   const skip = Math.max(0, Number(offset || 0));
   const take = Number.isFinite(limit) ? Math.max(0, Number(limit || 0)) : Number.POSITIVE_INFINITY;
@@ -418,6 +460,9 @@ async function readCachedSessions({ codexHome, claudeHome, traeHome, traeAppHome
   for (const initialRow of rows) {
     let row = initialRow;
     if (!matchesSource(row, source)) {
+      continue;
+    }
+    if (!matchesActiveHome(row, homes)) {
       continue;
     }
     if (Number(row.candidate_mtime_ms || row.mtime_ms || 0) >= recentCutoff) {
@@ -469,8 +514,23 @@ async function readCachedSessions({ codexHome, claudeHome, traeHome, traeAppHome
 
 export async function sessionListCacheRowCount() {
   const db = await getDb();
-  const row = db.prepare("SELECT COUNT(*) AS c FROM session_list_cache").get();
+  const row = db.prepare(`SELECT COUNT(*) AS c FROM ${CACHE_TABLE}`).get();
   return Number(row?.c || 0);
+}
+
+async function sessionListCacheUsableInfo({ source, codexHome }) {
+  const db = await getDb();
+  const codexHomes = await discoverCodexHomes(codexHome);
+  const homes = { codexHomes, activeCodexHomeKeys: codexHomeKeys(codexHomes) };
+  const activeHomeKey = Array.from(homes.activeCodexHomeKeys).sort().join(",");
+  const cachedHomeKey = getMeta(db, "codex_home_keys", "");
+  const rows = db.prepare(`SELECT cache_key, ref, engine, home_key, summary_json FROM ${CACHE_TABLE}`).all();
+  const count = rows.filter((row) => matchesSource(row, source) && matchesActiveHome(row, homes)).length;
+  const includesCodex = !source || source === "all" || engineKey(source) === "codex";
+  return {
+    count,
+    codexHomesChanged: includesCodex && cachedHomeKey !== activeHomeKey,
+  };
 }
 
 export async function listSessionsWithCache(options) {
@@ -484,13 +544,17 @@ export async function listSessionsWithCache(options) {
     completeOnly = false,
     liveOnly = false,
   } = options;
-  const rows = await sessionListCacheRowCount();
+  const codexHomes = await discoverCodexHomes(options.codexHome);
+  const cacheInfo = await sessionListCacheUsableInfo({ source, codexHome: options.codexHome });
+  const rows = cacheInfo.codexHomesChanged ? 0 : cacheInfo.count;
   const homes = {
     codexHome: options.codexHome,
     claudeHome: options.claudeHome,
     traeHome: options.traeHome,
     traeAppHome: options.traeAppHome,
     traeRecordingsDir: options.traeRecordingsDir,
+    codexHomes,
+    activeCodexHomeKeys: codexHomeKeys(codexHomes),
   };
   if (rows > 0) {
     const sessions = await readCachedSessions({ ...homes, source, cwd, completeOnly, liveOnly, limit, offset });
@@ -515,12 +579,15 @@ export async function listSessionsWithCache(options) {
 
 export async function reconcileSessionListCache(options) {
   const db = await getDb();
+  const codexHomes = await discoverCodexHomes(options.codexHome);
   const homes = {
     codexHome: options.codexHome,
     claudeHome: options.claudeHome,
     traeHome: options.traeHome,
     traeAppHome: options.traeAppHome,
     traeRecordingsDir: options.traeRecordingsDir,
+    codexHomes,
+    activeCodexHomeKeys: codexHomeKeys(codexHomes),
   };
   const started = Date.now();
   const previousWatermark = Number(getMeta(db, "watermark_mtime_ms", "0")) || 0;
@@ -533,7 +600,7 @@ export async function reconcileSessionListCache(options) {
     scanned = candidates.length;
     const candidateKeys = new Set(candidates.map((candidate) => cacheCandidate(candidate).key));
     const existingRows = db.prepare(`SELECT path_key, MAX(candidate_mtime_ms) AS mtime_ms, MAX(candidate_size) AS size
-      FROM session_list_cache GROUP BY path_key`).all();
+      FROM ${CACHE_TABLE} GROUP BY path_key`).all();
     const existing = new Map(existingRows.map((row) => [row.path_key, row]));
     const recentCutoff = Date.now() - RECENT_ACTIVE_MS;
     for (const candidate of candidates) {
@@ -556,11 +623,12 @@ export async function reconcileSessionListCache(options) {
       }
     }
 
-    const stale = db.prepare("SELECT DISTINCT path_key FROM session_list_cache").all()
+    const stale = db.prepare(`SELECT DISTINCT path_key, engine, home_key, summary_json FROM ${CACHE_TABLE}`).all()
+      .filter((row) => matchesActiveHome(row, homes))
       .map((row) => row.path_key)
       .filter((key) => key && !candidateKeys.has(key));
     if (stale.length) {
-      const del = db.prepare("DELETE FROM session_list_cache WHERE path_key = ?");
+      const del = db.prepare(`DELETE FROM ${CACHE_TABLE} WHERE path_key = ?`);
       db.exec("BEGIN IMMEDIATE");
       try {
         for (const key of stale) {
@@ -586,6 +654,7 @@ export async function reconcileSessionListCache(options) {
     setMeta(db, "last_reconcile_failed", String(failed));
     setMeta(db, "last_reconcile_deleted", String(deleted));
     setMeta(db, "last_reconcile_error", "");
+    setMeta(db, "codex_home_keys", Array.from(homes.activeCodexHomeKeys).sort().join(","));
     return { scanned, updated, failed, deleted, rows: await sessionListCacheRowCount(), watermark, lastReconcileMs: Date.now() - started };
   } catch (error) {
     setMeta(db, "last_reconcile_ms", String(Date.now() - started));

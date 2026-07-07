@@ -3,6 +3,7 @@
 import { open, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { discoverSessionFiles, parseSessionFile } from "agent-session-core";
+import { discoverCodexHomes } from "../sources/codex-homes.mjs";
 
 const CACHE_TTL_MS = 60_000;
 const TAIL_BYTES = 256 * 1024;
@@ -12,8 +13,8 @@ const CLAUDE_EVENT_LOOKBACK_MS = CLAUDE_RECENT_SCAN_MS + CLAUDE_BLOCK_MS;
 const cache = new Map();
 
 export async function readCodexQuotaSnapshot({ codexHome }) {
-  const root = path.join(codexHome, "sessions");
-  const cacheKey = path.resolve(root);
+  const homes = await discoverCodexHomes(codexHome);
+  const cacheKey = "codex:" + homes.map((home) => home.key).join(",");
   const cached = cache.get(cacheKey);
   if (cached && Date.now() - cached.cachedAt < CACHE_TTL_MS) {
     return cached.value;
@@ -21,14 +22,22 @@ export async function readCodexQuotaSnapshot({ codexHome }) {
 
   let value = { available: false };
   try {
-    const files = await collectJsonlFiles(root);
+    const files = [];
+    for (const home of homes) {
+      files.push(...await collectJsonlFiles(path.join(home.home, "sessions")));
+    }
     files.sort((a, b) => b.mtimeMs - a.mtimeMs);
+    let freshest = null;
     for (const file of files) {
       const snapshot = await readQuotaFromTail(file);
       if (snapshot) {
-        value = { available: true, ...snapshot };
-        break;
+        if (!freshest || quotaUpdatedMs(snapshot) > quotaUpdatedMs(freshest)) {
+          freshest = snapshot;
+        }
       }
+    }
+    if (freshest) {
+      value = { available: true, ...freshest };
     }
   } catch {
     value = { available: false };
@@ -36,6 +45,11 @@ export async function readCodexQuotaSnapshot({ codexHome }) {
 
   cache.set(cacheKey, { cachedAt: Date.now(), value });
   return value;
+}
+
+function quotaUpdatedMs(snapshot) {
+  const time = new Date(snapshot?.updatedAt || 0).getTime();
+  return Number.isFinite(time) ? time : 0;
 }
 
 export async function readClaudeBlockUsageEstimate({ claudeHome }) {

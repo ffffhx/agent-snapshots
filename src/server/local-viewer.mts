@@ -18,7 +18,7 @@ import { renderServerApp } from "./local-viewer-app.mjs";
 import { renderLauncherApp } from "./launcher-app.mjs";
 import { prewarmSemanticIndex, semanticSearchSessions } from "./semantic-index.mjs";
 import { semanticSearchSnapshot } from "./semantic-search.mjs";
-import { searchIndexed, syncSearchIndexInBackground, searchIndexStats, indexRowCount } from "./search-index.mjs";
+import { searchIndexed, syncSearchIndexInBackground, searchIndexStats, indexRowCount, searchIndexCoversCodexHomes } from "./search-index.mjs";
 import { listSessionsWithCache, sessionListCacheStatus, reconcileSessionListCacheInBackground } from "./session-list-cache.mjs";
 import { resumeSessionInOrca } from "./orca-bridge.mjs";
 import { readClaudeBlockUsageEstimate, readCodexQuotaSnapshot } from "./quota-meter.mjs";
@@ -26,6 +26,7 @@ import { buildUsageAnalytics } from "./usage-analytics.mjs";
 import { buildWeeklyDigest } from "./weekly-digest.mjs";
 import { listImageEntries, readImageBytes } from "./image-index.mjs";
 import { readLauncherPrefs, recordLauncherAccess, setLauncherSessionPinned } from "./launcher-prefs.mjs";
+import { discoverCodexHomes, resolveCodexHomeForRef } from "../sources/codex-homes.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -135,7 +136,9 @@ export async function serveLocalViewer({
         let result;
         // Serve from the fast index once it holds anything; otherwise do a live
         // disk scan for this query while the index warms up in the background.
-        const indexReady = url.searchParams.get("noIndex") !== "1" && (await indexRowCount()) > 0;
+        const indexReady = url.searchParams.get("noIndex") !== "1"
+          && (await indexRowCount()) > 0
+          && await searchIndexCoversCodexHomes({ codexHome, source });
         if (indexReady) {
           result = await searchIndexed({ query, source, cwd, limit });
         } else {
@@ -367,7 +370,20 @@ export async function serveLocalViewer({
           sendJson(response, { ok: false, error: "该会话无法在 Orca 中恢复（仅支持 Codex / Claude）" }, 400);
           return;
         }
-        const result = await resumeSessionInOrca({ engine: refMatch[1], sessionId: refMatch[2], cwd, title: url.searchParams.get("title") || "" });
+        let sessionId = refMatch[2];
+        let resumeCodexHome = "";
+        if (refMatch[1] === "codex") {
+          const resolved = await resolveCodexHomeForRef(id, codexHome);
+          sessionId = resolved.sessionId;
+          resumeCodexHome = resolved.home?.primary ? "" : resolved.home?.home || "";
+        }
+        const result = await resumeSessionInOrca({
+          engine: refMatch[1],
+          sessionId,
+          cwd,
+          title: url.searchParams.get("title") || "",
+          codexHome: resumeCodexHome,
+        });
         if (result.ok) {
           await recordLauncherAccess({ ref: id, cwd });
         }
@@ -717,6 +733,10 @@ export async function serveLocalViewer({
   const url = `http://${host}:${port}`;
   console.log(`Codex Snapshot is running at ${url}`);
   console.log(`Codex home: ${codexHome}`);
+  const codexHomes = await discoverCodexHomes(codexHome);
+  for (const home of codexHomes.filter((item) => !item.primary)) {
+    console.log(`Codex extra home${home.label ? ` (${home.label})` : ""}: ${home.home}`);
+  }
   console.log(`Claude Code home: ${claudeHome}`);
   console.log(`Trae home: ${traeHome}`);
   console.log(`Trae app home: ${traeAppHome}`);

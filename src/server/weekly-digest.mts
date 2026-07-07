@@ -236,7 +236,7 @@ function comparisonText(comparison) {
 
 function searchIndexPath() {
   const cacheHome = process.env.XDG_CACHE_HOME || path.join(os.homedir(), ".cache");
-  return path.join(cacheHome, "agent-snapshots", "search-index.v1.db");
+  return path.join(cacheHome, "agent-snapshots", "search-index.v2.db");
 }
 
 async function readIndexedSessionTokens() {

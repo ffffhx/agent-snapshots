@@ -14,7 +14,7 @@ import {
   type SnapshotLike,
 } from "./semantic-search.mjs";
 
-const INDEX_VERSION = 1;
+const INDEX_VERSION = 2;
 const DEFAULT_RESULT_LIMIT = 20;
 const MAX_RESULT_LIMIT = 48;
 const DEFAULT_SCAN_LIMIT = 600;
@@ -37,6 +37,8 @@ type SessionSummary = {
   mtime?: string;
   createdAt?: string;
   projectKind?: string;
+  codexHomeKey?: string;
+  codexHomeLabel?: string;
 };
 
 type IndexedChunk = Omit<SearchChunk, "text"> & {
@@ -248,7 +250,7 @@ export function defaultSemanticIndexPath() {
     return override;
   }
   const cacheHome = process.env.XDG_CACHE_HOME || path.join(os.homedir(), ".cache");
-  return path.join(cacheHome, "agent-snapshots", "semantic-index.v1.json");
+  return path.join(cacheHome, "agent-snapshots", "semantic-index.v2.json");
 }
 
 async function ensureSemanticSessionIndex({
@@ -303,7 +305,7 @@ async function ensureSemanticSessionIndex({
       failed += 1;
       continue;
     }
-    const key = semanticIndexEntryKey(ref, optionsKey);
+    const key = semanticIndexEntryKey(session, ref, optionsKey);
     const fingerprint = semanticSessionFingerprint(session, optionsKey);
     const existing = index.entries[key];
     if (existing?.fingerprint === fingerprint) {
@@ -353,7 +355,7 @@ async function ensureSemanticSessionIndex({
   const searchableEntries = sessions
     .map((session) => {
       const ref = sessionRef(session);
-      return ref ? index.entries[semanticIndexEntryKey(ref, optionsKey)] : null;
+      return ref ? index.entries[semanticIndexEntryKey(session, ref, optionsKey)] : null;
     })
     .filter((entry): entry is IndexEntry => Boolean(entry));
   const indexedChunks = searchableEntries.reduce((total, entry) => total + entry.chunks.length, 0);
@@ -434,6 +436,8 @@ function semanticSessionSearchResult(entry: IndexEntry, chunk: IndexedChunk, sco
     mtime: summary.mtime || "",
     createdAt: summary.createdAt || "",
     projectKind: summary.projectKind || "",
+    codexHomeKey: summary.codexHomeKey || "",
+    codexHomeLabel: summary.codexHomeLabel || "",
     score: Math.round(score * 1000) / 1000,
     role: chunk.role,
     label: chunk.label,
@@ -459,6 +463,8 @@ function semanticSummary(session: SessionSummary, ref: string): SessionSummary {
     mtime: session.mtime || "",
     createdAt: session.createdAt || "",
     projectKind: session.projectKind || "",
+    codexHomeKey: session.codexHomeKey || "",
+    codexHomeLabel: session.codexHomeLabel || "",
   };
 }
 
@@ -480,19 +486,24 @@ function semanticIndexOptionsKey({ includeTools, includeToolOutput }: { includeT
   ].join(":");
 }
 
-function semanticIndexEntryKey(ref: string, optionsKey: string) {
-  return hashText(`${optionsKey}\0${ref}`);
+function semanticIndexEntryKey(session: SessionSummary, ref: string, optionsKey: string) {
+  return hashText(`${optionsKey}\0${sessionHomeKey(session)}\0${ref}`);
 }
 
 function semanticSessionFingerprint(session: SessionSummary, optionsKey: string) {
   return hashText(JSON.stringify({
     ref: sessionRef(session),
+    homeKey: sessionHomeKey(session),
     title: session.title || "",
     mtime: session.mtime || "",
     cwd: session.cwd || "",
     sourceDetail: session.sourceDetail || "",
     optionsKey,
   }));
+}
+
+function sessionHomeKey(session: SessionSummary) {
+  return String(session.codexHomeKey || "");
 }
 
 function hashText(value: string) {

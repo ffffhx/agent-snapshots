@@ -3,7 +3,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { buildSearchChunks, clampInteger, cosineSimilarity, defaultEmbeddingModel, defaultOllamaBaseUrl, embedTexts, normalizeOllamaBaseUrl, } from "./semantic-search.mjs";
-const INDEX_VERSION = 1;
+const INDEX_VERSION = 2;
 const DEFAULT_RESULT_LIMIT = 20;
 const MAX_RESULT_LIMIT = 48;
 const DEFAULT_SCAN_LIMIT = 600;
@@ -123,7 +123,7 @@ export function defaultSemanticIndexPath() {
         return override;
     }
     const cacheHome = process.env.XDG_CACHE_HOME || path.join(os.homedir(), ".cache");
-    return path.join(cacheHome, "agent-snapshots", "semantic-index.v1.json");
+    return path.join(cacheHome, "agent-snapshots", "semantic-index.v2.json");
 }
 async function ensureSemanticSessionIndex({ codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir, scanLimit = DEFAULT_SCAN_LIMIT, updateLimit = DEFAULT_UPDATE_LIMIT, cwd = "", includeArchived = true, source = "all", completeOnly = true, includeTools = false, includeToolOutput = false, model = defaultEmbeddingModel(), baseUrl = defaultOllamaBaseUrl(), indexPath = defaultSemanticIndexPath(), listSessions, loadSnapshot, embedder = embedTexts, }) {
     const sessionScanLimit = clampInteger(scanLimit, 1, MAX_SCAN_LIMIT, DEFAULT_SCAN_LIMIT);
@@ -154,7 +154,7 @@ async function ensureSemanticSessionIndex({ codexHome, claudeHome, traeHome, tra
             failed += 1;
             continue;
         }
-        const key = semanticIndexEntryKey(ref, optionsKey);
+        const key = semanticIndexEntryKey(session, ref, optionsKey);
         const fingerprint = semanticSessionFingerprint(session, optionsKey);
         const existing = index.entries[key];
         if (existing?.fingerprint === fingerprint) {
@@ -202,7 +202,7 @@ async function ensureSemanticSessionIndex({ codexHome, claudeHome, traeHome, tra
     const searchableEntries = sessions
         .map((session) => {
         const ref = sessionRef(session);
-        return ref ? index.entries[semanticIndexEntryKey(ref, optionsKey)] : null;
+        return ref ? index.entries[semanticIndexEntryKey(session, ref, optionsKey)] : null;
     })
         .filter((entry) => Boolean(entry));
     const indexedChunks = searchableEntries.reduce((total, entry) => total + entry.chunks.length, 0);
@@ -276,6 +276,8 @@ function semanticSessionSearchResult(entry, chunk, score) {
         mtime: summary.mtime || "",
         createdAt: summary.createdAt || "",
         projectKind: summary.projectKind || "",
+        codexHomeKey: summary.codexHomeKey || "",
+        codexHomeLabel: summary.codexHomeLabel || "",
         score: Math.round(score * 1000) / 1000,
         role: chunk.role,
         label: chunk.label,
@@ -300,6 +302,8 @@ function semanticSummary(session, ref) {
         mtime: session.mtime || "",
         createdAt: session.createdAt || "",
         projectKind: session.projectKind || "",
+        codexHomeKey: session.codexHomeKey || "",
+        codexHomeLabel: session.codexHomeLabel || "",
     };
 }
 function sessionRef(session) {
@@ -318,18 +322,22 @@ function semanticIndexOptionsKey({ includeTools, includeToolOutput }) {
         includeToolOutput ? "tool-output" : "tool-meta",
     ].join(":");
 }
-function semanticIndexEntryKey(ref, optionsKey) {
-    return hashText(`${optionsKey}\0${ref}`);
+function semanticIndexEntryKey(session, ref, optionsKey) {
+    return hashText(`${optionsKey}\0${sessionHomeKey(session)}\0${ref}`);
 }
 function semanticSessionFingerprint(session, optionsKey) {
     return hashText(JSON.stringify({
         ref: sessionRef(session),
+        homeKey: sessionHomeKey(session),
         title: session.title || "",
         mtime: session.mtime || "",
         cwd: session.cwd || "",
         sourceDetail: session.sourceDetail || "",
         optionsKey,
     }));
+}
+function sessionHomeKey(session) {
+    return String(session.codexHomeKey || "");
 }
 function hashText(value) {
     return createHash("sha256").update(value).digest("hex");
