@@ -19,7 +19,7 @@ import { addRisks, detectRisks, redactText, severityRank } from "../core/privacy
 import { renderMarkdownHtml } from "../renderers/markdown.mjs";
 import { stripAppDirectives as stripCodexAppDirectives } from "../shared/sanitize.js";
 import { extractClaudeToolFileChanges, extractCodexToolFileChanges, rawFileChangeText, redactFileChanges, } from "./file-changes.mjs";
-import { listSessions as legacyListSessions, loadSnapshot as legacyLoadSnapshot, searchSessions as legacySearchSessions, } from "./local-history.mjs";
+import { listSessions as legacyListSessions, loadSnapshot as legacyLoadSnapshot, searchSessions as legacySearchSessions, discoverTraeSessionSummaryCandidates, summarizeTraeSessionCandidate, } from "./local-history.mjs";
 const ASC_ENGINES = new Set(["codex", "claude"]);
 const ENGINE_LABELS = { codex: "Codex", claude: "Claude Code" };
 // Head-only line budget for list summaries: enough to capture the session
@@ -38,14 +38,18 @@ export const searchSessions = legacySearchSessions;
 // Claude's roots (projects + sessions). ASC's defaultRoots() omits codex archive
 // and ~/.claude/sessions, so we pass explicit roots derived from the caller's
 // (possibly custom) home dirs.
-function ascRoots(engine, codexHome, claudeHome) {
+function ascRoots(engine, codexHome, claudeHome, { includeArchived = true } = {}) {
     if (engine === "codex") {
-        return { codex: [path.join(codexHome, "sessions"), path.join(codexHome, "archived_sessions")] };
+        const roots = [path.join(codexHome, "sessions")];
+        if (includeArchived) {
+            roots.push(path.join(codexHome, "archived_sessions"));
+        }
+        return { codex: roots };
     }
     return { claude: [path.join(claudeHome, "projects"), path.join(claudeHome, "sessions")] };
 }
-function discoverFor(engine, codexHome, claudeHome) {
-    return discoverSessionFiles({ roots: ascRoots(engine, codexHome, claudeHome) });
+function discoverFor(engine, codexHome, claudeHome, { includeArchived = true } = {}) {
+    return discoverSessionFiles({ roots: ascRoots(engine, codexHome, claudeHome, { includeArchived }) });
 }
 // Replicates local-history.mts sessionIdFromPath so we can match a ref to a
 // discovered file by filename before paying for a full parse.
@@ -423,15 +427,15 @@ export async function listSessions(opts) {
         return legacyListSessions(opts);
     }
     if (source === "codex" || source === "claude") {
-        const summaries = ascListEngine(source, { codexHome, claudeHome, cwd }, { limit, completeOnly });
+        const summaries = ascListEngine(source, { codexHome, claudeHome, cwd, includeArchived }, { limit, completeOnly });
         const filtered = applyListFilters(summaries, { completeOnly, limit });
         return filtered;
     }
     if (source === "all") {
         // codex + claude via ASC; trae still via legacy. Merge by mtime desc and
         // dedupe by ref (engine-prefixed id), mirroring the legacy "all" semantics.
-        const codex = ascListEngine("codex", { codexHome, claudeHome, cwd }, { limit, completeOnly });
-        const claude = ascListEngine("claude", { codexHome, claudeHome, cwd }, { limit, completeOnly });
+        const codex = ascListEngine("codex", { codexHome, claudeHome, cwd, includeArchived }, { limit, completeOnly });
+        const claude = ascListEngine("claude", { codexHome, claudeHome, cwd, includeArchived }, { limit, completeOnly });
         let trae = [];
         try {
             trae = await legacyListSessions({ ...opts, source: "trae", completeOnly: false, limit: Infinity });
@@ -469,12 +473,12 @@ function applyListFilters(summaries, { completeOnly, limit }) {
 function isCompleteSessionSummary(summary) {
     return Number(summary?.messageCount) > 0;
 }
-function ascListEngine(engine, { codexHome, claudeHome, cwd }, { limit, completeOnly } = {}) {
+function ascListEngine(engine, { codexHome, claudeHome, cwd, includeArchived = true }, { limit, completeOnly } = {}) {
     const cwdFilter = cwd ? path.resolve(cwd) : "";
     // Newest-first so we can stop once we have enough: the legacy lister reads
     // only headers, so full-parsing the whole corpus per list call is a big
     // regression. Discovery already carries mtimeMs (a cheap stat).
-    const files = discoverFor(engine, codexHome, claudeHome)
+    const files = discoverFor(engine, codexHome, claudeHome, { includeArchived })
         .slice()
         .sort((a, b) => b.mtimeMs - a.mtimeMs);
     // Only safe to early-stop when the caller wants a bounded, unfiltered-by-cwd
@@ -501,6 +505,54 @@ function ascListEngine(engine, { codexHome, claudeHome, cwd }, { limit, complete
         }
     }
     return summaries;
+}
+export async function discoverSessionSummaryCandidates({ codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir, source = "all", includeArchived = true, }) {
+    const candidates = [];
+    if (source === "all" || source === "codex") {
+        for (const file of discoverFor("codex", codexHome, claudeHome, { includeArchived })) {
+            candidates.push(ascSummaryCandidate(file));
+        }
+    }
+    if (source === "all" || source === "claude") {
+        for (const file of discoverFor("claude", codexHome, claudeHome, { includeArchived: true })) {
+            candidates.push(ascSummaryCandidate(file));
+        }
+    }
+    if (source === "all" || source === "trae") {
+        candidates.push(...await discoverTraeSessionSummaryCandidates({ traeHome, traeAppHome, traeRecordingsDir }));
+    }
+    candidates.sort((a, b) => b.mtimeMs - a.mtimeMs);
+    return candidates;
+}
+function ascSummaryCandidate(file) {
+    const filePath = file.path || file.filePath || "";
+    return {
+        key: `${file.engine || "codex"}:${filePath}`,
+        engine: file.engine || "codex",
+        kind: "asc-file",
+        filePath,
+        filePaths: [filePath],
+        mtimeMs: Number(file.mtimeMs || 0),
+        mtime: new Date(Number(file.mtimeMs || 0)).toISOString(),
+        size: Number(file.sizeBytes || file.size || 0),
+        sizeBytes: Number(file.sizeBytes || file.size || 0),
+    };
+}
+export async function summarizeSessionCandidate(candidate, { codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir } = {}) {
+    if (candidate?.engine === "trae") {
+        return summarizeTraeSessionCandidate(candidate, { traeHome, traeAppHome, traeRecordingsDir });
+    }
+    const file = {
+        path: candidate.path || candidate.filePath,
+        engine: candidate.engine || "codex",
+        mtimeMs: Number(candidate.mtimeMs || 0),
+        sizeBytes: Number(candidate.sizeBytes || candidate.size || 0),
+    };
+    const session = parseSessionFile(file, { maxLines: SUMMARY_MAX_LINES });
+    if (!session) {
+        return [];
+    }
+    return [projectSummary(session, file)];
 }
 // Project an ASC NormalizedSession into the legacy list-summary shape that the
 // CLI/server/site consume.

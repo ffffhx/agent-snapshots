@@ -3,4 +3,4 @@ export { detectRisks, redactText } from "../core/privacy.js";
 // (via the adapter), which injects our privacy redaction + markdown renderer.
 // trae, Claude history-only sessions, and searchSessions still delegate to the
 // legacy parser inside the adapter. ASC's snapshot semantics are now the truth.
-export { listSessions, loadSnapshot, searchSessions } from "./asc-adapter.mjs";
+export { listSessions, loadSnapshot, searchSessions, discoverSessionSummaryCandidates, summarizeSessionCandidate, } from "./asc-adapter.mjs";

@@ -1587,6 +1587,198 @@ async function listTraeSessions({ traeHome, traeAppHome, traeRecordingsDir, limi
   return Number.isFinite(limit) ? sessions.slice(0, limit) : sessions;
 }
 
+export async function discoverTraeSessionSummaryCandidates({ traeHome, traeAppHome, traeRecordingsDir }) {
+  const [recorded, memory, workspaces] = await Promise.all([
+    discoverTraeRecordedCandidates(traeRecordingsDir),
+    discoverTraeMemoryCandidates(traeHome),
+    discoverTraeInputHistoryCandidates(traeAppHome),
+  ]);
+  return [...recorded, ...memory, ...workspaces].sort((a, b) => b.mtimeMs - a.mtimeMs);
+}
+
+async function discoverTraeRecordedCandidates(traeRecordingsDir) {
+  const files = [];
+  await collectJsonlFiles(traeRecordingsDir, files);
+  return files.map((fileInfo) => ({
+    key: `trae-recorded:${fileInfo.filePath}`,
+    engine: "trae",
+    kind: "trae-recorded",
+    filePath: fileInfo.filePath,
+    filePaths: [fileInfo.filePath],
+    mtimeMs: Number(fileInfo.mtimeMs || 0),
+    mtime: fileInfo.mtime,
+    size: Number(fileInfo.size || 0),
+    fileInfos: [fileInfo],
+  }));
+}
+
+async function discoverTraeMemoryCandidates(traeHome) {
+  const files = [];
+  await collectJsonlFiles(path.join(traeHome, "memory", "projects"), files);
+  const groups = new Map();
+  for (const fileInfo of files) {
+    const id = traeMemorySessionIdFromPath(fileInfo.filePath);
+    const key = `${cwdFromTraeMemoryPath(fileInfo.filePath, traeHome)}::${id}`;
+    if (!groups.has(key)) {
+      groups.set(key, []);
+    }
+    groups.get(key).push(fileInfo);
+  }
+  const candidates = [];
+  for (const [key, groupedFiles] of groups.entries()) {
+    const sorted = groupedFiles.slice().sort((a, b) => a.mtimeMs - b.mtimeMs);
+    const latest = sorted[sorted.length - 1];
+    candidates.push({
+      key: `trae-memory:${key}`,
+      engine: "trae",
+      kind: "trae-memory",
+      filePath: latest.filePath,
+      filePaths: sorted.map((file) => file.filePath),
+      mtimeMs: Number(latest.mtimeMs || 0),
+      mtime: latest.mtime,
+      size: sorted.reduce((total, file) => total + Number(file.size || 0), 0),
+      fileInfos: sorted,
+    });
+  }
+  return candidates;
+}
+
+async function discoverTraeInputHistoryCandidates(traeAppHome) {
+  const workspaces = await discoverTraeWorkspaceStores(traeAppHome);
+  return workspaces.map((workspace) => ({
+    key: `trae-input-history:${workspace.dbPath}`,
+    engine: "trae",
+    kind: "trae-input-history",
+    filePath: workspace.dbPath,
+    filePaths: [workspace.dbPath],
+    mtimeMs: Number(workspace.mtimeMs || new Date(workspace.mtime || 0).getTime() || 0),
+    mtime: workspace.mtime,
+    size: Number(workspace.size || 0),
+    workspace,
+  }));
+}
+
+export async function summarizeTraeSessionCandidate(candidate, { traeHome } = {}) {
+  if (!candidate || candidate.engine !== "trae") {
+    return [];
+  }
+  if (candidate.kind === "trae-recorded") {
+    const fileInfo = await candidateFileInfo(candidate);
+    if (!fileInfo) {
+      return [];
+    }
+    const records = await readTraeCaptureRecords(fileInfo.filePath);
+    const summaries = [];
+    for (const group of groupTraeRecordedRecords(fileInfo, records)) {
+      const summary = await scanTraeRecordedSummaryFromRecords(fileInfo, group.records, group.id);
+      if (summary) {
+        summaries.push(summary);
+      }
+    }
+    return summaries;
+  }
+  if (candidate.kind === "trae-memory") {
+    const files = await candidateFileInfos(candidate);
+    if (!files.length) {
+      return [];
+    }
+    return [await scanTraeMemorySummary(files, traeHome)];
+  }
+  if (candidate.kind === "trae-input-history") {
+    const workspace = await candidateWorkspace(candidate);
+    if (!workspace) {
+      return [];
+    }
+    const entries = await readTraeInputHistoryEntries(workspace.dbPath);
+    if (!entries.length) {
+      return [];
+    }
+    const latestPrompt = entries.slice().reverse().find((entry) => String(entry.inputText || "").trim());
+    const summary = createTraeSummary({
+      id: `input-history-${workspace.workspaceId}`,
+      filePath: workspace.dbPath,
+      filePaths: [workspace.dbPath],
+      size: workspace.size,
+      mtime: workspace.mtime,
+      cwd: workspace.cwd,
+      sourceKind: "input-history",
+    });
+    summary.workspaceId = workspace.workspaceId;
+    summary.title = latestPrompt ? truncateForTitle(String(latestPrompt.inputText || "")) : "Input history";
+    summary.messageCount = entries.length;
+    summary.riskCount = entries.reduce((total, entry) => total + detectRisks(traeInputEntryText(entry)).length, 0);
+    return [finishTraeSummary(summary)];
+  }
+  return [];
+}
+
+async function candidateFileInfo(candidate) {
+  const filePath = candidate.filePath || candidate.path;
+  if (!filePath) {
+    return null;
+  }
+  const existing = Array.isArray(candidate.fileInfos) ? candidate.fileInfos.find((file) => file.filePath === filePath) : null;
+  if (existing) {
+    return existing;
+  }
+  try {
+    const info = await stat(filePath);
+    return {
+      filePath,
+      size: info.size,
+      mtimeMs: info.mtimeMs,
+      mtime: info.mtime.toISOString(),
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function candidateFileInfos(candidate) {
+  if (Array.isArray(candidate.fileInfos) && candidate.fileInfos.length) {
+    return candidate.fileInfos;
+  }
+  const files = [];
+  for (const filePath of candidate.filePaths || [candidate.filePath].filter(Boolean)) {
+    try {
+      const info = await stat(filePath);
+      files.push({
+        filePath,
+        size: info.size,
+        mtimeMs: info.mtimeMs,
+        mtime: info.mtime.toISOString(),
+      });
+    } catch {
+      // Skip files that disappeared between discovery and summarization.
+    }
+  }
+  return files;
+}
+
+async function candidateWorkspace(candidate) {
+  if (candidate.workspace?.dbPath) {
+    return candidate.workspace;
+  }
+  const dbPath = candidate.filePath || candidate.path;
+  if (!dbPath) {
+    return null;
+  }
+  try {
+    const info = await stat(dbPath);
+    const workspaceDir = path.dirname(dbPath);
+    return {
+      workspaceId: path.basename(workspaceDir),
+      dbPath,
+      cwd: await readTraeWorkspaceCwd(path.join(workspaceDir, "workspace.json")),
+      size: info.size,
+      mtimeMs: info.mtimeMs,
+      mtime: info.mtime.toISOString(),
+    };
+  } catch {
+    return null;
+  }
+}
+
 async function readTraeRecordedSummaries(traeRecordingsDir) {
   const files = [];
   await collectJsonlFiles(traeRecordingsDir, files);
@@ -2564,6 +2756,7 @@ async function discoverTraeWorkspaceStores(traeAppHome) {
       dbPath,
       cwd: await readTraeWorkspaceCwd(path.join(workspaceDir, "workspace.json")),
       size: info.size,
+      mtimeMs: info.mtimeMs,
       mtime: info.mtime.toISOString(),
     });
   }));

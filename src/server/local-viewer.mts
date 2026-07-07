@@ -19,6 +19,7 @@ import { renderLauncherApp } from "./launcher-app.mjs";
 import { prewarmSemanticIndex, semanticSearchSessions } from "./semantic-index.mjs";
 import { semanticSearchSnapshot } from "./semantic-search.mjs";
 import { searchIndexed, syncSearchIndexInBackground, searchIndexStats, indexRowCount } from "./search-index.mjs";
+import { listSessionsWithCache, sessionListCacheStatus, reconcileSessionListCacheInBackground } from "./session-list-cache.mjs";
 import { resumeSessionInOrca } from "./orca-bridge.mjs";
 import { readClaudeBlockUsageEstimate, readCodexQuotaSnapshot } from "./quota-meter.mjs";
 import { buildUsageAnalytics } from "./usage-analytics.mjs";
@@ -85,20 +86,22 @@ export async function serveLocalViewer({
           ? Number.POSITIVE_INFINITY
           : readPositiveInteger(url.searchParams.get("limit") || String(defaultServerLimit), "limit");
         const offset = readNonNegativeInteger(url.searchParams.get("offset") || "0", "offset");
-        const scanLimit = Number.isFinite(limit) ? limit + offset : Number.POSITIVE_INFINITY;
-        const sessions = await listSessions({
+        const sessions = await listSessionsWithCache({
+          listSessions,
           codexHome,
           claudeHome,
           traeHome,
           traeAppHome,
           traeRecordingsDir,
-          limit: scanLimit,
+          limit,
+          offset,
           cwd: url.searchParams.get("cwd") || "",
           includeArchived: url.searchParams.get("liveOnly") !== "1",
+          liveOnly: url.searchParams.get("liveOnly") === "1",
           source: url.searchParams.get("source") || "codex",
           completeOnly: url.searchParams.get("completeOnly") !== "0",
         });
-        sendJson(response, Number.isFinite(limit) ? sessions.slice(offset, offset + limit) : sessions.slice(offset));
+        sendJson(response, sessions);
         return;
       }
       if (url.pathname === "/api/search") {
@@ -156,6 +159,13 @@ export async function serveLocalViewer({
         return;
       }
       if (url.pathname === "/api/search-stats") {
+        reconcileSessionListCacheInBackground({
+          codexHome,
+          claudeHome,
+          traeHome,
+          traeAppHome,
+          traeRecordingsDir,
+        });
         syncSearchIndexInBackground({
           codexHome,
           claudeHome,
@@ -170,7 +180,11 @@ export async function serveLocalViewer({
           pricePerMTokIn: Number(url.searchParams.get("priceIn") || "0") || 0,
           pricePerMTokOut: Number(url.searchParams.get("priceOut") || "0") || 0,
         });
-        sendJson(response, stats);
+        sendJson(response, { ...stats, sessionListCache: await sessionListCacheStatus() });
+        return;
+      }
+      if (url.pathname === "/api/sessions-cache-status") {
+        sendJson(response, await sessionListCacheStatus());
         return;
       }
       if (url.pathname === "/api/quota") {
