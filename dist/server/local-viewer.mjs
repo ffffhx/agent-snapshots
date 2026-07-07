@@ -16,6 +16,7 @@ import { resumeSessionInOrca } from "./orca-bridge.mjs";
 import { readCodexQuotaSnapshot } from "./quota-meter.mjs";
 import { buildUsageAnalytics } from "./usage-analytics.mjs";
 import { listImageEntries, readImageBytes } from "./image-index.mjs";
+import { readLauncherPrefs, setLauncherSessionPinned } from "./launcher-prefs.mjs";
 const execFileAsync = promisify(execFile);
 export async function serveLocalViewer({ codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir, host, port, defaultServerLimit, snapshotLogoSvg, shareConfig, listSessions, loadSnapshot, searchSessions, applySafetyChecksOption, snapshotApiResponse, publishAllSnapshots, publishSnapshot, createShareRequestPayload, stableSnapshotShareId, renderMarkdown, renderHtml, readPositiveInteger, readNonNegativeInteger, safeFileName, }) {
     const csrfToken = createMutationCsrfToken();
@@ -262,6 +263,30 @@ export async function serveLocalViewer({ codexHome, claudeHome, traeHome, traeAp
                     return;
                 }
                 const result = await resumeSessionInOrca({ engine: refMatch[1], sessionId: refMatch[2], cwd, title: url.searchParams.get("title") || "" });
+                sendJson(response, result, result.ok ? 200 : 400);
+                return;
+            }
+            if (url.pathname === "/api/launcher-prefs") {
+                if (request.method !== "GET") {
+                    sendJson(response, { error: "method not allowed" }, 405);
+                    return;
+                }
+                sendJson(response, await readLauncherPrefs());
+                return;
+            }
+            if (url.pathname === "/api/launcher-prefs/pin") {
+                if (!allowMutationRequest(request, response, csrfToken)) {
+                    return;
+                }
+                let body;
+                try {
+                    body = await readJsonRequestBody(request);
+                }
+                catch (error) {
+                    sendJson(response, { ok: false, error: error instanceof Error ? error.message : String(error) }, 400);
+                    return;
+                }
+                const result = await setLauncherSessionPinned(body);
                 sendJson(response, result, result.ok ? 200 : 400);
                 return;
             }
@@ -528,6 +553,23 @@ export async function serveLocalViewer({ codexHome, claudeHome, traeHome, traeAp
     console.log(`Trae home: ${traeHome}`);
     console.log(`Trae app home: ${traeAppHome}`);
     console.log(`Trae recordings: ${traeRecordingsDir}`);
+}
+async function readJsonRequestBody(request) {
+    const chunks = [];
+    let size = 0;
+    for await (const chunk of request) {
+        const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+        size += buffer.length;
+        if (size > 64 * 1024) {
+            throw new Error("request body too large");
+        }
+        chunks.push(buffer);
+    }
+    const text = Buffer.concat(chunks).toString("utf8").trim();
+    if (!text) {
+        return {};
+    }
+    return JSON.parse(text);
 }
 async function readSessionHead(id, { codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir, loadSnapshot, cache }) {
     const cached = cache.get(id);

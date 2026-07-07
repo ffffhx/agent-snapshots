@@ -22,6 +22,7 @@ import { resumeSessionInOrca } from "./orca-bridge.mjs";
 import { readCodexQuotaSnapshot } from "./quota-meter.mjs";
 import { buildUsageAnalytics } from "./usage-analytics.mjs";
 import { listImageEntries, readImageBytes } from "./image-index.mjs";
+import { readLauncherPrefs, setLauncherSessionPinned } from "./launcher-prefs.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -297,6 +298,29 @@ export async function serveLocalViewer({
         sendJson(response, result, result.ok ? 200 : 400);
         return;
       }
+      if (url.pathname === "/api/launcher-prefs") {
+        if (request.method !== "GET") {
+          sendJson(response, { error: "method not allowed" }, 405);
+          return;
+        }
+        sendJson(response, await readLauncherPrefs());
+        return;
+      }
+      if (url.pathname === "/api/launcher-prefs/pin") {
+        if (!allowMutationRequest(request, response, csrfToken)) {
+          return;
+        }
+        let body;
+        try {
+          body = await readJsonRequestBody(request);
+        } catch (error) {
+          sendJson(response, { ok: false, error: error instanceof Error ? error.message : String(error) }, 400);
+          return;
+        }
+        const result = await setLauncherSessionPinned(body);
+        sendJson(response, result, result.ok ? 200 : 400);
+        return;
+      }
       if (url.pathname === "/api/reveal-in-file") {
         if (!allowMutationRequest(request, response, csrfToken)) {
           return;
@@ -561,6 +585,24 @@ export async function serveLocalViewer({
   console.log(`Trae home: ${traeHome}`);
   console.log(`Trae app home: ${traeAppHome}`);
   console.log(`Trae recordings: ${traeRecordingsDir}`);
+}
+
+async function readJsonRequestBody(request) {
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of request) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    size += buffer.length;
+    if (size > 64 * 1024) {
+      throw new Error("request body too large");
+    }
+    chunks.push(buffer);
+  }
+  const text = Buffer.concat(chunks).toString("utf8").trim();
+  if (!text) {
+    return {};
+  }
+  return JSON.parse(text);
 }
 
 async function readSessionHead(id, { codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir, loadSnapshot, cache }) {

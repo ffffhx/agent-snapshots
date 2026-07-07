@@ -109,6 +109,9 @@ html,body{height:100%;background:transparent;color:var(--ink);font-family:var(--
 .qact:hover{border-color:rgba(233,220,196,0.24);background:rgba(233,220,196,0.11);color:var(--ink)}
 .qact:focus-visible{outline:2px solid rgba(217,79,57,0.5);outline-offset:2px}
 .qact svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.qact.pinact{font:700 13px/1 var(--sans)}
+.qact.pinact.active{border-color:rgba(255,211,107,0.34);background:rgba(255,211,107,0.12)}
+.pin-marker{display:inline-grid;place-items:center;width:17px;height:17px;flex:0 0 auto;font-size:10.5px;line-height:1;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.35))}
 .empty{display:grid;place-items:center;height:100%;min-height:180px;padding:28px;color:var(--faint);font:600 13px/1.5 var(--mono);text-align:center}
 .spin{width:15px;height:15px;border:2px solid rgba(233,220,196,0.2);border-top-color:var(--seal);border-radius:99px;animation:sp .8s linear infinite;margin-right:8px;display:inline-block;vertical-align:-2px}
 @keyframes sp{to{transform:rotate(360deg)}}
@@ -159,10 +162,11 @@ const $=(id)=>document.getElementById(id);
 const esc=(v)=>String(v==null?"":v).replace(/[&<>"']/g,(c)=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const SCOPES=["all","codex","claude","trae"];
 const SCOPE_LABELS={all:"全部",codex:"Codex",claude:"Claude",trae:"Trae"};
-const state={items:[],sel:0,scope:"all",query:"",mode:"recent",token:0,loading:false,searchMs:0,matched:0,liveCount:0,recentCount:0,quota:null,ambientLiveCount:0,shortcutsOpen:false};
+const state={items:[],sel:0,scope:"all",query:"",mode:"recent",token:0,loading:false,searchMs:0,matched:0,pinnedPrefs:[],pinnedSet:new Set(),pinnedCount:0,liveCount:0,recentCount:0,quota:null,ambientLiveCount:0,shortcutsOpen:false};
 let timer=0;
 let ambientTimer=0;
 let ambientToken=0;
+let pruneQueue=Promise.resolve();
 const AMBIENT_REFRESH_MS=60000;
 
 function relTime(v){
@@ -220,6 +224,81 @@ function schedule(){
   timer=setTimeout(run,140);
 }
 
+async function fetchLauncherPrefs(){
+  try{
+    const r=await fetch("/api/launcher-prefs").then(x=>x.ok?x.json():null);
+    return normalizePinnedPrefs(r&&r.pinned);
+  }catch(e){
+    return [];
+  }
+}
+
+function normalizePinnedPrefs(pinned){
+  if(!Array.isArray(pinned)) return [];
+  const out=[];
+  const seen=new Set();
+  for(const item of pinned){
+    const ref=String(item&&item.ref||"").trim();
+    const engine=String(item&&item.engine||"").trim().toLowerCase();
+    if(!ref || !["codex","claude","trae"].includes(engine) || seen.has(ref)) continue;
+    out.push({ref,engine,pinnedAt:String(item&&item.pinnedAt||"")});
+    seen.add(ref);
+  }
+  return out;
+}
+
+function setPinnedPrefs(pinned){
+  state.pinnedPrefs=normalizePinnedPrefs(pinned);
+  state.pinnedSet=new Set(state.pinnedPrefs.map((item)=>item.ref));
+}
+
+function isPinnedItem(it){
+  const key=sessionKey(it);
+  return !!key && (it&&it._pinned===true || state.pinnedSet.has(key));
+}
+
+async function resolvePinnedRows(pinned,source){
+  const wanted=normalizePinnedPrefs(pinned).filter((item)=>source==="all"||item.engine===source);
+  if(!wanted.length) return [];
+  const params=new URLSearchParams({all:"1",completeOnly:"0",source});
+  const response=await fetch("/api/sessions?"+params.toString());
+  if(!response.ok) return [];
+  const rows=await response.json();
+  if(!Array.isArray(rows)) return [];
+  const byKey=new Map();
+  for(const item of rows){
+    const key=sessionKey(item);
+    if(key && !byKey.has(key)) byKey.set(key,item);
+  }
+  const ordered=wanted.slice().sort((a,b)=>new Date(b.pinnedAt||0).getTime()-new Date(a.pinnedAt||0).getTime());
+  const resolved=[];
+  const missing=[];
+  for(const pin of ordered){
+    const item=byKey.get(pin.ref);
+    if(item) resolved.push(Object.assign({},item,{_pinned:true,_pinnedAt:pin.pinnedAt}));
+    else missing.push(pin);
+  }
+  if(missing.length) pruneMissingPinnedRefs(missing);
+  return resolved;
+}
+
+function pruneMissingPinnedRefs(missing){
+  const unique=[];
+  const seen=new Set();
+  for(const pin of missing){
+    if(!pin||!pin.ref||seen.has(pin.ref)) continue;
+    seen.add(pin.ref);
+    unique.push(pin);
+  }
+  if(!unique.length) return;
+  pruneQueue=pruneQueue.catch(()=>{}).then(async()=>{
+    for(const pin of unique){
+      const next=await savePinPreference(pin.ref,pin.engine,false).catch(()=>null);
+      if(next) setPinnedPrefs(next);
+    }
+  });
+}
+
 async function run(){
   const q=$("q").value.trim();
   state.query=q;
@@ -227,6 +306,7 @@ async function run(){
   state.loading=true;
   state.searchMs=0;
   state.matched=0;
+  state.pinnedCount=0;
   state.liveCount=0;
   state.recentCount=0;
   if(!q){
@@ -234,18 +314,24 @@ async function run(){
     render(true);
     try{
       const src=state.scope==="all"?"all":state.scope;
+      const prefs=await fetchLauncherPrefs();
+      if(token!==state.token) return;
+      setPinnedPrefs(prefs);
       const liveParams=new URLSearchParams({limit:"40",completeOnly:"0",liveOnly:"1",source:src});
       const recentParams=new URLSearchParams({limit:"40",completeOnly:"1",source:src});
-      const [liveResult,recentResult]=await Promise.allSettled([
+      const [pinnedResult,liveResult,recentResult]=await Promise.allSettled([
+        resolvePinnedRows(prefs,src),
         fetch("/api/sessions?"+liveParams.toString()).then(x=>x.json()),
         fetch("/api/sessions?"+recentParams.toString()).then(x=>x.json())
       ]);
       if(token!==state.token) return;
       if(liveResult.status==="rejected" && recentResult.status==="rejected") throw liveResult.reason || recentResult.reason;
+      const pinnedRows=pinnedResult.status==="fulfilled" && Array.isArray(pinnedResult.value)?pinnedResult.value:[];
       const liveRows=liveResult.status==="fulfilled" && Array.isArray(liveResult.value)?liveResult.value:[];
       const recentRows=recentResult.status==="fulfilled" && Array.isArray(recentResult.value)?recentResult.value:[];
-      const merged=mergeRecent(liveRows,recentRows);
+      const merged=mergeRecent(pinnedRows,liveRows,recentRows);
       state.items=merged.items;
+      state.pinnedCount=merged.pinnedCount;
       state.liveCount=merged.liveCount;
       state.recentCount=merged.recentCount;
     }catch(e){ if(token===state.token) state.items=[]; }
@@ -257,8 +343,14 @@ async function run(){
   try{
     const started=performance.now();
     const p=new URLSearchParams({q,source:state.scope,limit:"40",includeTools:"1"});
-    const r=await fetch("/api/search?"+p.toString()).then(x=>x.json());
+    const [searchResult,prefsResult]=await Promise.allSettled([
+      fetch("/api/search?"+p.toString()).then(x=>x.json()),
+      fetchLauncherPrefs()
+    ]);
     if(token!==state.token) return;
+    if(prefsResult.status==="fulfilled") setPinnedPrefs(prefsResult.value);
+    if(searchResult.status==="rejected") throw searchResult.reason;
+    const r=searchResult.value;
     state.items=Array.isArray(r.results)?r.results:[];
     state.matched=Number(r.matched||state.items.length)||state.items.length;
     state.searchMs=Math.max(0,Math.round(performance.now()-started));
@@ -266,11 +358,18 @@ async function run(){
   if(token===state.token){ state.loading=false; state.sel=0; render(); }
 }
 
-function mergeRecent(liveRows,recentRows){
+function mergeRecent(pinnedRows,liveRows,recentRows){
   const seen=new Set();
   const items=[];
+  let pinnedCount=0;
   let liveCount=0;
   let recentCount=0;
+  for(const item of pinnedRows){
+    const key=sessionKey(item); if(key && seen.has(key)) continue;
+    if(key) seen.add(key);
+    items.push(Object.assign({},item,{_pinned:true}));
+    pinnedCount+=1;
+  }
   for(const item of liveRows){
     if(!isLiveCandidate(item)) continue;
     const key=sessionKey(item); if(key && seen.has(key)) continue;
@@ -284,7 +383,7 @@ function mergeRecent(liveRows,recentRows){
     items.push(item);
     recentCount+=1;
   }
-  return {items,liveCount,recentCount};
+  return {items,pinnedCount,liveCount,recentCount};
 }
 
 function normalizePercent(v){
@@ -406,11 +505,23 @@ function render(loading){
     updateHint(); return;
   }
   let html="";
-  if(state.mode==="recent" && state.liveCount>0){
-    html+="<div class='sectlabel'>进行中 · "+state.liveCount+"</div>";
-    for(let i=0;i<state.items.length;i++){
-      if(i===state.liveCount && state.recentCount>0) html+="<div class='sectlabel'>最近 · "+state.recentCount+"</div>";
-      html+=row(state.items[i],i);
+  if(state.mode==="recent"){
+    const pinnedEnd=state.pinnedCount;
+    const liveEnd=pinnedEnd+state.liveCount;
+    if(!state.pinnedCount && !state.liveCount && !state.recentCount){
+      html+="<div class='sectlabel'>最近 · "+state.items.length+"</div>";
+      html+=state.items.map((it,i)=>row(it,i)).join("");
+    }else if(state.pinnedCount>0){
+      html+="<div class='sectlabel'>置顶 · "+state.pinnedCount+"</div>";
+      for(let i=0;i<pinnedEnd;i++) html+=row(state.items[i],i);
+    }
+    if(state.liveCount>0){
+      html+="<div class='sectlabel'>进行中 · "+state.liveCount+"</div>";
+      for(let i=pinnedEnd;i<liveEnd;i++) html+=row(state.items[i],i);
+    }
+    if(state.recentCount>0){
+      html+="<div class='sectlabel'>最近 · "+state.recentCount+"</div>";
+      for(let i=liveEnd;i<state.items.length;i++) html+=row(state.items[i],i);
     }
   }else{
     const label=state.mode==="recent"?"最近 · "+state.items.length:searchLabel();
@@ -445,18 +556,22 @@ function row(it,i){
   const sub=[proj,relTime(it.mtime)].filter(Boolean).join(" · ");
   const subLine=state.mode==="search"&&snip?snip:esc(sub);
   const hint=k==="trae"?"⌘↵ 查看":"点击 Orca 继续";
+  const pinned=isPinnedItem(it);
+  const pinMarker=pinned?"<span class='pin-marker' title='已置顶' aria-label='已置顶'>⭐</span>":"";
   const live=isRunning(it)?"<span class='live-chip'><span class='live-dot'></span>进行中</span>":"";
+  const pin=actionButton("pin",pinned?"取消置顶":"置顶","⭐","pinact"+(pinned?" active":""));
   const copy=k==="trae"?"":actionButton("copy","复制恢复命令",iconCopy());
-  const actions="<span class='actions'>"+copy+actionButton("open","完整视图",iconOpen())+"</span>";
+  const actions="<span class='actions'>"+pin+copy+actionButton("open","完整视图",iconOpen())+"</span>";
   return "<div class='row"+(i===state.sel?" sel":"")+"' data-i='"+i+"'>"+
     "<span class='badge "+k+"'>"+badgeChar(k)+"</span>"+
     "<div class='rc'><div class='rt'>"+esc(title)+"</div><div class='rs'>"+subLine+"</div></div>"+
-    "<div class='racc'>"+live+"<span class='age'>"+esc(relTime(it.mtime))+"</span><span class='rowhint'>"+hint+"</span>"+actions+"</div>"+
+    "<div class='racc'>"+pinMarker+live+"<span class='age'>"+esc(relTime(it.mtime))+"</span><span class='rowhint'>"+hint+"</span>"+actions+"</div>"+
   "</div>";
 }
 
-function actionButton(action,title,icon){
-  return "<button class='qact' data-action='"+action+"' type='button' title='"+esc(title)+"' aria-label='"+esc(title)+"'>"+icon+"</button>";
+function actionButton(action,title,icon,extraClass){
+  const cls=("qact "+(extraClass||"")).trim();
+  return "<button class='"+cls+"' data-action='"+action+"' type='button' title='"+esc(title)+"' aria-label='"+esc(title)+"'>"+icon+"</button>";
 }
 function iconCopy(){ return "<svg viewBox='0 0 24 24' aria-hidden='true'><rect x='8' y='8' width='10' height='10' rx='2'></rect><path d='M6 16H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1'></path></svg>"; }
 function iconOpen(){ return "<svg viewBox='0 0 24 24' aria-hidden='true'><path d='M14 4h6v6'></path><path d='M10 14 20 4'></path><path d='M20 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h4'></path></svg>"; }
@@ -504,7 +619,10 @@ function statusText(){
     const count=matched>shown?shown+"/"+matched+" 条结果":shown+" 条结果";
     return state.searchMs?count+" · "+state.searchMs+" ms":count;
   }
-  if(state.liveCount) return "共 "+state.items.length+" 条 · "+state.liveCount+" 进行中";
+  const parts=[];
+  if(state.pinnedCount) parts.push(state.pinnedCount+" 置顶");
+  if(state.liveCount) parts.push(state.liveCount+" 进行中");
+  if(parts.length) return "共 "+state.items.length+" 条 · "+parts.join(" · ");
   return state.items.length+" 条最近";
 }
 
@@ -542,6 +660,35 @@ async function copyResumeCommand(it){
   }catch(e){
     showToast("复制失败",true);
   }
+}
+
+async function togglePin(it){
+  const ref=sessionKey(it);
+  const engine=engineKey(it);
+  if(!ref){
+    showToast("无法置顶该会话",true);
+    return;
+  }
+  const next=!isPinnedItem(it);
+  try{
+    setPinnedPrefs(await savePinPreference(ref,engine,next));
+    showToast(next?"已置顶":"已取消置顶",false);
+    if(state.mode==="recent" && !state.query) run();
+    else render();
+  }catch(e){
+    showToast(String(e&&e.message||e),true);
+  }
+}
+
+async function savePinPreference(ref,engine,pinned){
+  const r=await fetch("/api/launcher-prefs/pin",{
+    method:"POST",
+    headers:{"content-type":"application/json","${MUTATION_CSRF_HEADER}":window.CSRF},
+    body:JSON.stringify({ref,engine,pinned})
+  });
+  const d=await r.json();
+  if(!r.ok||!d.ok) throw new Error(d.error||"置顶失败");
+  return d.pinned;
 }
 
 async function copyText(text){
@@ -638,7 +785,8 @@ $("list").addEventListener("click",(e)=>{
     for(const el of document.querySelectorAll(".row")){ el.classList.toggle("sel", el===r); }
     updateHint();
     const it=state.items[state.sel];
-    if(action.dataset.action==="copy") copyResumeCommand(it);
+    if(action.dataset.action==="pin") togglePin(it);
+    else if(action.dataset.action==="copy") copyResumeCommand(it);
     else if(action.dataset.action==="open") openFull(it);
     return;
   }
