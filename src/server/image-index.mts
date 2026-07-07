@@ -3,6 +3,7 @@
 const MAX_SCAN_SESSIONS = 300;
 const DEFAULT_IMAGE_LIMIT = 36;
 const MAX_IMAGE_LIMIT = 120;
+const MAX_IMAGE_REF_CHARS = 8192;
 const INLINE_IMAGE_RE = /^data:(image\/(?:png|jpe?g|gif|webp));base64,([\s\S]+)$/i;
 
 const sessionImageCache = new Map();
@@ -85,16 +86,21 @@ export async function readImageBytes({
   if (!target) {
     return null;
   }
-  const snapshot = await loadSnapshot(target.sessionRef, {
-    codexHome,
-    claudeHome,
-    traeHome,
-    traeAppHome,
-    traeRecordingsDir,
-    includeTools: false,
-    includeToolOutput: false,
-    redact: false,
-  });
+  let snapshot;
+  try {
+    snapshot = await loadSnapshot(target.sessionRef, {
+      codexHome,
+      claudeHome,
+      traeHome,
+      traeAppHome,
+      traeRecordingsDir,
+      includeTools: false,
+      includeToolOutput: false,
+      redact: false,
+    });
+  } catch {
+    return null;
+  }
   const turn = Array.isArray(snapshot?.turns) ? snapshot.turns[target.turnIndex] : null;
   const image = Array.isArray(turn?.images) ? turn.images[target.imageIndex] : null;
   const parsed = parseInlineImageSrc(image?.src);
@@ -199,7 +205,11 @@ function encodeImageId({ sessionRef, turnIndex, imageIndex }) {
 
 function decodeImageId(ref) {
   try {
-    const decoded = JSON.parse(Buffer.from(String(ref || ""), "base64url").toString("utf8"));
+    const text = String(ref || "");
+    if (!text || text.length > MAX_IMAGE_REF_CHARS) {
+      return null;
+    }
+    const decoded = JSON.parse(Buffer.from(text, "base64url").toString("utf8"));
     const sessionRef = String(decoded?.r || "");
     const turnIndex = Number(decoded?.t);
     const imageIndex = Number(decoded?.i);

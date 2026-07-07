@@ -89,16 +89,19 @@ function isCodexActivePath(summary) {
 }
 
 function deriveRuntimeState(summary) {
+  const engine = engineKey(summary?.engine);
+  if (engine === "trae") {
+    const complete = summary?.sourceKind ? summary.sourceKind === "recorded" : summary?.complete !== false;
+    return { live: false, complete };
+  }
+  if (engine === "claude" && (summary?.historyOnly === true || (summary?.sourceKind && summary.sourceKind !== "transcript"))) {
+    return { live: false, complete: false };
+  }
   if (summary?.live === true) {
     return { live: true, complete: false };
   }
   if (summary?.complete === false) {
     return { live: true, complete: false };
-  }
-  const engine = engineKey(summary?.engine);
-  if (engine === "trae") {
-    const complete = summary?.sourceKind ? summary.sourceKind === "recorded" : true;
-    return { live: false, complete };
   }
   if (engine === "codex") {
     const live = isCodexActivePath(summary);
@@ -381,6 +384,27 @@ function matchesCwd(summary, cwd) {
   }
 }
 
+function filterSummariesForRequest(summaries, { source, cwd, completeOnly, liveOnly }) {
+  const out = [];
+  for (const original of summaries || []) {
+    const summary = stampSummary(original);
+    if (source && source !== "all" && engineKey(summary.engine) !== engineKey(source)) {
+      continue;
+    }
+    if (!matchesCwd(summary, cwd)) {
+      continue;
+    }
+    if (completeOnly && !listCompleteForSource(summary, source)) {
+      continue;
+    }
+    if (liveOnly && summary.live !== true) {
+      continue;
+    }
+    out.push(summary);
+  }
+  return out;
+}
+
 async function readCachedSessions({ codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir, source, cwd, completeOnly, liveOnly, limit, offset }) {
   const db = await getDb();
   const rows = db.prepare("SELECT * FROM session_list_cache ORDER BY mtime_ms DESC").all();
@@ -402,31 +426,33 @@ async function readCachedSessions({ codexHome, claudeHome, traeHome, traeAppHome
         continue;
       }
     }
-    let summary = rowSummary(row);
-    if (!summary) {
+    let rawSummary = rowSummary(row);
+    if (!rawSummary) {
       continue;
     }
+    let summary = stampSummary(rawSummary);
     if (!matchesCwd(summary, cwd)) {
       continue;
     }
     if (completeOnly && !listCompleteForSource(summary, source)) {
       continue;
     }
-    if (liveOnly && Number(row.live || 0) !== 1 && summary.live !== true) {
+    if (liveOnly && summary.live !== true) {
       continue;
     }
     row = await refreshRowIfNeeded(db, row, homes, { parseChanged: false, parseIfListIncomplete: completeOnly });
     if (!row) {
       continue;
     }
-    summary = rowSummary(row);
-    if (!summary) {
+    rawSummary = rowSummary(row);
+    if (!rawSummary) {
       continue;
     }
+    summary = stampSummary(rawSummary);
     if (completeOnly && !listCompleteForSource(summary, source)) {
       continue;
     }
-    if (liveOnly && Number(row.live || 0) !== 1 && summary.live !== true) {
+    if (liveOnly && summary.live !== true) {
       continue;
     }
     if (seen < skip) {
@@ -472,7 +498,7 @@ export async function listSessionsWithCache(options) {
     return sessions;
   }
 
-  const scanLimit = Number.isFinite(limit) ? limit + offset : Number.POSITIVE_INFINITY;
+  const scanLimit = liveOnly || !Number.isFinite(limit) ? Number.POSITIVE_INFINITY : limit + offset;
   const sessions = await listSessions({
     ...homes,
     limit: scanLimit,
@@ -483,7 +509,8 @@ export async function listSessionsWithCache(options) {
   });
   await upsertFallbackSummaries(sessions);
   reconcileSessionListCacheInBackground({ ...homes });
-  return Number.isFinite(limit) ? sessions.slice(offset, offset + limit) : sessions.slice(offset);
+  const filtered = filterSummariesForRequest(sessions, { source, cwd, completeOnly, liveOnly });
+  return Number.isFinite(limit) ? filtered.slice(offset, offset + limit) : filtered.slice(offset);
 }
 
 export async function reconcileSessionListCache(options) {

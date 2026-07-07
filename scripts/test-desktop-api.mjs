@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const CSRF_HEADER = "x-agent-snapshot-csrf";
@@ -69,6 +69,8 @@ try {
     ["launcher prefs reject missing CSRF and persist pin changes", () => assertLauncherPrefs(viewerUrl, origin, csrfToken)],
     ["reveal-in-file rejects unsafe requests without opening Finder", () => assertRevealInFile(viewerUrl, origin, csrfToken)],
     ["POST routes reject disallowed origins", () => assertBadOriginRejected(viewerUrl, csrfToken)],
+    ["claude quota starts a new block at the exact 5h boundary", () => assertClaudeQuotaBlockBoundary(path.join(tempDir, "claude-block-home"))],
+    ["cold session cache applies liveOnly before returning fallback rows", () => assertColdSessionCacheLiveOnly(path.join(tempDir, "cache-cold-live"))],
   ];
 
   let failed = 0;
@@ -154,6 +156,15 @@ async function assertImages(viewerUrl) {
     signal: AbortSignal.timeout(2000),
   });
   assert(bogus.status >= 400 && bogus.status < 500, `bogus image ref should return 4xx, got ${bogus.status}`);
+
+  const forged = await fetch(`${viewerUrl}/api/image?ref=${encodeURIComponent(encodeImageId({
+    sessionRef: `codex:${path.join(tempDir, "outside-codex-home.jsonl")}`,
+    turnIndex: 0,
+    imageIndex: 0,
+  }))}`, {
+    signal: AbortSignal.timeout(2000),
+  });
+  assert(forged.status >= 400 && forged.status < 500, `forged path image ref should return 4xx, got ${forged.status}`);
 }
 
 async function assertSessionHead(viewerUrl) {
@@ -276,6 +287,95 @@ async function assertBadOriginRejected(viewerUrl, csrfToken) {
   assert(response.status === 403, `evil Origin POST should return 403, got ${response.status}`);
 }
 
+async function assertColdSessionCacheLiveOnly(cacheDir) {
+  const previousXdgCacheHome = process.env.XDG_CACHE_HOME;
+  process.env.XDG_CACHE_HOME = cacheDir;
+  try {
+    const moduleUrl = pathToFileURL(path.join(ROOT_DIR, "dist/server/session-list-cache.mjs")).href + `?cold-live=${Date.now()}`;
+    const { listSessionsWithCache } = await import(moduleUrl);
+    const rows = await listSessionsWithCache({
+      listSessions: async () => [
+        {
+          engine: "claude",
+          ref: "claude:history-only",
+          id: "history-only",
+          title: "History only",
+          sourceKind: "history",
+          historyOnly: true,
+          complete: false,
+          messageCount: 1,
+          mtime: "2026-06-01T00:00:00.000Z",
+        },
+        {
+          engine: "claude",
+          ref: "claude:live-transcript",
+          id: "live-transcript",
+          title: "Live transcript",
+          sourceKind: "transcript",
+          complete: false,
+          messageCount: 1,
+          mtime: "2026-06-01T00:00:01.000Z",
+        },
+        {
+          engine: "trae",
+          ref: "trae:input-history",
+          id: "input-history",
+          title: "Input history",
+          sourceKind: "input-history",
+          complete: false,
+          messageCount: 1,
+          mtime: "2026-06-01T00:00:02.000Z",
+        },
+      ],
+      codexHome: path.join(cacheDir, "codex"),
+      claudeHome: path.join(cacheDir, "claude"),
+      traeHome: path.join(cacheDir, "trae"),
+      traeAppHome: path.join(cacheDir, "trae-app"),
+      traeRecordingsDir: path.join(cacheDir, "trae-recordings"),
+      source: "all",
+      limit: 20,
+      offset: 0,
+      completeOnly: false,
+      liveOnly: true,
+    });
+    const refs = rows.map((row) => row.ref);
+    assert(JSON.stringify(refs) === JSON.stringify(["claude:live-transcript"]), `cold liveOnly returned wrong rows: ${JSON.stringify(rows)}`);
+  } finally {
+    if (previousXdgCacheHome === undefined) {
+      delete process.env.XDG_CACHE_HOME;
+    } else {
+      process.env.XDG_CACHE_HOME = previousXdgCacheHome;
+    }
+  }
+}
+
+async function assertClaudeQuotaBlockBoundary(claudeHome) {
+  const sessionDir = path.join(claudeHome, "projects", "-tmp-quota-boundary");
+  await mkdir(sessionDir, { recursive: true });
+  const now = Date.now();
+  const firstTime = now - (5 * 60 * 60 * 1000) - (30 * 60 * 1000);
+  const boundaryTime = firstTime + (5 * 60 * 60 * 1000);
+  const sessionPath = path.join(sessionDir, "boundary.jsonl");
+  const rows = [
+    claudeAssistantUsageRow("msg-before-boundary", firstTime, { input_tokens: 1, output_tokens: 2 }),
+    claudeAssistantUsageRow("msg-at-boundary", boundaryTime, {
+      input_tokens: 10,
+      cache_read_input_tokens: 3,
+      cache_creation_input_tokens: 4,
+      output_tokens: 5,
+    }),
+  ];
+  await writeFile(sessionPath, rows.map((row) => JSON.stringify(row)).join("\n") + "\n", "utf8");
+
+  const moduleUrl = pathToFileURL(path.join(ROOT_DIR, "dist/server/quota-meter.mjs")).href + `?claude-boundary=${Date.now()}`;
+  const { readClaudeBlockUsageEstimate } = await import(moduleUrl);
+  const estimate = await readClaudeBlockUsageEstimate({ claudeHome });
+  assert(estimate.active === true, `Claude block should be active: ${JSON.stringify(estimate)}`);
+  assert(new Date(estimate.blockStart).getTime() === boundaryTime, "boundary event should start the active block");
+  assert(estimate.messages === 1, "active block should only count the boundary event");
+  assert(JSON.stringify(estimate.tokens) === JSON.stringify({ input: 10, output: 5, cacheCreation: 4, cacheRead: 3 }), `active block tokens were wrong: ${JSON.stringify(estimate.tokens)}`);
+}
+
 async function writeCodexFixture(codexHome) {
   const sessionDir = path.join(codexHome, "sessions", "2026", "06", "01");
   await mkdir(sessionDir, { recursive: true });
@@ -346,6 +446,25 @@ async function writeCodexFixture(codexHome) {
     },
   ];
   await writeFile(sessionPath, rows.map((row) => JSON.stringify(row)).join("\n") + "\n", "utf8");
+}
+
+function claudeAssistantUsageRow(messageId, timestampMs, usage) {
+  return {
+    type: "assistant",
+    requestId: `req-${messageId}`,
+    timestamp: new Date(timestampMs).toISOString(),
+    message: {
+      id: messageId,
+      role: "assistant",
+      model: "claude-sonnet-4",
+      content: [{ type: "text", text: "ok" }],
+      usage,
+    },
+  };
+}
+
+function encodeImageId({ sessionRef, turnIndex, imageIndex }) {
+  return Buffer.from(JSON.stringify({ v: 1, r: sessionRef, t: turnIndex, i: imageIndex }), "utf8").toString("base64url");
 }
 
 function assertQuotaWindow(value, label) {

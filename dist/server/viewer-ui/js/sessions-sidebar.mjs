@@ -505,21 +505,28 @@ async function selectSession(id) {
   state.selected = id;
   renderSessions();
   showViewerLoading("正在加载会话内容...");
-  const response = await fetch("/api/snapshot?" + activeOptions().toString());
-  const snapshot = await response.json();
-  if (requestToken !== state.requestToken || id !== state.selected) {
-    return;
-  }
-  if (snapshot.error) {
+  try {
+    const response = await fetch("/api/snapshot?" + activeOptions().toString());
+    const snapshot = await response.json();
+    if (requestToken !== state.requestToken || id !== state.selected) {
+      return;
+    }
+    if (!response.ok || snapshot.error) {
+      throw new Error(snapshot.error || "会话内容加载失败。");
+    }
+    renderSnapshot(snapshot);
+  } catch (error) {
+    if (requestToken !== state.requestToken || id !== state.selected) {
+      return;
+    }
     $("title").textContent = "会话加载失败";
     $("meta").classList.add("empty");
     $("meta").classList.remove("loading");
     $("meta").removeAttribute("aria-busy");
     $("meta").textContent = "会话内容加载失败。";
-    $("turns").innerHTML = "<div class='meta'>" + esc(snapshot.error) + "</div>";
-    return;
+    $("turns").removeAttribute("aria-busy");
+    $("turns").innerHTML = "<div class='meta'>" + esc(error instanceof Error ? error.message : String(error)) + "</div>";
   }
-  renderSnapshot(snapshot);
 }
 
 `;

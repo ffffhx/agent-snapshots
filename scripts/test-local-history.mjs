@@ -281,6 +281,44 @@ test("a /clear-only session keeps a stable non-uuid title", async () => {
   }
 });
 
+test("lists Claude history-only sessions through claude and all sources", async () => {
+  const home = await makeClaudeHome();
+  try {
+    const id = "history-only-001";
+    await writeFile(path.join(home, "history.jsonl"), jsonl([
+      {
+        sessionId: id,
+        timestamp: "2026-06-01T00:00:00.000Z",
+        project: "/tmp/history-only-project",
+        display: "history-only prompt should still appear in the launcher",
+      },
+    ]), "utf8");
+
+    const claudeSessions = await listSessions({ claudeHome: home, source: "claude", limit: Infinity, completeOnly: false });
+    const claudeHistory = claudeSessions.find((session) => session.id === id);
+    assert.ok(claudeHistory, "source=claude should include history-only rows");
+    assert.equal(claudeHistory.historyOnly, true);
+    assert.equal(claudeHistory.sourceKind, "history");
+
+    const allSessions = await listSessions({
+      codexHome: path.join(home, "codex"),
+      claudeHome: home,
+      traeHome: path.join(home, "trae"),
+      traeAppHome: path.join(home, "trae-app"),
+      traeRecordingsDir: path.join(home, "recordings"),
+      source: "all",
+      limit: Infinity,
+      completeOnly: false,
+    });
+    assert.ok(allSessions.some((session) => session.id === id && session.historyOnly === true), "source=all should include history-only rows");
+
+    const completeOnly = await listSessions({ claudeHome: home, source: "claude", limit: Infinity, completeOnly: true });
+    assert.equal(completeOnly.some((session) => session.id === id), false, "completeOnly should exclude history-only rows");
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
 test("a secret in the first prompt is redacted from the snapshot title", async () => {
   const home = await makeClaudeHome();
   try {

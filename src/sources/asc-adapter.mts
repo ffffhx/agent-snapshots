@@ -472,7 +472,8 @@ export async function listSessions(opts) {
 
   if (source === "codex" || source === "claude") {
     const summaries = ascListEngine(source, { codexHome, claudeHome, cwd, includeArchived }, { limit, completeOnly });
-    const filtered = applyListFilters(summaries, { completeOnly, limit });
+    const history = source === "claude" ? await listClaudeHistoryOnly(opts) : [];
+    const filtered = applyListFilters([...summaries, ...history], { completeOnly, limit });
     return filtered;
   }
 
@@ -481,6 +482,7 @@ export async function listSessions(opts) {
     // dedupe by ref (engine-prefixed id), mirroring the legacy "all" semantics.
     const codex = ascListEngine("codex", { codexHome, claudeHome, cwd, includeArchived }, { limit, completeOnly });
     const claude = ascListEngine("claude", { codexHome, claudeHome, cwd, includeArchived }, { limit, completeOnly });
+    const claudeHistory = await listClaudeHistoryOnly(opts);
     let trae = [];
     try {
       trae = await legacyListSessions({ ...opts, source: "trae", completeOnly: false, limit: Infinity });
@@ -489,7 +491,7 @@ export async function listSessions(opts) {
     }
     const seen = new Set();
     const merged = [];
-    for (const s of [...codex, ...claude, ...trae]) {
+    for (const s of [...codex, ...claude, ...claudeHistory, ...trae]) {
       if (s.ref && seen.has(s.ref)) {
         continue;
       }
@@ -503,6 +505,18 @@ export async function listSessions(opts) {
 
   // Unknown source: defer to legacy for safety.
   return legacyListSessions(opts);
+}
+
+async function listClaudeHistoryOnly(opts) {
+  if (opts.completeOnly) {
+    return [];
+  }
+  try {
+    const sessions = await legacyListSessions({ ...opts, source: "claude", completeOnly: false, limit: Infinity });
+    return sessions.filter((summary) => summary?.historyOnly === true || summary?.sourceKind === "history");
+  } catch {
+    return [];
+  }
 }
 
 function applyListFilters(summaries, { completeOnly, limit }) {

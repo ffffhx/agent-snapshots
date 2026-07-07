@@ -78,10 +78,10 @@ export async function readClaudeBlockUsageEstimate({ claudeHome }) {
             events.sort((a, b) => a.time - b.time);
             let blockStart = events[0].time;
             // Approximation used by ccusage-style block views: a new 5h block starts at
-            // the first usage event whose timestamp is more than 5h after the previous
-            // block start. Claude does not write explicit local block-boundary records.
+            // the first usage event whose timestamp reaches the previous block boundary.
+            // Claude does not write explicit local block-boundary records.
             for (const event of events) {
-                if (event.time > blockStart + CLAUDE_BLOCK_MS) {
+                if (event.time >= blockStart + CLAUDE_BLOCK_MS) {
                     blockStart = event.time;
                 }
             }

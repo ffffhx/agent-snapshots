@@ -43,8 +43,12 @@ function largestInlineScript(html) {
 }
 
 function extractFunction(source, name) {
-  const start = source.indexOf(`function ${name}(`);
+  let start = source.indexOf(`function ${name}(`);
   assert.ok(start >= 0, `function ${name} not found in rendered client script`);
+  const asyncPrefix = "async ";
+  if (start >= asyncPrefix.length && source.slice(start - asyncPrefix.length, start) === asyncPrefix) {
+    start -= asyncPrefix.length;
+  }
   const paramsOpen = source.indexOf("(", start);
   assert.ok(paramsOpen >= 0, `function ${name} has no parameter list`);
   let parenDepth = 0;
@@ -351,6 +355,37 @@ test("viewer live-session detection handles codex claude and trae edge cases", a
   assert.equal(isLiveSessionItem({ engine: "claude", sourceKind: "summary", complete: false }), false);
   assert.equal(isLiveSessionItem({ engine: "claude", sourceKind: "transcript", complete: false }), true);
   assert.equal(isLiveSessionItem({ engine: "trae", complete: false }), false);
+});
+
+test("viewer selectSession renders failed snapshot loads without throwing", async () => {
+  await withDom(`
+    <body>
+      <h2 id="title"></h2>
+      <div id="meta"></div>
+      <div id="turns"></div>
+    </body>
+  `, async () => {
+    const { state, selectSession } = await viewerRuntime(
+      ["selectSession"],
+      `
+${escPrelude()}
+const state = { requestToken: 0, selected: "", currentSnapshot: null };
+const $ = (id) => document.getElementById(id);
+function renderSessions() {}
+function showViewerLoading() { $("turns").setAttribute("aria-busy", "true"); }
+function activeOptions() { return new URLSearchParams({ id: state.selected }); }
+function renderSnapshot() { throw new Error("renderSnapshot should not run on failed fetch"); }
+const fetch = async () => { throw new Error("network down"); };
+`,
+      ["state", "selectSession"],
+    );
+
+    await assert.doesNotReject(() => selectSession("codex:oops"));
+    assert.equal(state.selected, "codex:oops");
+    assert.equal(document.getElementById("title").textContent, "会话加载失败");
+    assert.equal(document.getElementById("turns").hasAttribute("aria-busy"), false);
+    assert.match(document.getElementById("turns").innerHTML, /network down/);
+  });
 });
 
 test("viewer quota color clamps from green through amber to red", async () => {
