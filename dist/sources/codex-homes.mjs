@@ -13,6 +13,7 @@ export function primaryCodexHome(value = "") {
 }
 export async function discoverCodexHomes(primaryHome = "") {
     const primary = primaryCodexHome(primaryHome);
+    const disableAutoDetect = process.env.AGENT_SNAPSHOT_DISABLE_CODEX_HOME_AUTODETECT === "1";
     const homes = [];
     const seen = new Set();
     const addHome = (home, { primary = false, label = "" } = {}) => {
@@ -30,8 +31,10 @@ export async function discoverCodexHomes(primaryHome = "") {
         });
     };
     addHome(primary, { primary: true });
-    await addDefaultCodexHomeIfPresent(primary, addHome);
-    for (const candidate of candidateExtraCodexHomes(primary)) {
+    if (!disableAutoDetect) {
+        await addDefaultCodexHomeIfPresent(primary, addHome);
+    }
+    for (const candidate of candidateExtraCodexHomes(primary, { disableAutoDetect })) {
         const sessionsDir = path.join(candidate.home, "sessions");
         const info = await stat(sessionsDir).catch(() => null);
         if (!info?.isDirectory()) {
@@ -98,9 +101,9 @@ export async function resolveCodexHomeForRef(ref, primaryHome = "", homes = null
 export function codexHomeKeys(homes) {
     return new Set((homes || []).map((home) => codexHomeCacheKey(home)).filter(Boolean));
 }
-function candidateExtraCodexHomes(primary) {
+function candidateExtraCodexHomes(primary, { disableAutoDetect = false } = {}) {
     const out = [];
-    if (process.platform === "darwin") {
+    if (!disableAutoDetect && process.platform === "darwin") {
         out.push({
             home: path.join(os.homedir(), "Library", "Application Support", "orca", "codex-runtime-home", "home"),
             label: "orca",

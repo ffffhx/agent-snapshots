@@ -485,6 +485,7 @@ async function assertLocalViewerPublish(apiUrl) {
           AGENT_SNAPSHOTS_AGENT_FILE: tokenFile,
           AGENT_SNAPSHOTS_SHARE_API_URL: "",
           AGENT_SNAPSHOTS_SHARE_TOKEN: "",
+          AGENT_SNAPSHOT_DISABLE_CODEX_HOME_AUTODETECT: "1",
           NEXT_PUBLIC_TOKEN_BOARD_API_URL: "",
           SNAPSHOT_SHARE_API_URL: "",
           SNAPSHOT_SHARE_PUBLIC_API_URL: "",

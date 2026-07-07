@@ -2,6 +2,7 @@
 
 import path from "node:path";
 import os from "node:os";
+import { createHash } from "node:crypto";
 import { mkdir, stat } from "node:fs/promises";
 import {
   discoverSessionSummaryCandidates,
@@ -10,8 +11,8 @@ import {
 import { codexHomeKeys, discoverCodexHomes } from "../sources/codex-homes.mjs";
 
 const RECENT_ACTIVE_MS = 10 * 60 * 1000;
-const CACHE_TABLE = "session_list_cache_v2";
-const META_TABLE = "session_list_meta_v2";
+const CACHE_TABLE = "session_list_cache_v3";
+const META_TABLE = "session_list_meta_v3";
 
 let dbPromise = null;
 let reconciling = false;
@@ -60,11 +61,11 @@ async function getDb() {
       candidate_json TEXT,
       updated_at INTEGER DEFAULT 0
     )`);
-    db.exec(`CREATE INDEX IF NOT EXISTS session_list_cache_v2_ref ON ${CACHE_TABLE}(ref)`);
-    db.exec(`CREATE INDEX IF NOT EXISTS session_list_cache_v2_engine ON ${CACHE_TABLE}(engine)`);
-    db.exec(`CREATE INDEX IF NOT EXISTS session_list_cache_v2_home ON ${CACHE_TABLE}(home_key)`);
-    db.exec(`CREATE INDEX IF NOT EXISTS session_list_cache_v2_mtime ON ${CACHE_TABLE}(mtime_ms)`);
-    db.exec(`CREATE INDEX IF NOT EXISTS session_list_cache_v2_path_key ON ${CACHE_TABLE}(path_key)`);
+    db.exec(`CREATE INDEX IF NOT EXISTS session_list_cache_v3_ref ON ${CACHE_TABLE}(ref)`);
+    db.exec(`CREATE INDEX IF NOT EXISTS session_list_cache_v3_engine ON ${CACHE_TABLE}(engine)`);
+    db.exec(`CREATE INDEX IF NOT EXISTS session_list_cache_v3_home ON ${CACHE_TABLE}(home_key)`);
+    db.exec(`CREATE INDEX IF NOT EXISTS session_list_cache_v3_mtime ON ${CACHE_TABLE}(mtime_ms)`);
+    db.exec(`CREATE INDEX IF NOT EXISTS session_list_cache_v3_path_key ON ${CACHE_TABLE}(path_key)`);
     db.exec(`CREATE TABLE IF NOT EXISTS ${META_TABLE} (key TEXT PRIMARY KEY, value TEXT)`);
     return db;
   })();
@@ -76,22 +77,114 @@ function engineKey(engine) {
   return value === "claude" || value === "trae" ? value : "codex";
 }
 
-function refOf(summary) {
-  return summary.ref || `${engineKey(summary.engine)}:${summary.id}`;
+function expandHome(value) {
+  const text = String(value || "").trim();
+  if (text === "~") {
+    return os.homedir();
+  }
+  if (text.startsWith("~/")) {
+    return path.join(os.homedir(), text.slice(2));
+  }
+  return text;
 }
 
-function homeKeyOf(summary, candidate = null) {
-  const engine = engineKey(summary?.engine || candidate?.engine);
-  if (engine === "codex") {
-    return String(summary?.codexHomeKey || candidate?.codexHomeKey || "").trim();
+function normalizeHomePath(value) {
+  const text = String(value || "").trim();
+  if (!text) {
+    return "";
+  }
+  return path.resolve(expandHome(text)).replace(/[\\/]+$/, "");
+}
+
+function pathHomeDigest(home) {
+  const normalized = normalizeHomePath(home);
+  if (!normalized) {
+    return "";
+  }
+  return `home-${createHash("sha256").update(normalized).digest("hex").slice(0, 12)}`;
+}
+
+function scopedHomeKey(scope, home) {
+  const digest = pathHomeDigest(home);
+  return digest ? `${scope}:${digest}` : "";
+}
+
+function claudeHomeKey(home) {
+  return scopedHomeKey("claude", home);
+}
+
+function traeHomeKind(summary = null, candidate = null) {
+  const kind = String(candidate?.kind || "").toLowerCase();
+  const sourceKind = String(summary?.sourceKind || "").toLowerCase();
+  if (kind === "trae-recorded" || sourceKind === "recorded") {
+    return "recorded";
+  }
+  if (kind === "trae-memory" || sourceKind === "memory") {
+    return "memory";
+  }
+  if (kind === "trae-input-history" || sourceKind === "input-history") {
+    return "input-history";
   }
   return "";
 }
 
-function cacheKeyOf(summary, candidate = null) {
+function traeHomeRootForKind(kind, homes = {}) {
+  if (kind === "recorded") {
+    return homes?.traeRecordingsDir || "";
+  }
+  if (kind === "memory") {
+    return homes?.traeHome || "";
+  }
+  if (kind === "input-history") {
+    return homes?.traeAppHome || "";
+  }
+  return "";
+}
+
+function traeHomeKey(kind, home) {
+  return kind ? scopedHomeKey(`trae:${kind}`, home) : "";
+}
+
+function activeClaudeHomeKeys(homes = {}) {
+  return new Set([claudeHomeKey(homes?.claudeHome || "")].filter(Boolean));
+}
+
+function activeTraeHomeKeys(homes = {}) {
+  return new Set([
+    traeHomeKey("recorded", homes?.traeRecordingsDir || ""),
+    traeHomeKey("memory", homes?.traeHome || ""),
+    traeHomeKey("input-history", homes?.traeAppHome || ""),
+  ].filter(Boolean));
+}
+
+function refOf(summary) {
+  return summary.ref || `${engineKey(summary.engine)}:${summary.id}`;
+}
+
+function homeKeyOf(summary, candidate = null, homes = {}) {
+  const engine = engineKey(summary?.engine || candidate?.engine);
+  if (engine === "codex") {
+    return String(summary?.codexHomeKey || candidate?.codexHomeKey || "").trim();
+  }
+  if (engine === "claude") {
+    return String(summary?.homeKey || candidate?.homeKey || candidate?.sourceHomeKey || "").trim()
+      || claudeHomeKey(homes?.claudeHome || "");
+  }
+  if (engine === "trae") {
+    const explicit = String(summary?.homeKey || candidate?.homeKey || candidate?.sourceHomeKey || "").trim();
+    if (explicit) {
+      return explicit;
+    }
+    const kind = traeHomeKind(summary, candidate);
+    return traeHomeKey(kind, traeHomeRootForKind(kind, homes));
+  }
+  return "";
+}
+
+function cacheKeyOf(summary, candidate = null, homes = {}) {
   const ref = refOf(summary);
   const engine = engineKey(summary?.engine || candidate?.engine);
-  const homeKey = homeKeyOf(summary, candidate);
+  const homeKey = homeKeyOf(summary, candidate, homes);
   return [engine, homeKey, ref].join("\0");
 }
 
@@ -189,6 +282,7 @@ function cacheCandidate(candidate) {
     mtime: candidate.mtime || isoTime(candidate.mtimeMs),
     size: Number(candidate.size || candidate.sizeBytes || 0),
     sizeBytes: Number(candidate.sizeBytes || candidate.size || 0),
+    homeKey: String(candidate.homeKey || candidate.sourceHomeKey || ""),
     codexHomeKey: String(candidate.codexHomeKey || ""),
     codexHomeLabel: String(candidate.codexHomeLabel || ""),
     codexHomePrimary: candidate.codexHomePrimary !== false,
@@ -223,7 +317,7 @@ function fallbackCandidate(summary) {
   });
 }
 
-function upsertRows(db, candidate, summaries) {
+function upsertRows(db, candidate, summaries, homes = {}) {
   const cachedCandidate = cacheCandidate(candidate);
   const pathKey = cachedCandidate.key;
   const now = Date.now();
@@ -248,7 +342,8 @@ function upsertRows(db, candidate, summaries) {
     for (const original of summaries || []) {
       const summary = stampSummary(original);
       const ref = refOf(summary);
-      const cacheKey = cacheKeyOf(summary, cachedCandidate);
+      const homeKey = homeKeyOf(summary, cachedCandidate, homes);
+      const cacheKey = cacheKeyOf(summary, cachedCandidate, homes);
       cacheKeys.push(cacheKey);
       const state = deriveRuntimeState(summary);
       const mtimeMs = numberTime(summary.mtime) || Number(cachedCandidate.mtimeMs || 0);
@@ -257,7 +352,7 @@ function upsertRows(db, candidate, summaries) {
         ref,
         summary.id || ref.replace(/^(codex|claude|trae):/, ""),
         engineKey(summary.engine),
-        homeKeyOf(summary, cachedCandidate),
+        homeKey,
         summary.title || "",
         summary.cwd || "",
         summary.displayCwd || summary.cwd || "",
@@ -297,13 +392,13 @@ function upsertRows(db, candidate, summaries) {
   }
 }
 
-async function upsertFallbackSummaries(summaries) {
+async function upsertFallbackSummaries(summaries, homes = {}) {
   if (!summaries?.length) {
     return;
   }
   const db = await getDb();
   for (const summary of summaries) {
-    upsertRows(db, fallbackCandidate(summary), [summary]);
+    upsertRows(db, fallbackCandidate(summary), [summary], homes);
   }
 }
 
@@ -398,7 +493,7 @@ async function refreshRowIfNeeded(db, row, homes, { parseChanged = true, parseIf
     return updateRowStatOnly(db, row, refreshed);
   }
   const summaries = await summarizeSessionCandidate(refreshed, homes);
-  upsertRows(db, refreshed, summaries);
+  upsertRows(db, refreshed, summaries, homes);
   return db.prepare(`SELECT * FROM ${CACHE_TABLE} WHERE cache_key = ?`).get(row.cache_key) || null;
 }
 
@@ -406,13 +501,34 @@ function matchesSource(row, source) {
   return !source || source === "all" || engineKey(row.engine) === engineKey(source);
 }
 
-function matchesActiveHome(row, homes) {
-  if (engineKey(row.engine) !== "codex") {
-    return true;
+function storedRowHomeKey(row) {
+  const direct = String(row?.home_key || "").trim();
+  if (direct) {
+    return direct;
   }
-  const active = homes?.activeCodexHomeKeys || codexHomeKeys(homes?.codexHomes || []);
-  const rowHomeKey = String(row.home_key || rowSummary(row)?.codexHomeKey || "").trim();
-  return Boolean(rowHomeKey && active.has(rowHomeKey));
+  const summary = rowSummary(row) || {};
+  const candidate = rowCandidate(row) || {};
+  const engine = engineKey(row?.engine || summary?.engine || candidate?.engine);
+  if (engine === "codex") {
+    return String(summary?.codexHomeKey || candidate?.codexHomeKey || "").trim();
+  }
+  return String(summary?.homeKey || candidate?.homeKey || candidate?.sourceHomeKey || "").trim();
+}
+
+function matchesActiveHome(row, homes) {
+  const engine = engineKey(row.engine);
+  const rowHomeKey = storedRowHomeKey(row);
+  if (engine === "codex") {
+    const active = homes?.activeCodexHomeKeys || codexHomeKeys(homes?.codexHomes || []);
+    return Boolean(rowHomeKey && active.has(rowHomeKey));
+  }
+  if (engine === "claude") {
+    return Boolean(rowHomeKey && activeClaudeHomeKeys(homes).has(rowHomeKey));
+  }
+  if (engine === "trae") {
+    return Boolean(rowHomeKey && activeTraeHomeKeys(homes).has(rowHomeKey));
+  }
+  return false;
 }
 
 function matchesCwd(summary, cwd) {
@@ -522,13 +638,13 @@ export async function sessionListCacheRowCount() {
   return Number(row?.c || 0);
 }
 
-async function sessionListCacheUsableInfo({ source, codexHome }) {
+async function sessionListCacheUsableInfo({ source, codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir }) {
   const db = await getDb();
   const codexHomes = await discoverCodexHomes(codexHome);
-  const homes = { codexHomes, activeCodexHomeKeys: codexHomeKeys(codexHomes) };
+  const homes = { codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir, codexHomes, activeCodexHomeKeys: codexHomeKeys(codexHomes) };
   const activeHomeKey = Array.from(homes.activeCodexHomeKeys).sort().join(",");
   const cachedHomeKey = getMeta(db, "codex_home_keys", "");
-  const rows = db.prepare(`SELECT cache_key, ref, engine, home_key, summary_json FROM ${CACHE_TABLE}`).all();
+  const rows = db.prepare(`SELECT cache_key, ref, engine, home_key, summary_json, candidate_json FROM ${CACHE_TABLE}`).all();
   const count = rows.filter((row) => matchesSource(row, source) && matchesActiveHome(row, homes)).length;
   const includesCodex = !source || source === "all" || engineKey(source) === "codex";
   return {
@@ -549,7 +665,14 @@ export async function listSessionsWithCache(options) {
     liveOnly = false,
   } = options;
   const codexHomes = await discoverCodexHomes(options.codexHome);
-  const cacheInfo = await sessionListCacheUsableInfo({ source, codexHome: options.codexHome });
+  const cacheInfo = await sessionListCacheUsableInfo({
+    source,
+    codexHome: options.codexHome,
+    claudeHome: options.claudeHome,
+    traeHome: options.traeHome,
+    traeAppHome: options.traeAppHome,
+    traeRecordingsDir: options.traeRecordingsDir,
+  });
   const rows = cacheInfo.codexHomesChanged ? 0 : cacheInfo.count;
   const homes = {
     codexHome: options.codexHome,
@@ -575,7 +698,7 @@ export async function listSessionsWithCache(options) {
     source,
     completeOnly,
   });
-  await upsertFallbackSummaries(sessions);
+  await upsertFallbackSummaries(sessions, homes);
   reconcileSessionListCacheInBackground({ ...homes });
   const filtered = filterSummariesForRequest(sessions, { source, cwd, completeOnly, liveOnly });
   return Number.isFinite(limit) ? filtered.slice(offset, offset + limit) : filtered.slice(offset);
@@ -620,7 +743,7 @@ export async function reconcileSessionListCache(options) {
       }
       try {
         const summaries = await summarizeSessionCandidate(cachedCandidate, homes);
-        upsertRows(db, cachedCandidate, summaries);
+        upsertRows(db, cachedCandidate, summaries, homes);
         updated += summaries.length;
       } catch {
         failed += 1;

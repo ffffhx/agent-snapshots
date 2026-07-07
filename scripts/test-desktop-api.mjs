@@ -56,6 +56,7 @@ try {
     cwd: ROOT_DIR,
     env: {
       ...process.env,
+      AGENT_SNAPSHOT_DISABLE_CODEX_HOME_AUTODETECT: "1",
       AGENT_SNAPSHOT_PREFS_DIR: prefsDir,
       AGENT_SNAPSHOT_EXTRA_CODEX_HOMES: extraCodexHome,
       CLAUDE_HOME: claudeHome,
@@ -223,13 +224,19 @@ async function assertCodexHomeDiscoveryIncludesDefault() {
   const homeRoot = await mkdtemp(path.join(os.tmpdir(), "agent-snapshots-codex-homes-"));
   const previousHome = process.env.HOME;
   const previousCodexHome = process.env.CODEX_HOME;
+  const previousDisableAutodetect = process.env.AGENT_SNAPSHOT_DISABLE_CODEX_HOME_AUTODETECT;
+  const previousExtraHomes = process.env.AGENT_SNAPSHOT_EXTRA_CODEX_HOMES;
   try {
     const explicitHome = path.join(homeRoot, "explicit-codex");
     const defaultHome = path.join(homeRoot, ".codex");
+    const extraHome = path.join(homeRoot, "explicit-extra-codex");
     await mkdir(path.join(explicitHome, "sessions"), { recursive: true });
     await mkdir(path.join(defaultHome, "sessions"), { recursive: true });
+    await mkdir(path.join(extraHome, "sessions"), { recursive: true });
     process.env.HOME = homeRoot;
     process.env.CODEX_HOME = explicitHome;
+    delete process.env.AGENT_SNAPSHOT_DISABLE_CODEX_HOME_AUTODETECT;
+    delete process.env.AGENT_SNAPSHOT_EXTRA_CODEX_HOMES;
     const { discoverCodexHomes } = await import(pathToFileURL(path.join(ROOT_DIR, "dist/sources/codex-homes.mjs")).href);
     const homes = await discoverCodexHomes();
     assert(homes.length >= 2, `expected explicit and default homes, got ${JSON.stringify(homes)}`);
@@ -239,6 +246,13 @@ async function assertCodexHomeDiscoveryIncludesDefault() {
     assert(defaultEntry, `default ~/.codex home should be discovered: ${JSON.stringify(homes)}`);
     assert(defaultEntry.primary === false, `default home should be an extra home: ${JSON.stringify(defaultEntry)}`);
     assert(defaultEntry.label === "default", `default home should carry default label: ${JSON.stringify(defaultEntry)}`);
+
+    process.env.AGENT_SNAPSHOT_DISABLE_CODEX_HOME_AUTODETECT = "1";
+    process.env.AGENT_SNAPSHOT_EXTRA_CODEX_HOMES = extraHome;
+    const hermeticHomes = await discoverCodexHomes();
+    assert(hermeticHomes.some((home) => home.home === explicitHome), `explicit home should remain: ${JSON.stringify(hermeticHomes)}`);
+    assert(hermeticHomes.some((home) => home.home === extraHome), `explicit extra home should remain: ${JSON.stringify(hermeticHomes)}`);
+    assert(!hermeticHomes.some((home) => home.home === defaultHome), `autodetected default home should be disabled: ${JSON.stringify(hermeticHomes)}`);
   } finally {
     if (previousHome === undefined) {
       delete process.env.HOME;
@@ -249,6 +263,16 @@ async function assertCodexHomeDiscoveryIncludesDefault() {
       delete process.env.CODEX_HOME;
     } else {
       process.env.CODEX_HOME = previousCodexHome;
+    }
+    if (previousDisableAutodetect === undefined) {
+      delete process.env.AGENT_SNAPSHOT_DISABLE_CODEX_HOME_AUTODETECT;
+    } else {
+      process.env.AGENT_SNAPSHOT_DISABLE_CODEX_HOME_AUTODETECT = previousDisableAutodetect;
+    }
+    if (previousExtraHomes === undefined) {
+      delete process.env.AGENT_SNAPSHOT_EXTRA_CODEX_HOMES;
+    } else {
+      process.env.AGENT_SNAPSHOT_EXTRA_CODEX_HOMES = previousExtraHomes;
     }
     await rm(homeRoot, { recursive: true, force: true });
   }

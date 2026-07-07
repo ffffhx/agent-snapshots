@@ -166,6 +166,7 @@ async function createCleanEnv(root) {
   }
 
   Object.assign(env, {
+    AGENT_SNAPSHOT_DISABLE_CODEX_HOME_AUTODETECT: "1",
     AGENT_SNAPSHOT_PREFS_DIR: prefsDir,
     CLAUDE_HOME: claudeHome,
     CODEX_HOME: codexHome,
