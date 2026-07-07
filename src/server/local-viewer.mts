@@ -21,6 +21,7 @@ import { searchIndexed, syncSearchIndexInBackground, searchIndexStats, indexRowC
 import { resumeSessionInOrca } from "./orca-bridge.mjs";
 import { readCodexQuotaSnapshot } from "./quota-meter.mjs";
 import { buildUsageAnalytics } from "./usage-analytics.mjs";
+import { listImageEntries, readImageBytes } from "./image-index.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -197,6 +198,50 @@ export async function serveLocalViewer({
           limit,
         });
         sendJson(response, analytics);
+        return;
+      }
+      if (url.pathname === "/api/images") {
+        const result = await listImageEntries({
+          codexHome,
+          claudeHome,
+          traeHome,
+          traeAppHome,
+          traeRecordingsDir,
+          listSessions,
+          loadSnapshot,
+          source: url.searchParams.get("source") || "all",
+          limit: readPositiveInteger(url.searchParams.get("limit") || "36", "limit"),
+          offset: readNonNegativeInteger(url.searchParams.get("offset") || "0", "offset"),
+        });
+        sendJson(response, result);
+        return;
+      }
+      if (url.pathname === "/api/image") {
+        const ref = url.searchParams.get("ref") || "";
+        if (!ref) {
+          sendJson(response, { error: "missing ref" }, 400);
+          return;
+        }
+        const image = await readImageBytes({
+          ref,
+          codexHome,
+          claudeHome,
+          traeHome,
+          traeAppHome,
+          traeRecordingsDir,
+          loadSnapshot,
+        });
+        if (!image) {
+          sendJson(response, { error: "image not found" }, 404);
+          return;
+        }
+        response.writeHead(200, {
+          "content-type": image.mime,
+          "content-length": String(image.bytes.length),
+          "cache-control": "no-store",
+          "x-content-type-options": "nosniff",
+        });
+        response.end(image.bytes);
         return;
       }
       if (url.pathname === "/api/session-commits") {

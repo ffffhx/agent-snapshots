@@ -24,6 +24,7 @@ export function renderServerApp(csrfToken, shareConfig = {}) {
             <kbd>⌘K</kbd>
           </button>
           <button id="openStats" type="button" title="使用与 token 统计">统计</button>
+          <button id="openGallery" type="button" title="浏览跨会话图片">图库</button>
           <button id="reload" type="button" title="刷新会话列表">刷新</button>
         </div>
       </div>
@@ -124,6 +125,27 @@ export function renderServerApp(csrfToken, shareConfig = {}) {
       </div>
       <div id="statsBody" class="stats-body"></div>
     </section>
+  </div>
+  <div id="galleryOverlay" class="gallery-overlay" hidden>
+    <section class="gallery-dialog" role="dialog" aria-modal="true" aria-labelledby="galleryTitle">
+      <div class="gallery-bar">
+        <div>
+          <p class="eyebrow">Image archive</p>
+          <h2 id="galleryTitle">图库</h2>
+        </div>
+        <button id="closeGallery" class="search-close" type="button" title="关闭图库">关闭</button>
+      </div>
+      <div id="galleryFilters" class="gallery-filters" role="group" aria-label="图片来源筛选"></div>
+      <div id="galleryBody" class="gallery-body"></div>
+    </section>
+  </div>
+  <div id="galleryLightbox" class="gallery-lightbox" hidden>
+    <button class="gallery-lightbox-nav prev" type="button" data-lightbox-prev title="上一张">‹</button>
+    <figure class="gallery-lightbox-figure">
+      <img id="galleryLightboxImage" alt="">
+      <figcaption id="galleryLightboxCaption"></figcaption>
+    </figure>
+    <button class="gallery-lightbox-nav next" type="button" data-lightbox-next title="下一张">›</button>
   </div>
   <div id="shortcutOverlay" class="shortcut-overlay" hidden>
     <section class="shortcut-dialog" role="dialog" aria-modal="true" aria-labelledby="shortcutTitle">
@@ -1374,11 +1396,195 @@ pre {
 .stats-cost-out b { color: var(--seal-deep); font-weight: 700; font-size: 18px; }
 .stats-cost-out span { color: var(--faint); font: 500 11px/1.3 var(--mono); }
 .stats-note { margin: 0; color: var(--faint); font: 500 11px/1.5 var(--mono); }
+.gallery-overlay {
+  position: fixed; inset: 0; z-index: 50;
+  display: grid; place-items: center;
+  background: rgba(38, 28, 12, 0.38);
+  padding: clamp(10px, 2.4dvh, 22px);
+  backdrop-filter: blur(7px) saturate(0.9);
+  animation: overlay-fade 0.2s ease both;
+}
+.gallery-overlay[hidden] { display: none; }
+.gallery-dialog {
+  display: flex; flex-direction: column; gap: 14px;
+  width: min(1320px, 100%);
+  height: min(980px, calc(100dvh - 2 * clamp(10px, 2.4dvh, 22px)));
+  min-height: 0;
+  border: 1px solid var(--line-2);
+  border-top: 3px solid var(--seal);
+  border-radius: 12px;
+  background: linear-gradient(180deg, var(--panel), var(--panel-2));
+  padding: 18px;
+  box-shadow: 0 42px 110px -44px rgba(20, 12, 4, 0.9);
+  animation: turn-rise 0.26s var(--ease-rise) both;
+}
+.gallery-bar {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 14px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 12px;
+}
+.gallery-bar h2 { font-size: 24px; font-weight: 600; }
+.gallery-filters { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; }
+.gallery-chip {
+  min-height: 30px;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-soft);
+  padding: 0 12px;
+  font: 700 11px/1 var(--mono);
+}
+.gallery-chip:hover { border-color: var(--seal); color: var(--seal-deep); background: transparent; transform: none; }
+.gallery-chip.active { border-color: var(--seal); background: var(--seal-soft); color: var(--seal-deep); }
+.gallery-body { min-height: 0; overflow: auto; padding-right: 4px; scrollbar-width: thin; }
+.gallery-grid { columns: 220px; column-gap: 14px; }
+.gallery-card {
+  display: inline-block;
+  width: 100%;
+  margin: 0 0 14px;
+  break-inside: avoid;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-wash);
+  overflow: hidden;
+  box-shadow: 0 18px 38px -34px rgba(64, 44, 14, 0.72);
+}
+.gallery-card:hover { border-color: rgba(177, 56, 42, 0.4); box-shadow: 0 22px 46px -36px rgba(140, 43, 31, 0.62); }
+.gallery-thumb {
+  display: block;
+  width: 100%;
+  min-height: 96px;
+  border: 0;
+  border-radius: 0;
+  background: var(--wash-1);
+  padding: 0;
+  cursor: zoom-in;
+}
+.gallery-thumb:hover { background: var(--wash-2); transform: none; }
+.gallery-thumb img {
+  display: block;
+  width: 100%;
+  max-height: 360px;
+  object-fit: cover;
+  background: var(--panel);
+}
+.gallery-card-meta {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  min-height: 58px;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  padding: 10px 11px;
+  text-align: left;
+}
+.gallery-card-meta:hover { background: var(--wash-2); transform: none; }
+.gallery-card-meta strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink);
+  font: 650 13px/1.28 var(--sans);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gallery-card-meta span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--faint);
+  font: 650 10.5px/1.35 var(--mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gallery-footer {
+  display: flex;
+  justify-content: center;
+  padding: 16px 0 4px;
+}
+.gallery-more {
+  min-height: 36px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-soft);
+  padding: 0 14px;
+  font: 700 11px/1 var(--mono);
+}
+.gallery-more:hover { border-color: var(--seal); background: transparent; color: var(--seal-deep); transform: none; }
+.gallery-empty {
+  display: grid;
+  min-height: 240px;
+  place-items: center;
+  border: 1px dashed var(--line-2);
+  border-radius: 10px;
+  color: var(--faint);
+  font: 700 13px/1.5 var(--mono);
+}
+.gallery-error { border-color: rgba(177,56,42,0.45); color: var(--seal); }
+.gallery-lightbox {
+  position: fixed; inset: 0; z-index: 70;
+  display: grid;
+  grid-template-columns: minmax(44px, 8vw) minmax(0, 1fr) minmax(44px, 8vw);
+  place-items: center;
+  gap: 12px;
+  background: rgba(10, 8, 6, 0.86);
+  padding: 24px;
+  animation: overlay-fade 0.16s ease both;
+}
+.gallery-lightbox[hidden] { display: none; }
+.gallery-lightbox-figure {
+  display: grid;
+  gap: 12px;
+  justify-items: center;
+  max-width: 100%;
+  max-height: 100%;
+  margin: 0;
+}
+.gallery-lightbox img {
+  display: block;
+  max-width: min(1120px, 100%);
+  max-height: calc(100dvh - 112px);
+  border: 1px solid rgba(255, 245, 222, 0.22);
+  border-radius: 8px;
+  background: #111;
+  object-fit: contain;
+  box-shadow: 0 28px 80px -30px rgba(0, 0, 0, 0.9);
+}
+.gallery-lightbox figcaption {
+  max-width: min(760px, 88vw);
+  overflow: hidden;
+  color: rgba(255, 245, 222, 0.82);
+  font: 650 12px/1.45 var(--mono);
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gallery-lightbox-nav {
+  display: grid;
+  width: 42px;
+  height: 56px;
+  place-items: center;
+  border: 1px solid rgba(255, 245, 222, 0.22);
+  border-radius: 8px;
+  background: rgba(255, 245, 222, 0.06);
+  color: rgba(255, 245, 222, 0.82);
+  font: 400 34px/1 var(--serif);
+}
+.gallery-lightbox-nav:hover { border-color: rgba(255, 245, 222, 0.5); background: rgba(255, 245, 222, 0.12); color: #fff; transform: none; }
 @media (max-width: 900px) {
   .stats-filterbar { align-items: flex-start; flex-direction: column; }
   .stats-chip-group { justify-content: flex-start; }
   .stats-section-quota, .stats-section-usage, .stats-section-activity, .stats-section-projects { grid-column: 1 / -1; }
   .project-ranks { grid-template-columns: 1fr; }
+  .gallery-dialog { height: calc(100dvh - 20px); padding: 14px; }
+  .gallery-grid { columns: 150px; column-gap: 10px; }
+  .gallery-card { margin-bottom: 10px; }
+  .gallery-lightbox { grid-template-columns: 1fr; grid-template-rows: 1fr auto; padding: 16px; }
+  .gallery-lightbox-nav { position: fixed; top: 50%; transform: translateY(-50%); }
+  .gallery-lightbox-nav.prev { left: 12px; }
+  .gallery-lightbox-nav.next { right: 12px; }
 }
 .exports .resume-orca { border-color: var(--pine); background: var(--pine); color: #eef5ef; }
 .exports .resume-orca:hover { border-color: var(--pine); background: #26483a; color: #fff; }
@@ -1690,6 +1896,7 @@ const state = {
   statsFilter: "all",
   statsRequestToken: 0,
   statsRate: { in: 0, out: 0 },
+  gallery: { open: false, source: "all", items: [], offset: 0, limit: 36, loading: false, hasMore: true, error: "", requestToken: 0, lightboxOpen: false, lightboxIndex: 0 },
   reading: { verbosity: "standard", outlineOpen: false, outlineItems: [], outlineVisible: new Set(), outlineTargets: new Map(), outlineActiveId: "", shortcutsOpen: false },
   liveTail: { active: false, ref: "", timer: 0, token: 0, head: null, polling: false, following: true, needsFollowPrompt: false },
 };
@@ -1836,6 +2043,12 @@ const STATS_FILTERS = [
   { key: "trae", label: "Trae" },
 ];
 const STATS_ENGINE_LABELS = { all: "全部", codex: "Codex", claude: "Claude Code", trae: "Trae" };
+const GALLERY_FILTERS = [
+  { key: "all", label: "全部" },
+  { key: "codex", label: "Codex" },
+  { key: "claude", label: "Claude" },
+  { key: "trae", label: "Trae" },
+];
 
 function loadStatsRate() {
   try {
@@ -1857,6 +2070,220 @@ async function openStats() {
 function closeStats() {
   $("statsOverlay").hidden = true;
   document.body.classList.remove("stats-open");
+}
+
+function openGallery() {
+  state.gallery.open = true;
+  $("galleryOverlay").hidden = false;
+  document.body.classList.add("gallery-open");
+  renderGallery();
+  if (!state.gallery.items.length && !state.gallery.loading) {
+    loadGallery(true);
+  }
+  window.setTimeout(() => $("closeGallery")?.focus(), 0);
+}
+
+function closeGallery() {
+  closeGalleryLightbox();
+  state.gallery.open = false;
+  $("galleryOverlay").hidden = true;
+  document.body.classList.remove("gallery-open");
+}
+
+async function setGallerySource(source) {
+  const key = GALLERY_FILTERS.some((item) => item.key === source) ? source : "all";
+  if (state.gallery.source === key && state.gallery.items.length) {
+    return;
+  }
+  state.gallery.source = key;
+  await loadGallery(true);
+}
+
+async function loadGallery(reset = false) {
+  if (state.gallery.loading) {
+    return;
+  }
+  if (!reset && !state.gallery.hasMore) {
+    return;
+  }
+  const token = state.gallery.requestToken + 1;
+  state.gallery.requestToken = token;
+  state.gallery.loading = true;
+  state.gallery.error = "";
+  if (reset) {
+    state.gallery.items = [];
+    state.gallery.offset = 0;
+    state.gallery.hasMore = true;
+  }
+  renderGallery();
+  try {
+    const query = new URLSearchParams({
+      source: state.gallery.source,
+      limit: String(state.gallery.limit),
+      offset: String(reset ? 0 : state.gallery.items.length),
+    });
+    const response = await fetch("/api/images?" + query.toString());
+    const result = await response.json();
+    if (!response.ok) {
+      throw new Error(result.error || "Failed to load images");
+    }
+    if (token !== state.gallery.requestToken) {
+      return;
+    }
+    const entries = Array.isArray(result) ? result : Array.isArray(result.entries) ? result.entries : [];
+    state.gallery.items = reset ? entries : state.gallery.items.concat(entries);
+    state.gallery.offset = state.gallery.items.length;
+    state.gallery.hasMore = result && Object.prototype.hasOwnProperty.call(result, "hasMore")
+      ? Boolean(result.hasMore) && entries.length > 0
+      : entries.length >= state.gallery.limit;
+  } catch (error) {
+    if (token === state.gallery.requestToken) {
+      state.gallery.error = error instanceof Error ? error.message : String(error);
+    }
+  } finally {
+    if (token === state.gallery.requestToken) {
+      state.gallery.loading = false;
+      renderGallery();
+    }
+  }
+}
+
+function renderGallery() {
+  renderGalleryFilters();
+  const body = $("galleryBody");
+  if (!body) {
+    return;
+  }
+  if (state.gallery.loading && !state.gallery.items.length) {
+    body.innerHTML = renderLoading("正在扫描图片...");
+    return;
+  }
+  if (state.gallery.error && !state.gallery.items.length) {
+    body.innerHTML = "<div class='gallery-empty gallery-error'>" + esc(state.gallery.error) + "</div>";
+    return;
+  }
+  if (!state.gallery.items.length) {
+    body.innerHTML = "<div class='gallery-empty'>还没有发现图片</div>";
+    return;
+  }
+  const grid = "<div class='gallery-grid'>" + state.gallery.items.map(renderGalleryCard).join("") + "</div>";
+  const more = state.gallery.hasMore || state.gallery.loading || state.gallery.error
+    ? "<div class='gallery-footer'>" +
+        (state.gallery.error ? "<span class='load-more-meta load-more-error'>" + esc(state.gallery.error) + "</span>" : "") +
+        (state.gallery.hasMore || state.gallery.loading ? "<button class='gallery-more' type='button' data-gallery-more='1'" + (state.gallery.loading ? " disabled aria-busy='true'" : "") + ">" + (state.gallery.loading ? "正在加载..." : "加载更多") + "</button>" : "") +
+      "</div>"
+    : "";
+  body.innerHTML = grid + more;
+}
+
+function renderGalleryFilters() {
+  const target = $("galleryFilters");
+  if (!target) {
+    return;
+  }
+  target.innerHTML = GALLERY_FILTERS.map((filter) => {
+    const active = state.gallery.source === filter.key;
+    return "<button class='gallery-chip" + (active ? " active" : "") + "' type='button' data-gallery-source='" + esc(filter.key) + "' aria-pressed='" + (active ? "true" : "false") + "'>" + esc(filter.label) + "</button>";
+  }).join("");
+}
+
+function renderGalleryCard(entry, index) {
+  const title = String(entry.sessionTitle || entry.sessionRef || "Untitled session");
+  const meta = [entry.engineLabel || galleryEngineLabel(entry.engine), relativeTime(entry.timestamp), galleryProjectLabel(entry.project)].filter(Boolean).join(" · ");
+  const imageUrl = "/api/image?ref=" + encodeURIComponent(entry.id || "");
+  return "<article class='gallery-card' data-gallery-index='" + esc(index) + "'>" +
+    "<button class='gallery-thumb' type='button' data-gallery-lightbox='" + esc(index) + "' title='查看大图'>" +
+      "<img src='" + esc(imageUrl) + "' alt='" + esc(title) + "' loading='lazy' decoding='async'>" +
+    "</button>" +
+    "<button class='gallery-card-meta' type='button' data-gallery-session='" + esc(index) + "' title='打开会话并跳到图片所在回合'>" +
+      "<strong>" + esc(title) + "</strong>" +
+      "<span>" + esc(meta) + "</span>" +
+    "</button>" +
+  "</article>";
+}
+
+async function openGallerySession(index) {
+  const entry = state.gallery.items[Number(index)];
+  if (!entry?.sessionRef) {
+    return;
+  }
+  closeGallery();
+  if (entry.engine && entry.engine !== "all") {
+    state.activeSource = visibleSourceKey(entry.engine);
+  }
+  await selectSession(entry.sessionRef);
+  const turn = Number(entry.turnNumber || 0) || Number(entry.turnIndex || 0) + 1;
+  window.setTimeout(() => {
+    if (!focusTurn(turn)) {
+      showToast("已打开会话，未找到对应回合", true);
+    }
+  }, 80);
+}
+
+function openGalleryLightbox(index) {
+  const itemIndex = clampNumber(Number(index), 0, state.gallery.items.length - 1);
+  if (!state.gallery.items[itemIndex]) {
+    return;
+  }
+  state.gallery.lightboxOpen = true;
+  state.gallery.lightboxIndex = itemIndex;
+  $("galleryLightbox").hidden = false;
+  updateGalleryLightbox();
+}
+
+function closeGalleryLightbox() {
+  state.gallery.lightboxOpen = false;
+  const overlay = $("galleryLightbox");
+  if (overlay) {
+    overlay.hidden = true;
+  }
+  const image = $("galleryLightboxImage");
+  if (image) {
+    image.removeAttribute("src");
+    image.alt = "";
+  }
+}
+
+function moveGalleryLightbox(delta) {
+  if (!state.gallery.items.length) {
+    return;
+  }
+  const length = state.gallery.items.length;
+  state.gallery.lightboxIndex = (state.gallery.lightboxIndex + delta + length) % length;
+  updateGalleryLightbox();
+}
+
+function updateGalleryLightbox() {
+  const entry = state.gallery.items[state.gallery.lightboxIndex];
+  if (!entry) {
+    closeGalleryLightbox();
+    return;
+  }
+  const title = String(entry.sessionTitle || entry.sessionRef || "Image");
+  const meta = [galleryEngineLabel(entry.engine), relativeTime(entry.timestamp), galleryProjectLabel(entry.project)].filter(Boolean).join(" · ");
+  const image = $("galleryLightboxImage");
+  image.src = "/api/image?ref=" + encodeURIComponent(entry.id || "");
+  image.alt = title;
+  $("galleryLightboxCaption").textContent = title + (meta ? " · " + meta : "");
+  for (const button of document.querySelectorAll("[data-lightbox-prev], [data-lightbox-next]")) {
+    button.disabled = state.gallery.items.length <= 1;
+  }
+}
+
+function galleryEngineLabel(engine) {
+  if (engine === "claude") return "Claude";
+  if (engine === "trae") return "Trae";
+  return engine === "codex" ? "Codex" : "";
+}
+
+function galleryProjectLabel(value) {
+  const text = String(value || "").trim();
+  if (!text) {
+    return "";
+  }
+  const clean = text.replace(/[\\\\/]+$/, "");
+  const parts = clean.split(/[\\\\/]/).filter(Boolean);
+  return parts[parts.length - 1] || clean;
 }
 
 async function loadStats() {
@@ -5297,6 +5724,7 @@ $("sessions").addEventListener("click", async (event) => {
 $("reload").addEventListener("click", loadSessions);
 $("openSearch").addEventListener("click", () => openSearchDialog());
 $("openStats").addEventListener("click", openStats);
+$("openGallery").addEventListener("click", openGallery);
 $("closeStats").addEventListener("click", closeStats);
 $("statsRefresh").addEventListener("click", loadStats);
 $("statsOverlay").addEventListener("click", (event) => {
@@ -5310,6 +5738,47 @@ $("statsOverlay").addEventListener("click", (event) => {
   }
   if (event.target === $("statsOverlay")) {
     closeStats();
+  }
+});
+$("closeGallery").addEventListener("click", closeGallery);
+$("galleryOverlay").addEventListener("click", async (event) => {
+  const sourceButton = event.target.closest("[data-gallery-source]");
+  if (sourceButton) {
+    await setGallerySource(sourceButton.dataset.gallerySource);
+    return;
+  }
+  const moreButton = event.target.closest("[data-gallery-more]");
+  if (moreButton) {
+    await loadGallery(false);
+    return;
+  }
+  const lightboxButton = event.target.closest("[data-gallery-lightbox]");
+  if (lightboxButton) {
+    openGalleryLightbox(lightboxButton.dataset.galleryLightbox);
+    return;
+  }
+  const sessionButton = event.target.closest("[data-gallery-session]");
+  if (sessionButton) {
+    await openGallerySession(sessionButton.dataset.gallerySession);
+    return;
+  }
+  if (event.target === $("galleryOverlay")) {
+    closeGallery();
+  }
+});
+$("galleryLightbox").addEventListener("click", (event) => {
+  if (event.target.closest("[data-lightbox-prev]")) {
+    event.preventDefault();
+    moveGalleryLightbox(-1);
+    return;
+  }
+  if (event.target.closest("[data-lightbox-next]")) {
+    event.preventDefault();
+    moveGalleryLightbox(1);
+    return;
+  }
+  if (event.target === $("galleryLightbox") || event.target === $("galleryLightboxImage")) {
+    closeGalleryLightbox();
   }
 });
 $("closeSearch").addEventListener("click", () => closeSearchDialog(false));
@@ -5428,6 +5897,28 @@ $("searchFacets").addEventListener("click", (event) => {
 document.addEventListener("keydown", (event) => {
   const key = String(event.key || "").toLowerCase();
   const typing = isTypingTarget(event.target);
+  if (state.gallery.lightboxOpen) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeGalleryLightbox();
+      return;
+    }
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      moveGalleryLightbox(-1);
+      return;
+    }
+    if (event.key === "ArrowRight") {
+      event.preventDefault();
+      moveGalleryLightbox(1);
+      return;
+    }
+  }
+  if (state.gallery.open && event.key === "Escape") {
+    event.preventDefault();
+    closeGallery();
+    return;
+  }
   if ((event.metaKey || event.ctrlKey) && key === "k") {
     event.preventDefault();
     openSearchDialog();
