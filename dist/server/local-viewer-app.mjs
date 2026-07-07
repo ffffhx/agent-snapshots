@@ -73,6 +73,7 @@ export function renderServerApp(csrfToken, shareConfig = {}) {
       <div id="goal" class="goal"></div>
       <div id="risks" class="risks"></div>
       <div id="turns" class="turns"></div>
+      <button id="followLatest" class="follow-latest" type="button" hidden>↓ 跟随最新</button>
     </section>
   </main>
   <aside id="outlinePanel" class="outline-panel" aria-label="消息大纲" aria-hidden="true">
@@ -91,7 +92,7 @@ export function renderServerApp(csrfToken, shareConfig = {}) {
         </div>
         <button id="closeSearch" class="search-close" type="button" title="关闭搜索">关闭</button>
       </div>
-      <input id="globalSearch" class="global-search-input" type="search" placeholder="关键词，可加 source: role: project: before: after: -排除" title="支持过滤语法：source:codex/claude、role:user/assistant、project:名称、before:2026-01-01、after:2026-01-01、-排除词" role="combobox" aria-expanded="true" aria-autocomplete="list" aria-controls="searchResults" autocomplete="off" spellcheck="false">
+      <input id="globalSearch" class="global-search-input" type="search" placeholder="关键词，可加 source: role: project: before: after: -排除" title="支持过滤语法：source:codex/claude/trae、role:user/assistant、project:名称、before:2026-01-01、after:2026-01-01、-排除词" role="combobox" aria-expanded="true" aria-autocomplete="list" aria-controls="searchResults" autocomplete="off" spellcheck="false">
       <div class="search-controls" role="group" aria-label="搜索范围">
         <button class="search-mode active" type="button" data-search-mode="keyword">关键词</button>
         <button class="search-mode" type="button" data-search-mode="semantic">语义</button>
@@ -183,6 +184,8 @@ function serverCss() {
   --seal-soft: rgba(177, 56, 42, 0.10);
   --pine: #2f5d49;
   --pine-soft: rgba(47, 93, 73, 0.10);
+  --live: #3f8f62;
+  --live-soft: rgba(63, 143, 98, 0.12);
   --amber: #9a6a1b;
   --amber-soft: rgba(160, 112, 30, 0.12);
   --blue: #8c2b1f;
@@ -252,6 +255,8 @@ html[data-theme="dark"] {
   --seal-soft: rgba(210, 76, 55, 0.16);
   --pine: #5aa383;
   --pine-soft: rgba(90, 163, 131, 0.14);
+  --live: #73c797;
+  --live-soft: rgba(115, 199, 151, 0.14);
   --amber: #c79242;
   --amber-soft: rgba(199, 146, 66, 0.16);
   --red: #d24c37;
@@ -590,6 +595,7 @@ button:disabled { cursor: wait; opacity: 0.55; transform: none; box-shadow: none
   position: absolute; inset: 9px auto 9px -15px;
   width: 2px; border-radius: 2px; background: transparent; content: "";
 }
+.session.live { grid-template-columns: auto minmax(0, 1fr) auto auto; }
 .session:hover { background: rgba(33, 27, 16, 0.045); transform: none; }
 .session.active { background: var(--seal-soft); }
 .session.active::before { background: var(--seal); }
@@ -599,6 +605,14 @@ button:disabled { cursor: wait; opacity: 0.55; transform: none; box-shadow: none
 }
 .session.active strong { font-weight: 600; }
 .session-time { color: var(--faint); font: 600 10.5px/1 var(--mono); white-space: nowrap; }
+.session-live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--live);
+  box-shadow: 0 0 0 0 rgba(63, 143, 98, 0.32);
+  animation: live-pulse 2.4s ease-out infinite;
+}
 .session-badge {
   border: 1px solid rgba(177, 56, 42, 0.42);
   border-radius: 3px;
@@ -609,6 +623,18 @@ button:disabled { cursor: wait; opacity: 0.55; transform: none; box-shadow: none
   letter-spacing: 0.08em;
   text-transform: uppercase;
   white-space: nowrap;
+}
+.session-badge.live {
+  border-color: rgba(63, 143, 98, 0.32);
+  background: var(--live-soft);
+  color: var(--live);
+  letter-spacing: 0;
+  text-transform: none;
+}
+@keyframes live-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(63, 143, 98, 0.32); }
+  70% { box-shadow: 0 0 0 7px rgba(63, 143, 98, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(63, 143, 98, 0); }
 }
 .project-more {
   justify-self: start;
@@ -701,6 +727,21 @@ button:disabled { cursor: wait; opacity: 0.55; transform: none; box-shadow: none
   width: 4px; height: 20px;
   border-radius: 2px;
   background: var(--seal);
+}
+.live-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--live);
+  font-weight: 700;
+}
+.live-indicator .live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--live);
+  box-shadow: 0 0 0 0 rgba(63, 143, 98, 0.32);
+  animation: live-pulse 2.4s ease-out infinite;
 }
 .switches { display: inline-flex; flex: 0 0 auto; gap: 2px; padding: 3px; border: 1px solid var(--line-2); border-radius: 9px; background: var(--panel); }
 .switches label {
@@ -973,6 +1014,27 @@ html[data-density="compact"] .turns { gap: 18px; }
   color: var(--muted);
   letter-spacing: 0.02em;
 }
+.follow-latest {
+  position: fixed;
+  right: clamp(18px, 3vw, 34px);
+  bottom: 24px;
+  z-index: 25;
+  min-height: 34px;
+  border: 1px solid rgba(63, 143, 98, 0.34);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--live);
+  padding: 0 14px;
+  font: 800 12px/1 var(--mono);
+  box-shadow: var(--shadow-panel);
+}
+.follow-latest:hover {
+  border-color: var(--live);
+  background: var(--live-soft);
+  color: var(--live);
+  transform: translateY(-1px);
+}
+.follow-latest[hidden] { display: none; }
 .turn.prehydrated { animation: none; }
 html[data-density="compact"] .user .message-card { padding: 10px 15px; }
 html[data-density="compact"] .tool .message-card { padding: 10px 14px; }
@@ -1408,7 +1470,7 @@ pre {
   .body { font-size: 17px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .loading-spinner { animation: none; }
+  .loading-spinner, .session-live-dot, .live-indicator .live-dot { animation: none; }
   .turn, .search-dialog { animation: none; }
   * { transition-duration: 0.01ms !important; }
 }
@@ -1517,7 +1579,7 @@ html[data-theme="dark"]{--sink-shadow:0 16px 26px -20px rgba(0,0,0,0.72);}
 :root{--ease-rise:cubic-bezier(0.2,0.7,0.3,1);--dur-rise:0.28s;}
 .toolbar button:active,.exports a:active,.appx:active,.source-tab:active,.search-mode:active,.search-flag:active,.facet-chip:active,.sr-act:active,.session-search button:active{transform:translateY(0) scale(0.97);transition-duration:60ms;}
 @media (prefers-reduced-motion: reduce){
-  .turn,.search-dialog,.stats-dialog,.toast,.goal,.risk,.notice,.search-overlay,.stats-overlay,.stat-row-fill,.quota-fill,.rank-fill,.hour-bar,.stats-skeleton-line,.search-results > .search-result{animation:none !important;}
+  .turn,.search-dialog,.stats-dialog,.toast,.goal,.risk,.notice,.search-overlay,.stats-overlay,.stat-row-fill,.quota-fill,.rank-fill,.hour-bar,.stats-skeleton-line,.search-results > .search-result,.session-live-dot,.live-indicator .live-dot{animation:none !important;}
   *{transition-property:color,background-color,border-color,opacity,box-shadow !important;}
 }
 
@@ -1629,12 +1691,16 @@ const state = {
   statsRequestToken: 0,
   statsRate: { in: 0, out: 0 },
   reading: { verbosity: "standard", outlineOpen: false, outlineItems: [], outlineVisible: new Set(), outlineTargets: new Map(), outlineActiveId: "", shortcutsOpen: false },
+  liveTail: { active: false, ref: "", timer: 0, token: 0, head: null, polling: false, following: true, needsFollowPrompt: false },
 };
 const SOURCE_MODULES = [
   { key: "codex", label: "Codex" },
   { key: "claude", label: "Claude Code" },
+  { key: "trae", label: "Trae" },
 ];
 const SESSION_BATCH_LIMIT = 200;
+const LIVE_TAIL_INTERVAL_MS = 4000;
+const LIVE_TAIL_BOTTOM_PX = 80;
 const SEARCH_SCAN_LIMIT = 600;
 const SEMANTIC_SEARCH_SCAN_LIMIT = 600;
 const SEMANTIC_SEARCH_UPDATE_LIMIT = 24;
@@ -1668,6 +1734,7 @@ function renderLoading(message) {
 }
 
 function showViewerLoading(message) {
+  stopLiveTail({ silent: true });
   state.currentSnapshot = null;
   resetSessionSearchState(false);
   renderSessionSearch();
@@ -2506,7 +2573,8 @@ function renderFacets() {
   const projects = new Map();
   for (const result of raw) {
     const label = result.engineLabel || "Codex";
-    const key = /claude/i.test(label) ? "claude" : "codex";
+    const engine = String(result.engine || "").toLowerCase();
+    const key = engine === "trae" || /trae/i.test(label) ? "trae" : /claude/i.test(label) ? "claude" : "codex";
     const entry = sources.get(key) || { key, label, count: 0 };
     entry.count += 1;
     sources.set(key, entry);
@@ -3415,6 +3483,84 @@ function rebuildOutline() {
   updateActiveOutline();
 }
 
+function ensureOutlineObserver() {
+  if (outlineObserver || typeof IntersectionObserver !== "function") {
+    return;
+  }
+  const container = $("turns");
+  const root = container?.closest(".viewer") || null;
+  outlineObserver = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      const id = entry.target.getAttribute("data-outline-id") || "";
+      if (!id) {
+        continue;
+      }
+      if (entry.isIntersecting) {
+        state.reading.outlineVisible.add(id);
+      } else {
+        state.reading.outlineVisible.delete(id);
+      }
+    }
+    scheduleActiveOutlineUpdate();
+  }, { root, threshold: [0, 0.1, 0.5, 1] });
+}
+
+function appendOutlineEntriesForNodes(nodes) {
+  const list = $("outlineList");
+  if (!list || !Array.isArray(nodes) || !nodes.length) {
+    return;
+  }
+  const entries = [];
+  for (const node of nodes) {
+    if (!(node instanceof HTMLElement) || node.classList.contains("turns-hydrating")) {
+      continue;
+    }
+    if (node.classList.contains("user") && node.hasAttribute("data-turn-number")) {
+      const turn = node.getAttribute("data-turn-number") || "";
+      const text = outlineText(node.querySelector(".body")?.textContent || node.textContent || "用户消息", "用户消息");
+      entries.push({ id: "turn-" + turn + "-" + (state.reading.outlineItems.length + entries.length), type: "user", label: text, target: node });
+      continue;
+    }
+    if (node.classList.contains("commit-card")) {
+      const sha = String(node.getAttribute("data-commit-sha") || "").slice(0, 7);
+      const subject = outlineText(node.querySelector(".commit-subject")?.textContent || "Git 提交", "Git 提交");
+      entries.push({ id: "commit-" + (sha || entries.length) + "-" + (state.reading.outlineItems.length + entries.length), type: "commit", label: (sha ? sha + " " : "") + subject, target: node });
+    }
+  }
+  if (!entries.length) {
+    return;
+  }
+  const empty = list.querySelector(".outline-empty");
+  if (empty) {
+    list.innerHTML = "";
+  }
+  ensureOutlineObserver();
+  const fragment = document.createDocumentFragment();
+  for (const item of entries) {
+    item.target.setAttribute("data-outline-id", item.id);
+    state.reading.outlineItems.push(item);
+    state.reading.outlineTargets.set(item.id, item);
+    if (outlineObserver) {
+      outlineObserver.observe(item.target);
+    }
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "outline-item";
+    button.dataset.outlineTarget = item.id;
+    const kind = document.createElement("span");
+    kind.className = "outline-kind";
+    kind.textContent = item.type === "commit" ? "提交" : "用户";
+    const text = document.createElement("span");
+    text.className = "outline-text";
+    text.textContent = item.label;
+    button.appendChild(kind);
+    button.appendChild(text);
+    fragment.appendChild(button);
+  }
+  list.appendChild(fragment);
+  updateActiveOutline();
+}
+
 function outlineText(value, fallback = "用户消息") {
   const text = String(value || "").replace(/\\s+/g, " ").trim();
   if (!text) {
@@ -3548,8 +3694,16 @@ function initReadingExperience() {
   const viewer = document.querySelector(".viewer");
   if (viewer) {
     viewer.addEventListener("scroll", scheduleActiveOutlineUpdate, { passive: true });
+    viewer.addEventListener("scroll", handleLiveTailScroll, { passive: true });
   }
   window.addEventListener("resize", scheduleActiveOutlineUpdate);
+  window.addEventListener("resize", updateFollowLatestButton);
+  $("followLatest").addEventListener("click", () => {
+    state.liveTail.following = true;
+    state.liveTail.needsFollowPrompt = false;
+    scrollLiveTailToBottom();
+    updateFollowLatestButton();
+  });
   clearOutline("选择会话后显示大纲");
 }
 
@@ -3646,6 +3800,7 @@ async function fetchSessionPage(offset) {
     source: "all",
     limit: String(SESSION_BATCH_LIMIT),
     offset: String(Math.max(0, Number(offset) || 0)),
+    completeOnly: "0",
   });
   const response = await fetch("/api/sessions?" + query.toString());
   const result = await response.json();
@@ -3761,6 +3916,7 @@ function setViewerLoading(message) {
 
 function clearViewer(message) {
   state.requestToken += 1;
+  stopLiveTail({ silent: true });
   state.currentSnapshot = null;
   resetSessionSearchState(false);
   renderSessionSearch();
@@ -3782,6 +3938,85 @@ function sessionEngine(session) {
 
 function sessionRef(session) {
   return session.ref || (sessionEngine(session) + ":" + session.id);
+}
+
+function sessionEngineKey(item) {
+  const value = String(item?.engine || "").toLowerCase();
+  return value === "claude" || value === "trae" ? value : "codex";
+}
+
+function normalizedSessionPath(item) {
+  return String(item?.filePath || item?.displayFilePath || "").replace(/\\\\/g, "/");
+}
+
+function isCompleteSessionItem(item) {
+  if (!item) {
+    return true;
+  }
+  if (item.complete === true) {
+    return true;
+  }
+  if (item.complete === false || item.live === true || item._live === true) {
+    return false;
+  }
+  const engine = sessionEngineKey(item);
+  if (engine === "trae") {
+    return true;
+  }
+  if (engine === "codex") {
+    const filePath = normalizedSessionPath(item);
+    if (filePath.includes("/archived_sessions/")) {
+      return true;
+    }
+    if (filePath.includes("/sessions/")) {
+      return false;
+    }
+    return true;
+  }
+  if (engine === "claude") {
+    return item.sourceKind ? item.sourceKind === "transcript" : true;
+  }
+  return true;
+}
+
+function isLiveSessionItem(item) {
+  if (!item) {
+    return false;
+  }
+  if (item.live === true || item._live === true) {
+    return true;
+  }
+  if (item.live === false || item.complete === true) {
+    return false;
+  }
+  const engine = sessionEngineKey(item);
+  if (engine === "trae") {
+    return false;
+  }
+  if (engine === "codex") {
+    if (item.complete === false) {
+      return true;
+    }
+    const filePath = normalizedSessionPath(item);
+    return !filePath.includes("/archived_sessions/") && filePath.includes("/sessions/");
+  }
+  if (engine === "claude") {
+    if (item.historyOnly || (item.sourceKind && item.sourceKind !== "transcript")) {
+      return false;
+    }
+    return item.complete === false;
+  }
+  return item.complete === false;
+}
+
+function sortGroupSessionRows(sessions) {
+  return sessions.slice().sort((a, b) => {
+    const liveDelta = Number(isLiveSessionItem(b)) - Number(isLiveSessionItem(a));
+    if (liveDelta) {
+      return liveDelta;
+    }
+    return new Date(b.mtime || 0).getTime() - new Date(a.mtime || 0).getTime();
+  });
 }
 
 function groupSessions(sessions, filter) {
@@ -3809,6 +4044,9 @@ function groupSessions(sessions, filter) {
     if (Number.isFinite(mtime)) {
       group.newestMs = Math.max(group.newestMs, mtime);
     }
+  }
+  for (const group of groupMap.values()) {
+    group.sessions = sortGroupSessionRows(group.sessions);
   }
   const groups = sortProjectGroups(Array.from(groupMap.values()));
   if (!filter) {
@@ -3987,10 +4225,15 @@ function renderProjectGroup(group) {
 function renderSessionRow(session) {
   const ref = sessionRef(session);
   const active = ref === state.selected ? " active" : "";
-  const badge = session.historyOnly ? "<span class='session-badge'>history</span>" : "";
-  return "<button class='session" + active + "' data-id='" + esc(ref) + "' title='" + esc(session.title) + "'>" +
+  const live = isLiveSessionItem(session);
+  const liveDot = live ? "<span class='session-live-dot' aria-hidden='true'></span>" : "";
+  const liveBadge = live ? "<span class='session-badge live'>进行中</span>" : "";
+  const historyBadge = session.historyOnly ? "<span class='session-badge'>history</span>" : "";
+  return "<button class='session" + active + (live ? " live" : "") + "' data-id='" + esc(ref) + "' title='" + esc(session.title) + "'>" +
+    liveDot +
     "<strong>" + esc(session.title) + "</strong>" +
-    badge +
+    liveBadge +
+    historyBadge +
     "<span class='session-time'>" + esc(relativeTime(session.mtime)) + "</span>" +
   "</button>";
 }
@@ -4051,13 +4294,7 @@ function renderSnapshot(snapshot) {
   $("meta").removeAttribute("aria-busy");
   $("meta").innerHTML = renderSnapshotMeta(snapshot);
   $("goal").innerHTML = renderSnapshotGoal(snapshot);
-  const notices = (snapshot.notices || []).map((notice) => {
-    return "<div class='notice " + esc(notice.severity || "medium") + "'><b>NOTE</b><span><strong>" + esc(notice.label || "Notice") + ".</strong> " + esc(notice.text || "") + "</span></div>";
-  }).join("");
-  const risks = snapshot.risks.length ? snapshot.risks.map((risk) => {
-    return "<div class='risk " + esc(risk.severity) + "'><b>" + esc(risk.severity) + "</b><span>" + esc(risk.label) + "</span><em>" + esc(formatRiskTurns(risk)) + "</em></div>";
-  }).join("") : "";
-  $("risks").innerHTML = snapshot.safetyChecks === false ? "" : notices + risks;
+  renderSnapshotRisks(snapshot);
   const options = activeOptions();
   const resumeButton = snapshot.engine !== "trae"
     ? "<button type='button' class='resume-orca' data-resume-orca='" + esc(snapshot.ref || "") + "' data-resume-cwd='" + esc(snapshot.cwd || snapshot.displayCwd || "") + "' data-resume-title='" + esc(snapshot.title || "") + "' title='在 Orca 中打开终端并恢复此会话'>↗ 在 Orca 继续</button>"
@@ -4067,6 +4304,7 @@ function renderSnapshot(snapshot) {
   loadSessionCommits(snapshot, state.requestToken);
   renderSessionSearch();
   postSnapshotState(snapshot);
+  configureLiveTail(snapshot);
 }
 
 // 两段式渲染：大会话先渲染最新的一段轮次（秒开），更早的轮次在后台按帧
@@ -4190,6 +4428,287 @@ function scheduleHydrationStep(fn) {
   // 会导致切走再切回的用户面对永远补不齐的会话。setTimeout 在
   // 前台节奏相当，后台最多被钳到 ~1s/步，仍能推进完成。
   window.setTimeout(fn, 16);
+}
+
+function configureLiveTail(snapshot) {
+  const ref = snapshot?.ref || state.selected || "";
+  if (!ref || !isLiveSessionItem(snapshot)) {
+    stopLiveTail({ silent: true });
+    return;
+  }
+  if (state.liveTail.active && state.liveTail.ref === ref) {
+    state.liveTail.head = liveHeadFromSnapshot(snapshot);
+    updateFollowLatestButton();
+    return;
+  }
+  stopLiveTail({ silent: true });
+  state.liveTail.active = true;
+  state.liveTail.ref = ref;
+  state.liveTail.token += 1;
+  state.liveTail.head = liveHeadFromSnapshot(snapshot);
+  state.liveTail.polling = false;
+  state.liveTail.following = isLiveTailNearBottom();
+  state.liveTail.needsFollowPrompt = false;
+  updateSelectedSessionCompletion(ref, false);
+  updateFollowLatestButton();
+  scheduleLiveTailPoll();
+}
+
+function stopLiveTail(options = {}) {
+  if (state.liveTail.timer) {
+    clearTimeout(state.liveTail.timer);
+  }
+  const wasActive = state.liveTail.active;
+  const ref = state.liveTail.ref;
+  state.liveTail.active = false;
+  state.liveTail.ref = "";
+  state.liveTail.timer = 0;
+  state.liveTail.token += 1;
+  state.liveTail.head = null;
+  state.liveTail.polling = false;
+  state.liveTail.following = true;
+  state.liveTail.needsFollowPrompt = false;
+  updateFollowLatestButton();
+  if (wasActive && options.completed) {
+    updateSelectedSessionCompletion(ref, true);
+    if (state.currentSnapshot && (state.currentSnapshot.ref || state.selected) === ref) {
+      state.currentSnapshot.complete = true;
+      $("meta").innerHTML = renderSnapshotMeta(state.currentSnapshot);
+    }
+    showToast("会话已完成", false);
+  } else if (wasActive && !options.silent && state.currentSnapshot && (state.currentSnapshot.ref || state.selected) === ref) {
+    $("meta").innerHTML = renderSnapshotMeta(state.currentSnapshot);
+  }
+}
+
+function liveHeadFromSnapshot(snapshot) {
+  return {
+    complete: isCompleteSessionItem(snapshot),
+    turnCount: Array.isArray(snapshot?.turns) ? snapshot.turns.length : Number(snapshot?.turnCount || 0) || 0,
+    lastEventAt: snapshotLastEventAt(snapshot),
+  };
+}
+
+function snapshotLastEventAt(snapshot) {
+  let latest = new Date(snapshot?.mtime || snapshot?.generatedAt || 0).getTime();
+  for (const turn of snapshot?.turns || []) {
+    const time = new Date(turn?.timestamp || 0).getTime();
+    if (Number.isFinite(time)) {
+      latest = Math.max(latest || 0, time);
+    }
+  }
+  return Number.isFinite(latest) && latest > 0 ? new Date(latest).toISOString() : "";
+}
+
+function scheduleLiveTailPoll(delay = LIVE_TAIL_INTERVAL_MS) {
+  if (!state.liveTail.active) {
+    return;
+  }
+  if (state.liveTail.timer) {
+    clearTimeout(state.liveTail.timer);
+  }
+  state.liveTail.timer = window.setTimeout(pollLiveTail, delay);
+}
+
+async function pollLiveTail() {
+  if (!state.liveTail.active || state.liveTail.polling) {
+    return;
+  }
+  const ref = state.liveTail.ref;
+  const token = state.liveTail.token;
+  state.liveTail.timer = 0;
+  state.liveTail.polling = true;
+  try {
+    const head = await fetchSessionHead(ref);
+    if (token !== state.liveTail.token || ref !== state.liveTail.ref || ref !== state.selected) {
+      return;
+    }
+    const previousHead = state.liveTail.head;
+    const changed = hasSessionHeadChanged(previousHead, head);
+    state.liveTail.head = head;
+    if (changed) {
+      await fetchAndAppendLiveSnapshot(ref, token, head);
+      if (token !== state.liveTail.token || ref !== state.liveTail.ref) {
+        return;
+      }
+    }
+    if (head.complete === true) {
+      stopLiveTail({ completed: true });
+      return;
+    }
+  } catch (_error) {
+    // Keep tailing; transient parse/stat failures can happen while a writer is
+    // replacing the active JSONL file.
+  } finally {
+    if (token === state.liveTail.token) {
+      state.liveTail.polling = false;
+      if (state.liveTail.active) {
+        scheduleLiveTailPoll();
+      }
+    }
+  }
+}
+
+async function fetchSessionHead(ref) {
+  const params = new URLSearchParams({ id: ref });
+  const response = await fetch("/api/session-head?" + params.toString());
+  const head = await response.json();
+  if (!response.ok || head.error) {
+    throw new Error(head.error || "Failed to load session head");
+  }
+  return {
+    complete: head.complete === true,
+    turnCount: Number(head.turnCount || 0) || 0,
+    lastEventAt: String(head.lastEventAt || ""),
+  };
+}
+
+function hasSessionHeadChanged(previous, next) {
+  if (!previous || !next) {
+    return true;
+  }
+  return previous.complete !== next.complete
+    || Number(previous.turnCount || 0) !== Number(next.turnCount || 0)
+    || String(previous.lastEventAt || "") !== String(next.lastEventAt || "");
+}
+
+async function fetchAndAppendLiveSnapshot(ref, token, head) {
+  const params = activeOptions();
+  const response = await fetch("/api/snapshot?" + params.toString());
+  const snapshot = await response.json();
+  if (token !== state.liveTail.token || ref !== state.liveTail.ref || ref !== state.selected) {
+    return;
+  }
+  if (!response.ok || snapshot.error) {
+    throw new Error(snapshot.error || "Failed to load session");
+  }
+  if (head?.complete === true) {
+    snapshot.complete = true;
+  }
+  appendLiveSnapshotDelta(snapshot);
+  loadSessionCommits(snapshot, state.requestToken);
+}
+
+function appendLiveSnapshotDelta(snapshot) {
+  const ref = snapshot.ref || state.selected || "";
+  const previous = state.currentSnapshot || {};
+  const previousCommitCount = previous.commitCount;
+  snapshot.commitCount = previousCommitCount !== undefined ? previousCommitCount : "";
+  const container = $("turns");
+  flushTranscriptHydration();
+  const previousCount = snapshotTopLevelItems(previous.turns || []).length;
+  const template = document.createElement("template");
+  template.innerHTML = snapshot.transcriptHtml || "";
+  const allNodes = Array.from(template.content.children);
+  const transcriptNodes = allNodes.filter((node) => !(node instanceof HTMLElement) || !node.classList.contains("subagents"));
+  const newNodes = transcriptNodes.slice(previousCount);
+  const appendedElements = [];
+  if (newNodes.length) {
+    const fragment = document.createDocumentFragment();
+    for (const node of newNodes) {
+      if (node instanceof HTMLElement) {
+        appendedElements.push(node);
+      }
+      fragment.appendChild(node);
+    }
+    openContentLinksInNewTabs(fragment);
+    afterTranscriptContentMutated(fragment, { rebuildOutline: false });
+    const anchor = container.querySelector(".subagents");
+    container.insertBefore(fragment, anchor || null);
+  }
+  const incomingSubagents = allNodes.find((node) => node instanceof HTMLElement && node.classList.contains("subagents"));
+  if (incomingSubagents && !container.querySelector(".subagents")) {
+    openContentLinksInNewTabs(incomingSubagents);
+    afterTranscriptContentMutated(incomingSubagents, { rebuildOutline: false });
+    container.appendChild(incomingSubagents);
+  }
+  state.currentSnapshot = snapshot;
+  const selected = selectedSession();
+  if (selected && sessionRef(selected) === ref) {
+    selected.mtime = snapshot.mtime || selected.mtime;
+  }
+  $("title").textContent = snapshot.title || $("title").textContent;
+  $("meta").innerHTML = renderSnapshotMeta(snapshot);
+  $("goal").innerHTML = renderSnapshotGoal(snapshot);
+  renderSnapshotRisks(snapshot);
+  if (appendedElements.length) {
+    if (!state.reading.outlineItems.length && previousCount > 0) {
+      scheduleOutlineRebuild();
+    } else {
+      appendOutlineEntriesForNodes(appendedElements);
+    }
+    const shouldFollow = state.liveTail.following || isLiveTailNearBottom();
+    if (shouldFollow) {
+      state.liveTail.following = true;
+      state.liveTail.needsFollowPrompt = false;
+      scrollLiveTailToBottom();
+    } else {
+      state.liveTail.needsFollowPrompt = true;
+    }
+    updateFollowLatestButton();
+  }
+  postSnapshotState(snapshot);
+}
+
+function updateSelectedSessionCompletion(ref, complete) {
+  const session = state.sessions.find((item) => sessionRef(item) === ref);
+  if (!session) {
+    return;
+  }
+  session.complete = Boolean(complete);
+  session.live = !complete;
+  renderSessions();
+}
+
+function liveTailScroller() {
+  return document.querySelector(".viewer") || document.scrollingElement || document.documentElement;
+}
+
+function isLiveTailNearBottom() {
+  const scroller = liveTailScroller();
+  if (!scroller) {
+    return true;
+  }
+  return scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight <= LIVE_TAIL_BOTTOM_PX;
+}
+
+function scrollLiveTailToBottom() {
+  const scroller = liveTailScroller();
+  if (scroller) {
+    scroller.scrollTop = scroller.scrollHeight;
+  }
+}
+
+function handleLiveTailScroll() {
+  if (!state.liveTail.active) {
+    return;
+  }
+  if (isLiveTailNearBottom()) {
+    state.liveTail.following = true;
+    state.liveTail.needsFollowPrompt = false;
+  } else {
+    state.liveTail.following = false;
+    state.liveTail.needsFollowPrompt = true;
+  }
+  updateFollowLatestButton();
+}
+
+function updateFollowLatestButton() {
+  const button = $("followLatest");
+  if (!button) {
+    return;
+  }
+  button.hidden = !(state.liveTail.active && !state.liveTail.following && state.liveTail.needsFollowPrompt);
+}
+
+function renderSnapshotRisks(snapshot) {
+  const notices = (snapshot.notices || []).map((notice) => {
+    return "<div class='notice " + esc(notice.severity || "medium") + "'><b>NOTE</b><span><strong>" + esc(notice.label || "Notice") + ".</strong> " + esc(notice.text || "") + "</span></div>";
+  }).join("");
+  const risks = (snapshot.risks || []).length ? snapshot.risks.map((risk) => {
+    return "<div class='risk " + esc(risk.severity) + "'><b>" + esc(risk.severity) + "</b><span>" + esc(risk.label) + "</span><em>" + esc(formatRiskTurns(risk)) + "</em></div>";
+  }).join("") : "";
+  $("risks").innerHTML = snapshot.safetyChecks === false ? "" : notices + risks;
 }
 
 async function loadSessionCommits(snapshot, requestToken) {
@@ -4378,6 +4897,9 @@ function renderSnapshotMeta(snapshot) {
   }
   if (snapshot.redacted) {
     parts.push("<span class='sep'>·</span><span class='tag'><span class='dot'></span>已脱敏</span>");
+  }
+  if (isLiveSessionItem(snapshot) || (state.liveTail.active && (snapshot.ref || state.selected) === state.liveTail.ref)) {
+    parts.push("<span class='sep'>·</span><span class='live-indicator'><span class='live-dot' aria-hidden='true'></span>实时</span>");
   }
   return "<div class='dossier'>" + parts.join("") + "</div>";
 }

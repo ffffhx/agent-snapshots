@@ -18,6 +18,7 @@ import { buildUsageAnalytics } from "./usage-analytics.mjs";
 const execFileAsync = promisify(execFile);
 export async function serveLocalViewer({ codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir, host, port, defaultServerLimit, snapshotLogoSvg, shareConfig, listSessions, loadSnapshot, searchSessions, applySafetyChecksOption, snapshotApiResponse, publishAllSnapshots, publishSnapshot, createShareRequestPayload, stableSnapshotShareId, renderMarkdown, renderHtml, readPositiveInteger, readNonNegativeInteger, safeFileName, }) {
     const csrfToken = createMutationCsrfToken();
+    const sessionHeadCache = new Map();
     const server = http.createServer(async (request, response) => {
         try {
             setSnapshotServerCorsHeaders(request, response);
@@ -186,6 +187,24 @@ export async function serveLocalViewer({ codexHome, claudeHome, traeHome, traeAp
                 sendJson(response, { commits });
                 return;
             }
+            if (url.pathname === "/api/session-head") {
+                const id = url.searchParams.get("id");
+                if (!id) {
+                    sendJson(response, { error: "missing id" }, 400);
+                    return;
+                }
+                const head = await readSessionHead(id, {
+                    codexHome,
+                    claudeHome,
+                    traeHome,
+                    traeAppHome,
+                    traeRecordingsDir,
+                    loadSnapshot,
+                    cache: sessionHeadCache,
+                });
+                sendJson(response, head);
+                return;
+            }
             if (url.pathname === "/api/resume-in-orca") {
                 if (!allowMutationRequest(request, response, csrfToken)) {
                     return;
@@ -294,6 +313,7 @@ export async function serveLocalViewer({ codexHome, claudeHome, traeHome, traeAp
                     includeToolOutput: url.searchParams.get("includeToolOutput") === "1",
                     redact: url.searchParams.get("redact") !== "0",
                 });
+                await rememberSessionHead(id, snapshot, sessionHeadCache);
                 applySafetyChecksOption(snapshot, url.searchParams.get("safety") !== "0");
                 sendJson(response, snapshotApiResponse(snapshot));
                 return;
@@ -463,6 +483,81 @@ export async function serveLocalViewer({ codexHome, claudeHome, traeHome, traeAp
     console.log(`Trae home: ${traeHome}`);
     console.log(`Trae app home: ${traeAppHome}`);
     console.log(`Trae recordings: ${traeRecordingsDir}`);
+}
+async function readSessionHead(id, { codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir, loadSnapshot, cache }) {
+    const cached = cache.get(id);
+    if (cached?.filePath) {
+        const fileInfo = await stat(cached.filePath).catch(() => null);
+        if (fileInfo && fileInfo.mtimeMs === cached.mtimeMs && fileInfo.size === cached.size) {
+            return cached.head;
+        }
+    }
+    const snapshot = await loadSnapshot(id, {
+        codexHome,
+        claudeHome,
+        traeHome,
+        traeAppHome,
+        traeRecordingsDir,
+        includeTools: false,
+        includeToolOutput: false,
+        redact: false,
+    });
+    return rememberSessionHead(id, snapshot, cache);
+}
+async function rememberSessionHead(id, snapshot, cache) {
+    const filePath = typeof snapshot?.filePath === "string" ? snapshot.filePath : "";
+    const fileInfo = filePath ? await stat(filePath).catch(() => null) : null;
+    const head = {
+        complete: isSnapshotComplete(snapshot),
+        turnCount: Array.isArray(snapshot?.turns) ? snapshot.turns.length : Number(snapshot?.turnCount || 0) || 0,
+        lastEventAt: sessionLastEventAt(snapshot, fileInfo),
+    };
+    cache.set(id, {
+        filePath,
+        mtimeMs: fileInfo?.mtimeMs || Number(snapshot?.mtimeMs || 0) || 0,
+        size: fileInfo?.size || Number(snapshot?.size || 0) || 0,
+        head,
+    });
+    return head;
+}
+function isSnapshotComplete(snapshot) {
+    if (snapshot?.complete === true) {
+        return true;
+    }
+    if (snapshot?.complete === false || snapshot?.live === true) {
+        return false;
+    }
+    const engine = String(snapshot?.engine || "").toLowerCase();
+    if (engine === "trae") {
+        return true;
+    }
+    if (engine === "codex") {
+        const filePath = normalizeSessionPath(snapshot?.filePath || snapshot?.displayFilePath || "");
+        if (filePath.includes("/archived_sessions/")) {
+            return true;
+        }
+        if (filePath.includes("/sessions/")) {
+            return false;
+        }
+        return true;
+    }
+    if (engine === "claude") {
+        return snapshot?.sourceKind ? snapshot.sourceKind === "transcript" : true;
+    }
+    return true;
+}
+function normalizeSessionPath(value) {
+    return String(value || "").replace(/\\/g, "/");
+}
+function sessionLastEventAt(snapshot, fileInfo) {
+    let latest = fileInfo?.mtimeMs || new Date(snapshot?.mtime || snapshot?.generatedAt || 0).getTime();
+    for (const turn of snapshot?.turns || []) {
+        const time = new Date(turn?.timestamp || 0).getTime();
+        if (Number.isFinite(time)) {
+            latest = Math.max(latest || 0, time);
+        }
+    }
+    return Number.isFinite(latest) && latest > 0 ? new Date(latest).toISOString() : "";
 }
 async function readSessionCommits(snapshot) {
     const cwd = typeof snapshot?.cwd === "string" ? snapshot.cwd.trim() : "";
