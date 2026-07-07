@@ -1,8 +1,12 @@
 // @ts-nocheck
 import { open, readdir, stat } from "node:fs/promises";
 import path from "node:path";
+import { discoverSessionFiles, parseSessionFile } from "agent-session-core";
 const CACHE_TTL_MS = 60_000;
 const TAIL_BYTES = 256 * 1024;
+const CLAUDE_BLOCK_MS = 5 * 60 * 60 * 1000;
+const CLAUDE_RECENT_SCAN_MS = 6 * 60 * 60 * 1000;
+const CLAUDE_EVENT_LOOKBACK_MS = CLAUDE_RECENT_SCAN_MS + CLAUDE_BLOCK_MS;
 const cache = new Map();
 export async function readCodexQuotaSnapshot({ codexHome }) {
     const root = path.join(codexHome, "sessions");
@@ -25,6 +29,88 @@ export async function readCodexQuotaSnapshot({ codexHome }) {
     }
     catch {
         value = { available: false };
+    }
+    cache.set(cacheKey, { cachedAt: Date.now(), value });
+    return value;
+}
+export async function readClaudeBlockUsageEstimate({ claudeHome }) {
+    const root = path.resolve(claudeHome);
+    const cacheKey = `claude:${root}`;
+    const cached = cache.get(cacheKey);
+    if (cached && Date.now() - cached.cachedAt < CACHE_TTL_MS) {
+        return cached.value;
+    }
+    let value = { active: false };
+    try {
+        const now = Date.now();
+        const files = discoverSessionFiles({
+            roots: {
+                claude: [path.join(claudeHome, "projects"), path.join(claudeHome, "sessions")],
+            },
+            sinceMs: CLAUDE_RECENT_SCAN_MS,
+            includeSubagentTranscripts: true,
+            now,
+        });
+        const events = [];
+        const minEventTime = now - CLAUDE_EVENT_LOOKBACK_MS;
+        const maxEventTime = now + 60_000;
+        for (const file of files) {
+            const session = parseSessionFile(file);
+            if (!session || session.engine !== "claude" || !Array.isArray(session.events)) {
+                continue;
+            }
+            for (const event of session.events) {
+                if (event?.kind !== "token_usage") {
+                    continue;
+                }
+                const time = new Date(event.ts || "").getTime();
+                if (!Number.isFinite(time) || time < minEventTime || time > maxEventTime) {
+                    continue;
+                }
+                const tokens = claudeTokenBuckets(event.usage);
+                if (!tokens.input && !tokens.output && !tokens.cacheCreation && !tokens.cacheRead) {
+                    continue;
+                }
+                events.push({ time, tokens });
+            }
+        }
+        if (events.length) {
+            events.sort((a, b) => a.time - b.time);
+            let blockStart = events[0].time;
+            // Approximation used by ccusage-style block views: a new 5h block starts at
+            // the first usage event whose timestamp is more than 5h after the previous
+            // block start. Claude does not write explicit local block-boundary records.
+            for (const event of events) {
+                if (event.time > blockStart + CLAUDE_BLOCK_MS) {
+                    blockStart = event.time;
+                }
+            }
+            const blockEnd = blockStart + CLAUDE_BLOCK_MS;
+            if (now < blockEnd) {
+                const totals = { input: 0, output: 0, cacheCreation: 0, cacheRead: 0 };
+                let messages = 0;
+                for (const event of events) {
+                    if (event.time < blockStart || event.time >= blockEnd) {
+                        continue;
+                    }
+                    messages += 1;
+                    totals.input += event.tokens.input;
+                    totals.output += event.tokens.output;
+                    totals.cacheCreation += event.tokens.cacheCreation;
+                    totals.cacheRead += event.tokens.cacheRead;
+                }
+                value = {
+                    active: true,
+                    blockStart: new Date(blockStart).toISOString(),
+                    blockEnd: new Date(blockEnd).toISOString(),
+                    tokens: totals,
+                    messages,
+                };
+            }
+        }
+    }
+    catch {
+        value = { active: false };
     }
     cache.set(cacheKey, { cachedAt: Date.now(), value });
     return value;
@@ -159,6 +245,21 @@ function clampPercent(value) {
 function positiveInteger(value) {
     const number = Number(value);
     return Number.isFinite(number) && number > 0 ? Math.round(number) : 0;
+}
+function tokenNumber(value) {
+    const number = Number(value || 0);
+    return Number.isFinite(number) && number > 0 ? Math.round(number) : 0;
+}
+function claudeTokenBuckets(usage) {
+    const fullInput = tokenNumber(usage?.input);
+    const cacheRead = tokenNumber(usage?.cached);
+    const cacheCreation = tokenNumber(usage?.cacheCreation);
+    return {
+        input: Math.max(0, fullInput - cacheRead - cacheCreation),
+        output: tokenNumber(usage?.output),
+        cacheCreation,
+        cacheRead,
+    };
 }
 function toIso(value) {
     if (value === null || value === undefined || value === "") {

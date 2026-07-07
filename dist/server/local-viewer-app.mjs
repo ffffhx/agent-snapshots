@@ -1512,6 +1512,13 @@ pre {
 .quota-track { height: 12px; border-radius: 999px; background: rgba(127, 110, 80, 0.14); overflow: hidden; box-shadow: inset 0 0 0 1px rgba(33, 27, 16, 0.05); }
 .quota-fill { display: block; height: 100%; min-width: 2px; border-radius: inherit; transition: width 0.25s ease; }
 .quota-meta { display: flex; justify-content: space-between; gap: 10px; margin-top: 5px; color: var(--faint); font: 650 10.5px/1.3 var(--mono); }
+.quota-block-card { border: 1px solid var(--line); border-radius: 8px; background: var(--panel-wash); padding: 12px; }
+.quota-stat-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
+.quota-stat { min-width: 0; border-radius: 6px; background: rgba(255,255,255,0.36); box-shadow: inset 0 0 0 1px rgba(33,27,16,0.05); padding: 8px 9px; }
+.quota-stat b, .quota-stat small, .quota-stat em { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.quota-stat b { color: var(--ink); font: 800 16px/1.1 var(--mono); }
+.quota-stat small { margin-top: 4px; color: var(--ink-soft); font: 700 10.5px/1.2 var(--sans); }
+.quota-stat em { margin-top: 3px; color: var(--faint); font: 650 10px/1.2 var(--mono); font-style: normal; }
 .activity-panel { display: grid; gap: 14px; }
 .heatmap-frame { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 7px; align-items: start; overflow-x: auto; padding-bottom: 2px; }
 .heatmap-weekdays { display: grid; grid-template-rows: repeat(7, 10px); gap: 3px; color: var(--faint); font: 700 9px/10px var(--mono); }
@@ -2456,7 +2463,7 @@ function renderStatsShell() {
         "<div id='statsEngineFilters' class='stats-chip-group' role='group' aria-label='统计来源筛选'></div>" +
       "</div>" +
       "<div class='stats-grid'>" +
-        statsSectionShell("quota", "配额", "Codex CLI") +
+        statsSectionShell("quota", "配额", "Codex / Claude") +
         statsSectionShell("activity", "活跃度", "最近 26 周") +
         statsSectionShell("projects", "项目", "Top 项目") +
         statsSectionShell("usage", "用量", "Token / 成本") +
@@ -2589,18 +2596,18 @@ function statsBar(label, count, total, max, sub) {
 
 function renderStatsQuota() {
   const quota = state.statsQuota;
-  if (!quota || !quota.available) {
-    $("statsQuotaPanel").innerHTML =
-      "<div class='stats-muted'>未找到 Codex CLI 配额快照。Claude Code / Trae 没有对应的本地配额文件。</div>";
-    return;
-  }
-  const freshness = quota.updatedAt ? relativePast(quota.updatedAt) + "的快照" : "快照时间未知";
-  const plan = quota.planType ? " · " + quota.planType : "";
+  const hasCodexQuota = quota && quota.available;
+  const freshness = hasCodexQuota && quota.updatedAt ? relativePast(quota.updatedAt) + "的快照" : "快照时间未知";
+  const plan = hasCodexQuota && quota.planType ? " · " + quota.planType : "";
+  const codexHtml = hasCodexQuota
+    ? quotaMeter("Codex · 5 小时窗口", quota.primary) +
+      quotaMeter("Codex · 周配额", quota.secondary) +
+      "<div class='stats-muted'>Codex" + esc(plan) + " · " + esc(freshness) + "</div>"
+    : "<div class='stats-muted'>未找到 Codex CLI 配额快照。</div>";
   $("statsQuotaPanel").innerHTML =
     "<div class='quota-list'>" +
-      quotaMeter("5 小时窗口", quota.primary) +
-      quotaMeter("周配额", quota.secondary) +
-      "<div class='stats-muted'>Codex" + esc(plan) + " · " + esc(freshness) + "</div>" +
+      codexHtml +
+      claudeBlockCard(quota && quota.claude) +
     "</div>";
 }
 
@@ -2615,6 +2622,35 @@ function quotaMeter(label, data) {
     "<div class='quota-track'><span class='quota-fill' style='width:" + pct.toFixed(1) + "%;background:" + esc(color) + "'></span></div>" +
     "<div class='quota-meta'><span>" + esc(resetCountdown(data.resetsAt)) + "</span><span>" + esc(formatWindow(data.windowMinutes)) + "</span></div>" +
   "</div>";
+}
+
+function claudeBlockCard(data) {
+  if (!data || data.active !== true) {
+    return "<div class='quota-row quota-block-card'>" +
+      "<div class='quota-head'><span class='quota-label'>Claude Code · 5 小时块</span><span class='quota-value'>无活动</span></div>" +
+      "<div class='stats-muted'>最近 6 小时无 Claude 活动</div>" +
+    "</div>";
+  }
+  const tokens = data.tokens || {};
+  const input = tokenUsageNumber(tokens.input);
+  const output = tokenUsageNumber(tokens.output);
+  const cacheCreation = tokenUsageNumber(tokens.cacheCreation);
+  const cacheRead = tokenUsageNumber(tokens.cacheRead);
+  const burn = input + output + cacheCreation;
+  const messages = tokenUsageNumber(data.messages);
+  return "<div class='quota-row quota-block-card'>" +
+    "<div class='quota-head'><span class='quota-label'>Claude Code · 5 小时块</span><span class='quota-value'>" + esc(claudeBlockCountdown(data.blockEnd)) + "</span></div>" +
+    "<div class='quota-stat-grid'>" +
+      quotaStat("token 总量", formatTokenCount(burn), "不含缓存读") +
+      quotaStat("消息", formatTokenCount(messages), "") +
+      quotaStat("缓存读", formatTokenCount(cacheRead), "单独记录") +
+    "</div>" +
+    "<div class='quota-meta'><span>" + esc(formatClaudeBlockRange(data.blockStart, data.blockEnd)) + "</span><span>本块无套餐上限数据，仅作燃烧参考</span></div>" +
+  "</div>";
+}
+
+function quotaStat(label, value, sub) {
+  return "<span class='quota-stat'><b>" + esc(value) + "</b><small>" + esc(label) + "</small>" + (sub ? "<em>" + esc(sub) + "</em>" : "") + "</span>";
 }
 
 function quotaColor(percent) {
@@ -2642,6 +2678,38 @@ function resetCountdown(value) {
     return Math.ceil(diff / hour) + " 小时后重置";
   }
   return Math.max(1, Math.ceil(diff / minute)) + " 分钟后重置";
+}
+
+function claudeBlockCountdown(value) {
+  const time = new Date(value).getTime();
+  if (!Number.isFinite(time)) {
+    return "新块时间未知";
+  }
+  const diff = time - Date.now();
+  if (diff <= 0) {
+    return "等待新块";
+  }
+  const minute = 60 * 1000;
+  const totalMinutes = Math.max(1, Math.ceil(diff / minute));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours > 0 && minutes > 0) {
+    return hours + " 小时 " + minutes + " 分后进入新块";
+  }
+  if (hours > 0) {
+    return hours + " 小时后进入新块";
+  }
+  return totalMinutes + " 分钟后进入新块";
+}
+
+function formatClaudeBlockRange(start, end) {
+  const startTime = new Date(start).getTime();
+  const endTime = new Date(end).getTime();
+  if (!Number.isFinite(startTime) || !Number.isFinite(endTime)) {
+    return "块时间未知";
+  }
+  const formatter = new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
+  return formatter.format(startTime) + " - " + formatter.format(endTime);
 }
 
 function formatWindow(minutes) {

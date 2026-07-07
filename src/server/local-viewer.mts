@@ -20,7 +20,7 @@ import { prewarmSemanticIndex, semanticSearchSessions } from "./semantic-index.m
 import { semanticSearchSnapshot } from "./semantic-search.mjs";
 import { searchIndexed, syncSearchIndexInBackground, searchIndexStats, indexRowCount } from "./search-index.mjs";
 import { resumeSessionInOrca } from "./orca-bridge.mjs";
-import { readCodexQuotaSnapshot } from "./quota-meter.mjs";
+import { readClaudeBlockUsageEstimate, readCodexQuotaSnapshot } from "./quota-meter.mjs";
 import { buildUsageAnalytics } from "./usage-analytics.mjs";
 import { listImageEntries, readImageBytes } from "./image-index.mjs";
 import { readLauncherPrefs, setLauncherSessionPinned } from "./launcher-prefs.mjs";
@@ -174,8 +174,11 @@ export async function serveLocalViewer({
         return;
       }
       if (url.pathname === "/api/quota") {
-        const quota = await readCodexQuotaSnapshot({ codexHome });
-        sendJson(response, quota);
+        const [quota, claude] = await Promise.all([
+          readCodexQuotaSnapshot({ codexHome }),
+          readClaudeBlockUsageEstimate({ claudeHome }),
+        ]);
+        sendJson(response, { ...quota, claude });
         return;
       }
       if (url.pathname === "/api/activity") {
