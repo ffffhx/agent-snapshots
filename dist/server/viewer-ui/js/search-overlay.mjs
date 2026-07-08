@@ -1,8 +1,206 @@
 // @ts-nocheck
 import { MUTATION_CSRF_HEADER } from "../../local-security.js";
-export const searchOverlayJs = `function resetSearchResultsState() {
+export const searchOverlayJs = `const SEARCH_HISTORY_KEY = "agent-snapshot.search-history.v1";
+const SAVED_SEARCHES_KEY = "agent-snapshot.saved-searches.v1";
+const SEARCH_HISTORY_LIMIT = 20;
+const SEARCH_HISTORY_VISIBLE_LIMIT = 8;
+const SAVED_SEARCH_LIMIT = 12;
+
+function normalizeSearchHistory(items, query = "", limit = 20) {
+  const source = [];
+  const nextQuery = String(query || "").trim();
+  if (nextQuery) {
+    source.push(nextQuery);
+  }
+  if (Array.isArray(items)) {
+    for (const item of items) {
+      const value = typeof item === "string" ? item : item?.query;
+      const text = String(value || "").trim();
+      if (text) {
+        source.push(text);
+      }
+    }
+  }
+  const seen = new Set();
+  const normalized = [];
+  for (const text of source) {
+    if (seen.has(text)) {
+      continue;
+    }
+    seen.add(text);
+    normalized.push(text);
+    if (normalized.length >= limit) {
+      break;
+    }
+  }
+  return normalized;
+}
+
+function savedSearchSnapshot(query, searchState = {}) {
+  const flags = searchState.flags || {};
+  return {
+    query: String(query || "").trim(),
+    mode: searchState.mode === "semantic" ? "semantic" : "keyword",
+    flags: {
+      caseSensitive: !!flags.caseSensitive,
+      wholeWord: !!flags.wholeWord,
+    },
+  };
+}
+
+function savedSearchIdentity(item) {
+  const snapshot = savedSearchSnapshot(item?.query || "", item || {});
+  return [
+    snapshot.query,
+    snapshot.mode,
+    snapshot.flags.caseSensitive ? "1" : "0",
+    snapshot.flags.wholeWord ? "1" : "0",
+  ].join("\\u001f");
+}
+
+function normalizeSavedSearchItem(item) {
+  const snapshot = savedSearchSnapshot(item?.query || "", item || {});
+  if (!snapshot.query) {
+    return null;
+  }
+  const id = String(item?.id || "").trim();
+  return {
+    id,
+    name: String(item?.name || snapshot.query).trim() || snapshot.query,
+    query: snapshot.query,
+    mode: snapshot.mode,
+    flags: snapshot.flags,
+    createdAt: Number(item?.createdAt || item?.updatedAt || 0) || 0,
+    updatedAt: Number(item?.updatedAt || item?.createdAt || 0) || 0,
+  };
+}
+
+function sanitizeSavedSearches(items, limit = 12) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+  const seen = new Set();
+  const normalized = [];
+  for (const item of items) {
+    const saved = normalizeSavedSearchItem(item);
+    if (!saved) {
+      continue;
+    }
+    const key = savedSearchIdentity(saved);
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    normalized.push(saved);
+    if (normalized.length >= limit) {
+      break;
+    }
+  }
+  return normalized;
+}
+
+function savedSearchItemFromSnapshot(snapshot, existingIds, now) {
+  const base = "saved-" + Math.max(1, Math.floor(Number(now) || Date.now()));
+  let id = base;
+  let suffix = 2;
+  while (existingIds.has(id)) {
+    id = base + "-" + suffix;
+    suffix += 1;
+  }
+  return {
+    id,
+    name: snapshot.query,
+    query: snapshot.query,
+    mode: snapshot.mode,
+    flags: snapshot.flags,
+    createdAt: Number(now) || Date.now(),
+    updatedAt: Number(now) || Date.now(),
+  };
+}
+
+function addSavedSearch(items, snapshotInput, limit = 12, now = Date.now()) {
+  const snapshot = savedSearchSnapshot(snapshotInput?.query || "", snapshotInput || {});
+  const current = sanitizeSavedSearches(items, limit);
+  if (!snapshot.query) {
+    return current;
+  }
+  const key = savedSearchIdentity(snapshot);
+  const existingIndex = current.findIndex((item) => savedSearchIdentity(item) === key);
+  if (existingIndex >= 0) {
+    const [existing] = current.splice(existingIndex, 1);
+    current.unshift({
+      ...existing,
+      query: snapshot.query,
+      mode: snapshot.mode,
+      flags: snapshot.flags,
+      updatedAt: Number(now) || Date.now(),
+    });
+    return current.slice(0, limit);
+  }
+  const existingIds = new Set(current.map((item) => item.id).filter(Boolean));
+  current.unshift(savedSearchItemFromSnapshot(snapshot, existingIds, now));
+  return current.slice(0, limit);
+}
+
+function removeSavedSearch(items, id, limit = 12) {
+  const wanted = String(id || "");
+  return sanitizeSavedSearches(items, limit).filter((item) => item.id !== wanted);
+}
+
+function updateSavedSearchName(items, id, name, limit = 12) {
+  const wanted = String(id || "");
+  const nextName = String(name || "").trim();
+  if (!wanted || !nextName) {
+    return sanitizeSavedSearches(items, limit);
+  }
+  return sanitizeSavedSearches(items, limit).map((item) => (
+    item.id === wanted ? { ...item, name: nextName, updatedAt: Date.now() } : item
+  ));
+}
+
+function ensureSearchMemoryState() {
+  if (!Array.isArray(state.search.history)) {
+    try {
+      state.search.history = normalizeSearchHistory(JSON.parse(localStorage.getItem(SEARCH_HISTORY_KEY) || "[]"), "", SEARCH_HISTORY_LIMIT);
+    } catch {
+      state.search.history = [];
+    }
+  }
+  if (!Array.isArray(state.search.savedSearches)) {
+    try {
+      state.search.savedSearches = sanitizeSavedSearches(JSON.parse(localStorage.getItem(SAVED_SEARCHES_KEY) || "[]"), SAVED_SEARCH_LIMIT);
+    } catch {
+      state.search.savedSearches = [];
+    }
+  }
+}
+
+function writeSearchHistory() {
+  try {
+    localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(state.search.history || []));
+  } catch {}
+}
+
+function writeSavedSearches() {
+  try {
+    localStorage.setItem(SAVED_SEARCHES_KEY, JSON.stringify(state.search.savedSearches || []));
+  } catch {}
+}
+
+function persistExecutedSearchQuery(query) {
+  ensureSearchMemoryState();
+  const next = normalizeSearchHistory(state.search.history, query, SEARCH_HISTORY_LIMIT);
+  if (next.join("\\n") === (state.search.history || []).join("\\n")) {
+    return;
+  }
+  state.search.history = next;
+  writeSearchHistory();
+}
+
+function resetSearchResultsState() {
   state.search.loading = false;
   state.search.results = [];
+  state.search.rawResults = [];
   state.search.terms = [];
   state.search.matched = 0;
   state.search.scanned = 0;
@@ -330,6 +528,316 @@ function toggleQueryToken(key, value, single) {
   scheduleSearch(0);
 }
 
+function ensureSearchMemoryUi() {
+  const input = $("globalSearch");
+  if (!input) {
+    return;
+  }
+  let row = input.closest(".search-input-row");
+  if (!row) {
+    row = document.createElement("div");
+    row.className = "search-input-row";
+    input.parentNode.insertBefore(row, input);
+    row.appendChild(input);
+  }
+  if (!$("saveSearch")) {
+    const button = document.createElement("button");
+    button.id = "saveSearch";
+    button.className = "search-save-button";
+    button.type = "button";
+    button.setAttribute("aria-label", "保存当前搜索");
+    button.title = "保存当前搜索";
+    button.textContent = "☆";
+    row.appendChild(button);
+    button.addEventListener("click", saveCurrentSearch);
+  }
+  if (!$("searchMemory")) {
+    const memory = document.createElement("div");
+    memory.id = "searchMemory";
+    memory.className = "search-memory";
+    memory.setAttribute("aria-label", "保存和最近搜索");
+    row.parentNode.insertBefore(memory, row.nextSibling);
+    memory.addEventListener("click", handleSearchMemoryClick);
+    memory.addEventListener("dblclick", handleSearchMemoryDblClick);
+    memory.addEventListener("contextmenu", handleSearchMemoryContextMenu);
+    memory.addEventListener("mousemove", handleSearchMemoryMouseMove);
+  }
+  if (!state.search.memoryKeyHandlerReady) {
+    input.addEventListener("keydown", handleSearchInputMemoryEnter, true);
+    state.search.memoryKeyHandlerReady = true;
+  }
+  input.setAttribute("aria-controls", "searchMemory searchResults");
+}
+
+function searchNavigationNodes() {
+  return Array.from(document.querySelectorAll("[data-search-index]"));
+}
+
+function activeSearchNode() {
+  return searchNavigationNodes().find((node) => Number(node.dataset.searchIndex) === state.search.active) || null;
+}
+
+function activeSearchNodeIsResult() {
+  const node = activeSearchNode();
+  return !!node && (node.dataset.searchKind === "result" || !!node.dataset.searchResult);
+}
+
+function updateSaveSearchButton() {
+  const button = $("saveSearch");
+  const input = $("globalSearch");
+  if (!button || !input) {
+    return;
+  }
+  ensureSearchMemoryState();
+  const query = input.value.trim();
+  const snapshot = savedSearchSnapshot(query, state.search);
+  const saved = !!query && (state.search.savedSearches || []).some((item) => savedSearchIdentity(item) === savedSearchIdentity(snapshot));
+  button.disabled = !query;
+  button.textContent = saved ? "★" : "☆";
+  button.setAttribute("aria-pressed", saved ? "true" : "false");
+  button.title = saved ? "已保存当前搜索" : "保存当前搜索";
+}
+
+function saveCurrentSearch() {
+  const input = $("globalSearch");
+  const query = input ? input.value.trim() : "";
+  if (!query) {
+    showToast("先输入搜索内容", true);
+    return;
+  }
+  ensureSearchMemoryState();
+  state.search.savedSearches = addSavedSearch(
+    state.search.savedSearches,
+    savedSearchSnapshot(query, state.search),
+    SAVED_SEARCH_LIMIT,
+  );
+  writeSavedSearches();
+  renderSearch();
+  showToast("已保存搜索", false);
+}
+
+function renderSavedSearchLabel(item) {
+  const mode = item.mode === "semantic" ? "语义" : "关键词";
+  const flags = [
+    item.flags?.caseSensitive ? "Aa" : "",
+    item.flags?.wholeWord ? "词" : "",
+  ].filter(Boolean).join(" ");
+  return flags ? mode + " · " + flags : mode;
+}
+
+function renderSearchMemory() {
+  ensureSearchMemoryUi();
+  ensureSearchMemoryState();
+  updateSaveSearchButton();
+  const memory = $("searchMemory");
+  const input = $("globalSearch");
+  if (!memory || !input || input.value.trim()) {
+    if (memory) {
+      memory.innerHTML = "";
+    }
+    return 0;
+  }
+
+  const saved = state.search.savedSearches || [];
+  const history = (state.search.history || []).slice(0, SEARCH_HISTORY_VISIBLE_LIMIT);
+  if (!saved.length && !history.length) {
+    memory.innerHTML = "";
+    return 0;
+  }
+
+  let index = 0;
+  const html = [];
+  if (saved.length) {
+    html.push("<section class='search-memory-section search-saved-section' aria-label='保存的搜索'>");
+    html.push("<div class='search-memory-title'>保存的搜索</div>");
+    html.push("<div class='saved-search-chips'>");
+    for (const item of saved) {
+      const active = index === state.search.active;
+      html.push("<div class='saved-search-chip" + (active ? " active" : "") + "' role='option' id='search-memory-" + index + "' aria-selected='" + (active ? "true" : "false") + "' data-search-kind='saved' data-search-index='" + index + "' data-search-saved-id='" + esc(item.id) + "' title='双击重命名，右键删除'>" +
+        "<span class='saved-search-name'>" + esc(item.name || item.query) + "</span>" +
+        "<small>" + esc(renderSavedSearchLabel(item)) + "</small>" +
+        "<button type='button' class='search-memory-remove' data-search-memory-remove='saved' aria-label='删除保存的搜索'>×</button>" +
+      "</div>");
+      index += 1;
+    }
+    html.push("</div></section>");
+  }
+  if (history.length) {
+    html.push("<section class='search-memory-section search-history-section' aria-label='最近搜索'>");
+    html.push("<div class='search-memory-head'><div class='search-memory-title'>最近搜索</div><button type='button' class='search-memory-clear' data-search-history-clear='1'>清空</button></div>");
+    html.push("<div class='search-history-list'>");
+    for (const query of history) {
+      const active = index === state.search.active;
+      html.push("<div class='search-history-row" + (active ? " active" : "") + "' role='option' id='search-memory-" + index + "' aria-selected='" + (active ? "true" : "false") + "' data-search-kind='history' data-search-index='" + index + "' data-search-history-query='" + esc(query) + "'>" +
+        "<span>" + esc(query) + "</span>" +
+        "<button type='button' class='search-memory-remove' data-search-memory-remove='history' aria-label='删除最近搜索'>×</button>" +
+      "</div>");
+      index += 1;
+    }
+    html.push("</div></section>");
+  }
+  if (state.search.active >= index || state.search.active < 0) {
+    state.search.active = 0;
+  }
+  memory.innerHTML = html.join("");
+  return index;
+}
+
+function applyHistorySearch(query) {
+  const input = $("globalSearch");
+  const value = String(query || "").trim();
+  if (!input || !value) {
+    return;
+  }
+  input.value = value;
+  state.search.query = value;
+  state.search.active = 0;
+  resetSearchResultsState();
+  input.focus();
+  renderSearch();
+  scheduleSearch(0);
+}
+
+function applySavedSearch(id) {
+  ensureSearchMemoryState();
+  const item = (state.search.savedSearches || []).find((entry) => entry.id === String(id || ""));
+  const input = $("globalSearch");
+  if (!item || !input) {
+    return;
+  }
+  input.value = item.query;
+  state.search.query = item.query;
+  state.search.mode = item.mode === "semantic" ? "semantic" : "keyword";
+  state.search.flags.caseSensitive = !!item.flags?.caseSensitive;
+  state.search.flags.wholeWord = !!item.flags?.wholeWord;
+  state.search.active = 0;
+  resetSearchResultsState();
+  input.focus();
+  renderSearch();
+  scheduleSearch(0);
+}
+
+function removeHistoryQuery(query) {
+  ensureSearchMemoryState();
+  const value = String(query || "").trim();
+  state.search.history = (state.search.history || []).filter((item) => item !== value);
+  writeSearchHistory();
+  renderSearch();
+}
+
+function clearSearchHistory() {
+  ensureSearchMemoryState();
+  state.search.history = [];
+  writeSearchHistory();
+  renderSearch();
+}
+
+function removeSavedSearchById(id) {
+  ensureSearchMemoryState();
+  state.search.savedSearches = removeSavedSearch(state.search.savedSearches, id, SAVED_SEARCH_LIMIT);
+  writeSavedSearches();
+  renderSearch();
+}
+
+function runSearchNavigationNode(node) {
+  if (!node) {
+    return;
+  }
+  if (node.dataset.searchKind === "history") {
+    applyHistorySearch(node.dataset.searchHistoryQuery);
+    return;
+  }
+  if (node.dataset.searchKind === "saved") {
+    applySavedSearch(node.dataset.searchSavedId);
+    return;
+  }
+  if (node.dataset.searchResult) {
+    selectSearchResult(node.dataset.searchResult);
+  }
+}
+
+function handleSearchMemoryClick(event) {
+  const clear = event.target.closest("[data-search-history-clear]");
+  if (clear) {
+    event.preventDefault();
+    clearSearchHistory();
+    return;
+  }
+  const remove = event.target.closest("[data-search-memory-remove]");
+  if (remove) {
+    const holder = remove.closest("[data-search-index]");
+    if (!holder) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    if (holder.dataset.searchKind === "history") {
+      removeHistoryQuery(holder.dataset.searchHistoryQuery);
+    } else if (holder.dataset.searchKind === "saved") {
+      removeSavedSearchById(holder.dataset.searchSavedId);
+    }
+    return;
+  }
+  const item = event.target.closest("[data-search-index]");
+  if (item) {
+    runSearchNavigationNode(item);
+  }
+}
+
+function handleSearchMemoryDblClick(event) {
+  const item = event.target.closest("[data-search-saved-id]");
+  if (!item || event.target.closest("[data-search-memory-remove]")) {
+    return;
+  }
+  event.preventDefault();
+  ensureSearchMemoryState();
+  const saved = (state.search.savedSearches || []).find((entry) => entry.id === item.dataset.searchSavedId);
+  if (!saved) {
+    return;
+  }
+  const nextName = window.prompt("重命名保存的搜索", saved.name || saved.query);
+  if (nextName == null) {
+    return;
+  }
+  state.search.savedSearches = updateSavedSearchName(state.search.savedSearches, saved.id, nextName, SAVED_SEARCH_LIMIT);
+  writeSavedSearches();
+  renderSearch();
+}
+
+function handleSearchMemoryContextMenu(event) {
+  const item = event.target.closest("[data-search-saved-id]");
+  if (!item) {
+    return;
+  }
+  event.preventDefault();
+  removeSavedSearchById(item.dataset.searchSavedId);
+}
+
+function handleSearchMemoryMouseMove(event) {
+  const item = event.target.closest("[data-search-index]");
+  if (!item) {
+    return;
+  }
+  const index = Number(item.dataset.searchIndex);
+  if (Number.isFinite(index) && index !== state.search.active) {
+    state.search.active = index;
+    updateSearchActive({ preview: activeSearchNodeIsResult(), scroll: false });
+  }
+}
+
+function handleSearchInputMemoryEnter(event) {
+  if (event.key !== "Enter") {
+    return;
+  }
+  const node = activeSearchNode();
+  if (!node || node.dataset.searchKind === "result" || node.dataset.searchResult) {
+    return;
+  }
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  runSearchNavigationNode(node);
+}
+
 async function runSearch() {
   const query = $("globalSearch").value.trim();
   state.search.query = query;
@@ -353,6 +861,7 @@ async function runSearch() {
     renderSearch();
     return;
   }
+  persistExecutedSearchQuery(query);
 
   const requestToken = state.search.requestToken + 1;
   state.search.requestToken = requestToken;
@@ -478,13 +987,20 @@ function renderSearch() {
 
   renderFacets();
 
+  const memoryCount = renderSearchMemory();
   const globalInput = $("globalSearch");
   if (state.search.loading) {
     globalInput.removeAttribute("aria-activedescendant");
     $("searchResults").innerHTML = renderLoading("正在搜索会话...");
     return;
   }
-  if (!state.search.query) {
+  if (!globalInput.value.trim()) {
+    if (memoryCount) {
+      $("searchResults").innerHTML = "";
+      updateSearchActive({ preview: false, scroll: false });
+      updateSearchCount();
+      return;
+    }
     globalInput.removeAttribute("aria-activedescendant");
     $("searchResults").innerHTML = "<div class='search-empty'>" + (state.search.mode === "semantic" ? "输入大意开始语义搜索" : "输入关键词开始搜索") + "</div>";
     return;
@@ -527,7 +1043,7 @@ function renderSearchResult(result, index) {
     ? esc(result.snippet || "")
     : highlightSearchSnippet(result.snippet || "", result.terms || state.search.terms);
   const active = index === state.search.active;
-  return "<div class='search-result" + (active ? " active" : "") + "' role='option' id='search-result-" + index + "' aria-selected='" + (active ? "true" : "false") + "' data-search-index='" + index + "' data-search-result='" + esc(ref) + "'>" +
+  return "<div class='search-result" + (active ? " active" : "") + "' role='option' id='search-result-" + index + "' aria-selected='" + (active ? "true" : "false") + "' data-search-kind='result' data-search-index='" + index + "' data-search-result='" + esc(ref) + "'>" +
     "<strong class='search-result-title'>" + esc(title) + "</strong>" +
     "<span class='search-result-source'>" + esc(source) + "</span>" +
     "<span class='search-result-path'>" + esc(path) + "</span>" +
@@ -544,14 +1060,25 @@ function renderSearchResult(result, index) {
 }
 
 function updateSearchActive(options = {}) {
-  const nodes = Array.from(document.querySelectorAll("[data-search-index]"));
+  const nodes = searchNavigationNodes();
   const input = $("globalSearch");
+  if (!nodes.length) {
+    if (input) {
+      input.removeAttribute("aria-activedescendant");
+    }
+    return;
+  }
+  if (state.search.active >= nodes.length || state.search.active < 0) {
+    state.search.active = 0;
+  }
+  let activeNode = null;
   nodes.forEach((node) => {
     const index = Number(node.dataset.searchIndex);
     const active = index === state.search.active;
     node.classList.toggle("active", active);
     node.setAttribute("aria-selected", active ? "true" : "false");
     if (active) {
+      activeNode = node;
       if (input) {
         input.setAttribute("aria-activedescendant", node.id);
       }
@@ -560,16 +1087,17 @@ function updateSearchActive(options = {}) {
       }
     }
   });
-  if (options.preview) {
+  if (options.preview && activeNode && (activeNode.dataset.searchKind === "result" || activeNode.dataset.searchResult)) {
     schedulePreview();
   }
 }
 
 function moveSearchActive(delta) {
-  if (!state.search.results.length) {
+  const nodes = searchNavigationNodes();
+  if (!nodes.length) {
     return;
   }
-  const count = state.search.results.length;
+  const count = nodes.length;
   state.search.active = (state.search.active + delta + count) % count;
   updateSearchActive({ preview: true, scroll: true });
 }

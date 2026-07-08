@@ -460,7 +460,57 @@ export const overlaysCss = `/* ---------- 搜索浮层 ---------- */
 .search-bar h2 { font-size: 22px; font-weight: 600; }
 .search-close { min-height: 34px; border-color: var(--line-2); background: transparent; color: var(--muted); }
 .search-close:hover { border-color: var(--seal); background: transparent; color: var(--seal); }
+.search-input-row { display: grid; grid-template-columns: minmax(0, 1fr) 46px; gap: 8px; align-items: center; }
 .global-search-input { width: 100%; height: 46px; font-size: 15px; }
+.search-save-button {
+  width: 46px; height: 46px; min-height: 46px;
+  border-color: var(--line-2); border-radius: 10px;
+  background: var(--field-bg); color: var(--muted);
+  padding: 0; font: 800 19px/1 var(--mono);
+}
+.search-save-button:hover { border-color: var(--seal); background: var(--seal-soft); color: var(--seal-deep); transform: none; }
+.search-save-button[aria-pressed="true"] { border-color: var(--seal); background: var(--seal-soft); color: var(--seal-deep); }
+.search-save-button:disabled { cursor: default; opacity: 0.48; }
+.search-memory { display: grid; gap: 10px; }
+.search-memory:empty { display: none; }
+.search-memory-section { display: grid; gap: 7px; }
+.search-memory-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.search-memory-title { color: var(--faint); font: 800 10.5px/1 var(--mono); letter-spacing: 0.05em; text-transform: uppercase; }
+.search-memory-clear {
+  min-height: 24px; border: 0; background: transparent; color: var(--muted);
+  padding: 0 2px; font: 750 10.5px/1 var(--mono);
+}
+.search-memory-clear:hover { background: transparent; color: var(--seal-deep); transform: none; }
+.saved-search-chips { display: flex; flex-wrap: wrap; gap: 7px; }
+.saved-search-chip {
+  display: inline-grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 7px; align-items: center;
+  max-width: 100%; min-height: 30px;
+  border: 1px solid var(--line-2); border-radius: 999px;
+  background: rgba(33, 27, 16, 0.03); color: var(--ink-soft);
+  padding: 3px 4px 3px 10px; cursor: pointer;
+  transition: background 130ms ease, border-color 130ms ease, box-shadow 130ms ease;
+}
+.saved-search-chip:hover, .saved-search-chip.active { border-color: rgba(177, 56, 42, 0.5); background: var(--result-active-bg); box-shadow: 0 14px 30px -28px rgba(140, 43, 31, 0.55); }
+.saved-search-name { min-width: 0; overflow: hidden; font: 750 11.5px/1.2 var(--sans); text-overflow: ellipsis; white-space: nowrap; }
+.saved-search-chip small { color: var(--faint); font: 800 9.5px/1 var(--mono); white-space: nowrap; }
+.search-history-list { display: grid; gap: 6px; }
+.search-history-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) 26px; gap: 8px; align-items: center;
+  min-height: 34px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--panel-wash); color: var(--ink-soft);
+  padding: 4px 5px 4px 10px; cursor: pointer;
+  transition: background 130ms ease, border-color 130ms ease, box-shadow 130ms ease;
+}
+.search-history-row:hover, .search-history-row.active { border-color: rgba(177, 56, 42, 0.5); background: var(--result-active-bg); box-shadow: 0 14px 30px -28px rgba(140, 43, 31, 0.55); }
+.search-history-row span { min-width: 0; overflow: hidden; font: 650 12px/1.25 var(--sans); text-overflow: ellipsis; white-space: nowrap; }
+.search-memory-remove {
+  display: inline-grid; place-items: center;
+  width: 24px; min-width: 24px; height: 24px; min-height: 24px;
+  border: 1px solid transparent; border-radius: 999px;
+  background: transparent; color: var(--faint);
+  padding: 0; font: 800 14px/1 var(--mono);
+}
+.search-memory-remove:hover { border-color: rgba(177, 56, 42, 0.3); background: rgba(177, 56, 42, 0.08); color: var(--seal-deep); transform: none; }
 .search-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .search-mode, .search-prewarm { min-height: 32px; border-color: var(--line-2); background: transparent; color: var(--muted); padding: 0 11px; }
 .search-mode:hover, .search-prewarm:hover { border-color: var(--line-2); background: rgba(33, 27, 16, 0.06); color: var(--ink); transform: none; }
@@ -484,6 +534,7 @@ export const overlaysCss = `/* ---------- 搜索浮层 ---------- */
 }
 .search-status { min-width: 0; color: var(--faint); font: 600 11.5px/1.35 var(--mono); }
 .search-results { display: grid; grid-auto-rows: max-content; gap: 8px; align-content: start; min-height: 0; overflow: auto; padding-right: 4px; }
+.search-results:empty { display: none; }
 .search-empty {
   display: grid; min-height: 112px; place-items: center;
   border: 1px dashed var(--line-2); border-radius: 10px;

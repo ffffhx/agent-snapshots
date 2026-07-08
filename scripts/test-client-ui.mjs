@@ -286,6 +286,60 @@ test("launcher ArrowRight preview shortcut respects search input caret", async (
 
 // --- Viewer ----------------------------------------------------------------
 
+test("viewer search history dedupes most recent query and caps entries", async () => {
+  const { normalizeSearchHistory } = await viewerRuntime(
+    ["normalizeSearchHistory"],
+    "",
+    ["normalizeSearchHistory"],
+  );
+  const older = Array.from({ length: 24 }, (_, index) => `query-${index}`);
+  const normalized = normalizeSearchHistory(older, "query-3", 20);
+  assert.equal(normalized.length, 20);
+  assert.equal(normalized[0], "query-3");
+  assert.equal(normalized.filter((item) => item === "query-3").length, 1);
+  assert.equal(normalized.includes("query-19"), true);
+  assert.equal(normalized.includes("query-20"), false);
+  assert.equal(normalized.includes("query-23"), false, "oldest entries should fall off the cap");
+});
+
+test("viewer saved searches add dedupe and remove snapshots", async () => {
+  const runtime = await viewerRuntime(
+    [
+      "savedSearchSnapshot",
+      "savedSearchIdentity",
+      "normalizeSavedSearchItem",
+      "sanitizeSavedSearches",
+      "savedSearchItemFromSnapshot",
+      "addSavedSearch",
+      "removeSavedSearch",
+    ],
+    "",
+    ["savedSearchSnapshot", "addSavedSearch", "removeSavedSearch"],
+  );
+  const snapshot = runtime.savedSearchSnapshot("deploy source:codex", {
+    mode: "semantic",
+    flags: { caseSensitive: true, wholeWord: false },
+  });
+  const first = runtime.addSavedSearch([], snapshot, 12, 1000);
+  assert.equal(first.length, 1);
+  assert.equal(first[0].name, "deploy source:codex");
+  assert.equal(first[0].mode, "semantic");
+  assert.equal(first[0].flags.caseSensitive, true);
+
+  const second = runtime.addSavedSearch(
+    [{ id: "other", name: "other", query: "other", mode: "keyword", flags: {}, createdAt: 1, updatedAt: 1 }, ...first],
+    snapshot,
+    12,
+    2000,
+  );
+  assert.equal(second.length, 2);
+  assert.equal(second[0].id, first[0].id, "duplicate snapshots should move to the front instead of cloning");
+  assert.equal(second[0].updatedAt, 2000);
+
+  const removed = runtime.removeSavedSearch(second, second[0].id, 12);
+  assert.deepEqual(removed.map((item) => item.id), ["other"]);
+});
+
 test("viewer verbosity modes apply to transcript details DOM", async () => {
   await withDom(`
     <body>
