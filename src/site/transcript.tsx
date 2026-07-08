@@ -3,6 +3,10 @@ import { renderTranscriptHtml } from "../renderers/transcript";
 import { mergeLinkRel, openInNewTab } from "./utils";
 
 export { buildTranscriptItems, renderTranscriptHtml, type TranscriptItem } from "../renderers/transcript";
+export {
+  buildTranscriptOutlineItems,
+  type TranscriptOutlineItem,
+} from "../renderers/transcript";
 
 export function handleContentLinkClick(event: MouseEvent<HTMLElement>): void {
   const target = event.target instanceof Element ? event.target : null;

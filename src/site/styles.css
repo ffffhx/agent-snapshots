@@ -812,6 +812,126 @@ pre {
   white-space: pre-wrap;
 }
 
+.share-reading-controls {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 14px;
+  border: 1px solid rgba(23, 32, 42, 0.11);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.92);
+  padding: 8px;
+  box-shadow: var(--shadow-soft);
+}
+
+.share-reading-controls button,
+.share-outline-head button {
+  min-height: 32px;
+  border: 1px solid rgba(23, 32, 42, 0.13);
+  border-radius: 7px;
+  background: var(--panel);
+  color: var(--ink);
+  padding: 0 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "PingFang SC", "Microsoft YaHei", monospace;
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.share-reading-controls button:hover,
+.share-outline-head button:hover {
+  border-color: rgba(47, 111, 187, 0.28);
+  color: var(--blue);
+}
+
+.share-outline {
+  position: fixed;
+  top: 96px;
+  right: 16px;
+  bottom: 22px;
+  z-index: 20;
+  display: flex;
+  width: min(312px, calc(100vw - 32px));
+  min-height: 0;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid rgba(23, 32, 42, 0.13);
+  border-top: 3px solid var(--blue);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.96);
+  padding: 12px;
+  box-shadow: 0 34px 82px -46px rgba(23, 32, 42, 0.72);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(calc(100% + 24px));
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.share-outline.open {
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
+}
+
+.share-outline-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 9px;
+}
+
+.share-outline-head b {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "PingFang SC", "Microsoft YaHei", monospace;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.share-outline-list {
+  display: grid;
+  gap: 2px;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+
+.share-outline-item {
+  display: grid;
+  min-height: 36px;
+  align-items: start;
+  gap: 5px;
+  border-radius: 8px;
+  color: var(--ink);
+  padding: 8px 9px;
+}
+
+.share-outline-item:hover {
+  background: rgba(47, 111, 187, 0.08);
+}
+
+.share-outline-item span {
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "PingFang SC", "Microsoft YaHei", monospace;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.share-outline-item b {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .turns {
   display: grid;
   gap: 28px;
@@ -935,6 +1055,25 @@ pre {
   padding-left: 12px;
 }
 
+.turn-meta {
+  margin-bottom: 9px;
+  color: var(--soft);
+  font: 800 10px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, "PingFang SC", "Microsoft YaHei", monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+}
+
+.turn-meta-badge {
+  min-height: 15px;
+  margin: 0 0 6px auto;
+  color: var(--soft);
+  font: 800 11px/1.25 ui-monospace, SFMono-Regular, Menlo, Consolas, "PingFang SC", "Microsoft YaHei", monospace;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
 .body {
   min-width: 0;
   color: var(--ink);
@@ -969,6 +1108,53 @@ pre {
   color: #edf4ff;
   padding: 16px;
   font: 13px/1.58 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.tool-details summary {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 8px;
+  color: var(--amber);
+  cursor: pointer;
+  font: 800 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, "PingFang SC", "Microsoft YaHei", monospace;
+  text-transform: uppercase;
+  user-select: none;
+}
+
+.tool-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.tool-details summary::after {
+  width: 7px;
+  height: 7px;
+  margin-left: auto;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  content: "";
+  transform: translateY(-2px) rotate(45deg);
+  transition: transform 0.16s ease;
+}
+
+.tool-details[open] summary::after {
+  transform: translateY(2px) rotate(225deg);
+}
+
+.file-path-action {
+  display: inline;
+  border-radius: 4px;
+  color: inherit;
+  cursor: copy;
+  text-decoration: underline;
+  text-decoration-color: rgba(180, 59, 69, 0.38);
+  text-decoration-style: dotted;
+  text-underline-offset: 3px;
+}
+
+.file-path-action:hover {
+  color: var(--red);
+  text-decoration-color: var(--red);
 }
 
 .file-change {
@@ -1156,6 +1342,20 @@ pre {
 
   .share-header h1 {
     font-size: 34px;
+  }
+
+  .share-outline {
+    top: auto;
+    right: 10px;
+    bottom: 10px;
+    left: 10px;
+    width: auto;
+    max-height: min(420px, 58dvh);
+    transform: translateY(calc(100% + 18px));
+  }
+
+  .share-outline.open {
+    transform: none;
   }
 
   .shot-bubble,

@@ -18,6 +18,12 @@ export type ProcessItem = {
 
 export type TranscriptItem = TurnItem | ProcessItem;
 
+export type TranscriptOutlineItem = {
+  id: string;
+  turn: number;
+  label: string;
+};
+
 export type TranscriptRenderLabels = {
   assistant?: string;
   message?: string;
@@ -37,6 +43,7 @@ export type TranscriptRenderOptions = {
   includeTopLevelToolMeta?: boolean;
   roleClassMode?: "space" | "prefixed";
   bodyClassName?: string;
+  turnAnchorPrefix?: string;
   labels?: TranscriptRenderLabels;
 };
 
@@ -48,6 +55,7 @@ type NormalizedTranscriptRenderOptions = {
   includeProcessMessageMeta: boolean;
   includeTopLevelToolMeta: boolean;
   roleClassMode: "space" | "prefixed";
+  turnAnchorPrefix: string;
   labels: Required<TranscriptRenderLabels>;
 };
 
@@ -138,6 +146,22 @@ export function processDurationLabel(turns: SnapshotTurn[]): string {
   return minuteRest ? `${hours}h ${minuteRest}m` : `${hours}h`;
 }
 
+export function buildTranscriptOutlineItems(turns: SnapshotTurn[], options: { anchorPrefix?: string } = {}): TranscriptOutlineItem[] {
+  const prefix = options.anchorPrefix || "";
+  return buildTranscriptItems(turns)
+    .map((item, index) => ({ item, index }))
+    .filter(({ item }) => item.kind === "turn" && isUserMessageTurn(item.turn) && !isInterruptionTurn(item.turn))
+    .map(({ item, index }) => {
+      const turn = item.kind === "turn" ? item.turn : null;
+      const turnNumber = Number(turn?.turn || 0);
+      return {
+        id: turnAnchorId(turn, index, prefix),
+        turn: Number.isFinite(turnNumber) && turnNumber > 0 ? Math.round(turnNumber) : index + 1,
+        label: outlineLabel(turn),
+      };
+    });
+}
+
 export function renderTranscriptHtml(
   turns: SnapshotTurn[],
   emptyHtmlOrOptions: string | TranscriptRenderOptions = "<div class='empty'>没有可分享的对话记录。</div>",
@@ -162,6 +186,7 @@ function normalizeTranscriptRenderOptions(
     includeProcessMessageMeta: Boolean(base.includeProcessMessageMeta),
     includeTopLevelToolMeta: Boolean(base.includeTopLevelToolMeta),
     roleClassMode: base.roleClassMode || "space",
+    turnAnchorPrefix: base.turnAnchorPrefix || "",
     labels: {
       assistant: base.labels?.assistant || "Assistant",
       message: base.labels?.message || "Message",
@@ -214,10 +239,15 @@ function renderTranscriptItemHtml(
   if (item.kind === "process") {
     return renderProcessGroupHtml(item, index, options);
   }
-  return renderTurnHtml(item.turn, options, item.durationTurns || []);
+  return renderTurnHtml(item.turn, options, item.durationTurns || [], index);
 }
 
-function renderTurnHtml(turn: SnapshotTurn, options: NormalizedTranscriptRenderOptions, durationTurns: SnapshotTurn[] = []): string {
+function renderTurnHtml(
+  turn: SnapshotTurn,
+  options: NormalizedTranscriptRenderOptions,
+  durationTurns: SnapshotTurn[] = [],
+  itemIndex = 0,
+): string {
   if (isInterruptionTurn(turn)) {
     return renderInterruptionNoticeHtml(options);
   }
@@ -226,7 +256,7 @@ function renderTurnHtml(turn: SnapshotTurn, options: NormalizedTranscriptRenderO
     ? `<div class="turn-meta">${escapeHtml(turnLabel(role, turn, options))}</div>`
     : "";
   const assistantMeta = role === "assistant" ? renderAssistantTurnMetaHtml(turn, durationTurns) : "";
-  return `<article class="${escapeHtml(turnClassName(role, options))}"${turnAnchorAttrs(turn)}><div class="message-card">${meta}${assistantMeta}${renderBodyContainerHtml(turn, options)}</div></article>`;
+  return `<article class="${escapeHtml(turnClassName(role, options))}"${turnAnchorAttrs(turn, options, itemIndex)}><div class="message-card">${meta}${assistantMeta}${renderBodyContainerHtml(turn, options)}</div></article>`;
 }
 
 function renderInterruptionNoticeHtml(options: NormalizedTranscriptRenderOptions): string {
@@ -253,7 +283,7 @@ function renderProcessEntryHtml(turn: SnapshotTurn, options: NormalizedTranscrip
   const meta = options.includeProcessMessageMeta && role !== "tool"
     ? `<div class="turn-meta">${escapeHtml(turnLabel(role, turn, options))}</div>`
     : "";
-  return `<section class="process-entry process-${escapeHtml(role)}"${turnAnchorAttrs(turn)}>${meta}${renderBodyContainerHtml(turn, options)}</section>`;
+  return `<section class="process-entry process-${escapeHtml(role)}"${turnAnchorAttrs(turn, options)}>${meta}${renderBodyContainerHtml(turn, options)}</section>`;
 }
 
 function renderAssistantTurnMetaHtml(turn: SnapshotTurn, durationTurns: SnapshotTurn[]): string {
@@ -295,13 +325,48 @@ function formatTokenShort(value: number): string {
   return String(value);
 }
 
-function turnAnchorAttrs(turn: SnapshotTurn): string {
+function turnAnchorAttrs(turn: SnapshotTurn, options: NormalizedTranscriptRenderOptions, itemIndex?: number): string {
   const turnNumber = Number(turn.turn || 0);
+  const attrs = [];
   if (!Number.isFinite(turnNumber) || turnNumber <= 0) {
-    return "";
+    if (!options.turnAnchorPrefix || itemIndex === undefined) {
+      return "";
+    }
+  } else {
+    attrs.push(`data-turn-number="${escapeHtml(String(Math.round(turnNumber)))}"`);
   }
-  const value = String(Math.round(turnNumber));
-  return ` data-turn-number="${escapeHtml(value)}"`;
+  if (options.turnAnchorPrefix && itemIndex !== undefined) {
+    attrs.push(`id="${escapeHtml(turnAnchorId(turn, itemIndex, options.turnAnchorPrefix))}"`);
+  }
+  return attrs.length ? ` ${attrs.join(" ")}` : "";
+}
+
+function turnAnchorId(turn: SnapshotTurn | null, itemIndex: number | undefined, prefix: string): string {
+  const turnNumber = Number(turn?.turn || 0);
+  const suffix = Number.isFinite(turnNumber) && turnNumber > 0 ? String(Math.round(turnNumber)) : `item-${(itemIndex || 0) + 1}`;
+  return `${prefix}${suffix}`;
+}
+
+function outlineLabel(turn: SnapshotTurn | null): string {
+  const text = stripAppDirectives(turn?.text || "") || htmlText(turn?.html || "");
+  const compact = text.replace(/\s+/g, " ").trim();
+  if (!compact) {
+    return "用户消息";
+  }
+  return compact.length > 60 ? `${compact.slice(0, 60)}...` : compact;
+}
+
+function htmlText(value: string): string {
+  return String(value || "")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
 }
 
 function turnRole(turn: SnapshotTurn): "tool" | "user" | "assistant" {

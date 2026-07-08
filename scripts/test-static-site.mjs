@@ -222,7 +222,7 @@ async function testLocalHomepageDefaultsToLocalApi() {
 
 async function testSharePageLoadsFromConfiguredApi() {
   const requests = [];
-  const { document } = await runStaticPage("site/share/index.html", {
+  const { document, window } = await runStaticPage("site/share/index.html", {
     locationHref: "https://ffffhx.github.io/agent-snapshots/share/?id=snap_publicsession123456",
     config: { apiUrl: PUBLIC_API_URL },
     fetch: async (url) => {
@@ -235,7 +235,7 @@ async function testSharePageLoadsFromConfiguredApi() {
             title: "Public Session from Aliyun",
             engineLabel: "Codex",
             redacted: true,
-            turnCount: 2,
+            turnCount: 3,
           },
           snapshot: {
             title: "Public Session from Aliyun",
@@ -248,8 +248,24 @@ async function testSharePageLoadsFromConfiguredApi() {
                 text: "Can everyone view this session?",
               },
               {
+                kind: "tool",
                 role: "assistant",
+                name: "apply_patch",
+                turn: 2,
+                text: "patched /tmp/share-fixture.ts",
+                fileChanges: [
+                  {
+                    path: "/tmp/share-fixture.ts",
+                    kind: "edit",
+                    diffText: "--- a/share-fixture.ts\n+++ b/share-fixture.ts\n@@\n-old\n+new\n",
+                  },
+                ],
+              },
+              {
+                role: "assistant",
+                turn: 3,
                 text: "Yes, the static share page loaded it from the public API.",
+                tokenUsage: { inputTokens: 900, outputTokens: 300, totalTokens: 1200 },
                 images: [
                   {
                     src: "data:image/png;base64,iVBORw0KGgo=",
@@ -283,6 +299,29 @@ async function testSharePageLoadsFromConfiguredApi() {
     document.getElementById("share-content")?.innerHTML.includes("static share page loaded it from the public API"),
     "share page should render transcript content",
   );
+  assert(
+    document.querySelector(".share-outline-item")?.textContent.includes("Can everyone view this session?"),
+    "share page should render a floating user-turn outline",
+  );
+  assert(document.querySelector(".share-reading-controls"), "share page should render reading controls");
+  assert(
+    document.getElementById("share-content")?.innerHTML.includes("turn-meta-badge") &&
+      document.getElementById("share-content")?.innerHTML.includes("1.2k tok"),
+    "share page should render available per-turn metadata badges",
+  );
+  assert(
+    document.getElementById("share-content")?.innerHTML.includes("file-path-action"),
+    "share page should preserve styled clickable path markup",
+  );
+  const processDetails = document.querySelector("details.process-details");
+  assert(processDetails && processDetails.open === false, "share page should default process details to collapsed");
+  document.querySelector(".share-reading-controls button")?.dispatchEvent(
+    new window.MouseEvent("click", {
+      bubbles: true,
+      cancelable: true,
+    }),
+  );
+  assert(processDetails.open === true, "share page expand control should open process details");
   assert(
     !document.getElementById("share-content")?.innerHTML.includes("image/png /") &&
       !document.getElementById("share-content")?.innerHTML.includes("148 KB") &&
