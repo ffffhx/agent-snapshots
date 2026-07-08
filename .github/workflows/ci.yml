@@ -13,10 +13,23 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agent-snapshots
 
     steps:
-      - name: Checkout
+      - name: Checkout agent-snapshots
         uses: actions/checkout@v4
+        with:
+          path: agent-snapshots
+
+      # agent-session-core is intentionally checked out at its default branch HEAD.
+      # This is a sibling checkout for the file:../agent-session-core dependency, not a submodule.
+      - name: Checkout agent-session-core
+        uses: actions/checkout@v4
+        with:
+          repository: ffffhx/agent-session-core
+          path: agent-session-core
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -28,6 +41,7 @@ jobs:
         with:
           node-version: 20
           cache: pnpm
+          cache-dependency-path: agent-snapshots/pnpm-lock.yaml
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

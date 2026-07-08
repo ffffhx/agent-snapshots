@@ -1,0 +1,93 @@
+name: Electron Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: electron-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: agent-snapshots
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS
+            os: macos-latest
+            builder_args: --mac
+          - name: Windows
+            os: windows-latest
+            builder_args: --win
+          - name: Linux
+            os: ubuntu-latest
+            builder_args: --linux
+
+    steps:
+      - name: Checkout agent-snapshots
+        uses: actions/checkout@v4
+        with:
+          path: agent-snapshots
+
+      - name: Verify release tag
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF}" != refs/tags/v* ]]; then
+            echo "Run this workflow from a v* tag so electron-builder publishes one GitHub Release per tag." >&2
+            exit 1
+          fi
+
+      # agent-session-core is intentionally checked out at its default branch HEAD.
+      # This is a sibling checkout for the file:../agent-session-core dependency, not a submodule.
+      - name: Checkout agent-session-core
+        uses: actions/checkout@v4
+        with:
+          repository: ffffhx/agent-session-core
+          path: agent-session-core
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.20.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: agent-snapshots/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build app sources
+        run: pnpm build:dist
+
+      - name: Build app icons
+        run: pnpm app:icon
+
+      # macOS signing and notarization are future work. The configured zip target
+      # must remain because electron-updater requires it for macOS auto-updates.
+      - name: Publish macOS artifacts
+        if: matrix.os == 'macos-latest'
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: pnpm exec electron-builder ${{ matrix.builder_args }} --publish always
+
+      - name: Publish Windows and Linux artifacts
+        if: matrix.os != 'macos-latest'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: pnpm exec electron-builder ${{ matrix.builder_args }} --publish always
