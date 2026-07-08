@@ -499,7 +499,7 @@ function normalizeShellCommand(value) {
     if (!words.length) {
         return "";
     }
-    const executable = commandBasename(words[0]);
+    const executable = safeCommandToken(words[0]);
     if (!executable || executable === "." || executable === "..") {
         return "";
     }
@@ -567,7 +567,7 @@ function firstCommandSubtoken(executable, words) {
         if (!keepPathArgs.has(executable) && looksLikePath(word)) {
             continue;
         }
-        const clean = commandBasename(word).replace(/^['"]|['"]$/g, "");
+        const clean = safeCommandToken(word);
         if (!clean || clean === "." || clean === ".." || clean.startsWith("-")) {
             continue;
         }
@@ -625,6 +625,10 @@ function commandBasename(value) {
     }
     const parts = clean.replace(/\\/g, "/").split("/");
     return parts[parts.length - 1] || clean;
+}
+function safeCommandToken(value) {
+    const clean = commandBasename(value);
+    return /^[A-Za-z0-9][A-Za-z0-9._:+@-]{0,80}$/.test(clean) ? clean : "";
 }
 function looksLikePath(value) {
     const text = String(value || "");

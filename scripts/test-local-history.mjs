@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const { listSessions, loadSnapshot } = await import(path.join(ROOT_DIR, "dist/sources/local-history.mjs"));
 const { renderMarkdownHtml } = await import(path.join(ROOT_DIR, "dist/renderers/markdown.mjs"));
-const { renderTranscriptHtml } = await import(path.join(ROOT_DIR, "dist/renderers/transcript.js"));
+const { buildTranscriptOutlineItems, renderTranscriptHtml } = await import(path.join(ROOT_DIR, "dist/renderers/transcript.js"));
 const { prewarmSemanticIndex, semanticSearchSessions } = await import(path.join(ROOT_DIR, "dist/server/semantic-index.mjs"));
 
 const tests = [];
@@ -98,6 +98,25 @@ test("transcript renders assistant turn token and duration metadata", () => {
   ]);
   assert.ok(html.includes("turn-meta-badge"), html);
   assert.ok(html.includes("1.2k tok · 8s"), html);
+});
+
+test("transcript outline anchors stay unique when turn numbers repeat", () => {
+  const turns = [
+    { kind: "message", role: "user", turn: 1, text: "first user", timestamp: "2026-06-01T00:00:00.000Z" },
+    { kind: "message", role: "assistant", turn: 1, text: "assistant with duplicate number", timestamp: "2026-06-01T00:00:01.000Z" },
+    { kind: "message", role: "user", turn: 1, text: "second user duplicate", timestamp: "2026-06-01T00:00:02.000Z" },
+  ];
+  const outline = buildTranscriptOutlineItems(turns, { anchorPrefix: "turn-" });
+  const html = renderTranscriptHtml(turns, {
+    bodyWrapper: false,
+    roleClassMode: "prefixed",
+    turnAnchorPrefix: "turn-",
+  });
+  const ids = [...html.matchAll(/\sid="([^"]+)"/g)].map((match) => match[1]);
+  assert.equal(new Set(ids).size, ids.length, html);
+  for (const item of outline) {
+    assert.ok(ids.includes(item.id), `outline id ${item.id} should exist in transcript HTML: ${html}`);
+  }
 });
 
 // --- Persistent semantic index ---------------------------------------------

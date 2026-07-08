@@ -513,6 +513,27 @@ function showToast() {}
   });
 });
 
+test("viewer insight skill drafts escape markdown control text from history", async () => {
+  const runtime = await viewerRuntime(
+    ["tokenUsageNumber", "formatTokenCount", "promptPatternSkillDraft", "draftTitle", "uniqueDraftLines", "draftInline", "escapeDraftMarkdown"],
+    "",
+    ["promptPatternSkillDraft", "draftInline"],
+  );
+  const malicious = "`rm -rf` [link](javascript:alert(1)) <script>alert(1)</script> # heading";
+  const markdown = runtime.promptPatternSkillDraft({
+    id: "malicious",
+    prefix: malicious,
+    triggerPhrases: [malicious],
+    examples: [malicious],
+    count: 3,
+  });
+  assert.ok(!markdown.includes("`rm -rf`"), markdown);
+  assert.ok(!markdown.includes("[link](javascript:alert(1))"), markdown);
+  assert.ok(!markdown.includes("<script>"), markdown);
+  assert.ok(markdown.includes("\\`rm"), markdown);
+  assert.ok(runtime.draftInline("a\n# b").includes("\\# b"), "draftInline should escape headings after whitespace normalization");
+});
+
 test("viewer live-session detection handles codex claude and trae edge cases", async () => {
   const { isLiveSessionItem } = await viewerRuntime(
     ["sessionEngineKey", "normalizedSessionPath", "isLiveSessionItem"],

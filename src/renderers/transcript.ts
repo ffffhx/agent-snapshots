@@ -343,7 +343,9 @@ function turnAnchorAttrs(turn: SnapshotTurn, options: NormalizedTranscriptRender
 
 function turnAnchorId(turn: SnapshotTurn | null, itemIndex: number | undefined, prefix: string): string {
   const turnNumber = Number(turn?.turn || 0);
-  const suffix = Number.isFinite(turnNumber) && turnNumber > 0 ? String(Math.round(turnNumber)) : `item-${(itemIndex || 0) + 1}`;
+  const itemSuffix = itemIndex === undefined ? "" : `item-${itemIndex + 1}`;
+  const turnSuffix = Number.isFinite(turnNumber) && turnNumber > 0 ? `turn-${Math.round(turnNumber)}` : "";
+  const suffix = [itemSuffix, turnSuffix].filter(Boolean).join("-");
   return `${prefix}${suffix}`;
 }
 

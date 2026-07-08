@@ -1079,7 +1079,15 @@ function uniqueDraftLines(items) {
 }
 
 function draftInline(value) {
-  return String(value || "").replace(/\\s+/g, " ").trim().slice(0, 180);
+  return escapeDraftMarkdown(String(value || "")
+    .replace(/[\\u0000-\\u001f\\u007f]/g, " ")
+    .replace(/\\s+/g, " ")
+    .trim()
+    .slice(0, 180));
+}
+
+function escapeDraftMarkdown(value) {
+  return String(value || "").replace(/[\\\\\`*_{}[\\]()#+\\-.!|<>]/g, "\\\\$&");
 }
 
 function heatLevel(count, max) {

@@ -157,6 +157,11 @@ function activeTraeHomeKeys(homes = {}) {
   ].filter(Boolean));
 }
 
+function primaryCodexHomeKey(homes = {}) {
+  const primary = (homes?.codexHomes || []).find((home) => home?.primary) || (homes?.codexHomes || [])[0];
+  return String(primary?.key || pathHomeDigest(homes?.codexHome || "") || "").trim();
+}
+
 function refOf(summary) {
   return summary.ref || `${engineKey(summary.engine)}:${summary.id}`;
 }
@@ -164,7 +169,8 @@ function refOf(summary) {
 function homeKeyOf(summary, candidate = null, homes = {}) {
   const engine = engineKey(summary?.engine || candidate?.engine);
   if (engine === "codex") {
-    return String(summary?.codexHomeKey || candidate?.codexHomeKey || "").trim();
+    return String(summary?.codexHomeKey || candidate?.codexHomeKey || "").trim()
+      || primaryCodexHomeKey(homes);
   }
   if (engine === "claude") {
     return String(summary?.homeKey || candidate?.homeKey || candidate?.sourceHomeKey || "").trim()
@@ -186,6 +192,16 @@ function cacheKeyOf(summary, candidate = null, homes = {}) {
   const engine = engineKey(summary?.engine || candidate?.engine);
   const homeKey = homeKeyOf(summary, candidate, homes);
   return [engine, homeKey, ref].join("\0");
+}
+
+function candidateScopeHomeKey(candidate, homes = {}) {
+  const cached = cacheCandidate(candidate || {});
+  return homeKeyOf({
+    engine: cached.engine,
+    codexHomeKey: cached.codexHomeKey,
+    homeKey: cached.homeKey,
+    sourceKind: traeHomeKind(null, cached),
+  }, cached, homes);
 }
 
 function numberTime(value) {
@@ -321,7 +337,7 @@ function upsertRows(db, candidate, summaries, homes = {}) {
   const cachedCandidate = cacheCandidate(candidate);
   const pathKey = cachedCandidate.key;
   const now = Date.now();
-  const cacheKeys = [];
+  const keepIdentities = [];
   const upsert = db.prepare(`INSERT INTO ${CACHE_TABLE}
     (cache_key, ref, id, engine, home_key, title, cwd, display_cwd, mtime, mtime_ms, size, file_path, path_key,
       candidate_mtime_ms, candidate_size, list_complete, complete, live, summary_json, candidate_json, updated_at)
@@ -334,9 +350,9 @@ function upsertRows(db, candidate, summaries, homes = {}) {
       candidate_mtime_ms=excluded.candidate_mtime_ms, candidate_size=excluded.candidate_size,
       list_complete=excluded.list_complete, complete=excluded.complete, live=excluded.live,
       summary_json=excluded.summary_json, candidate_json=excluded.candidate_json, updated_at=excluded.updated_at`);
-  const selectPathRefs = db.prepare(`SELECT cache_key FROM ${CACHE_TABLE} WHERE path_key = ?`);
-  const delRef = db.prepare(`DELETE FROM ${CACHE_TABLE} WHERE cache_key = ?`);
-  const delAll = db.prepare(`DELETE FROM ${CACHE_TABLE} WHERE path_key = ?`);
+  const selectPathRefs = db.prepare(`SELECT rowid AS __rowid, cache_key, ref, engine, home_key, summary_json, candidate_json FROM ${CACHE_TABLE} WHERE path_key = ?`);
+  const delRef = db.prepare(`DELETE FROM ${CACHE_TABLE} WHERE rowid = ?`);
+  const candidateHomeKey = candidateScopeHomeKey(cachedCandidate, homes);
   db.exec("BEGIN IMMEDIATE");
   try {
     for (const original of summaries || []) {
@@ -344,7 +360,7 @@ function upsertRows(db, candidate, summaries, homes = {}) {
       const ref = refOf(summary);
       const homeKey = homeKeyOf(summary, cachedCandidate, homes);
       const cacheKey = cacheKeyOf(summary, cachedCandidate, homes);
-      cacheKeys.push(cacheKey);
+      keepIdentities.push(cacheRowIdentity({ engine: engineKey(summary.engine), home_key: homeKey, ref }));
       const state = deriveRuntimeState(summary);
       const mtimeMs = numberTime(summary.mtime) || Number(cachedCandidate.mtimeMs || 0);
       upsert.run(
@@ -371,15 +387,19 @@ function upsertRows(db, candidate, summaries, homes = {}) {
         now,
       );
     }
-    if (cacheKeys.length) {
-      const keep = new Set(cacheKeys);
+    if (keepIdentities.length) {
+      const keep = new Set(keepIdentities);
       for (const row of selectPathRefs.all(pathKey)) {
-        if (!keep.has(row.cache_key)) {
-          delRef.run(row.cache_key);
+        if (!keep.has(cacheRowIdentity(row)) && matchesCandidateScope(row, cachedCandidate, candidateHomeKey, homes)) {
+          delRef.run(row.__rowid);
         }
       }
     } else {
-      delAll.run(pathKey);
+      for (const row of selectPathRefs.all(pathKey)) {
+        if (matchesCandidateScope(row, cachedCandidate, candidateHomeKey, homes)) {
+          delRef.run(row.__rowid);
+        }
+      }
     }
     db.exec("COMMIT");
   } catch (error) {
@@ -456,10 +476,13 @@ function updateRowStatOnly(db, row, candidate) {
   });
   const state = deriveRuntimeState(summary);
   const cachedCandidate = cacheCandidate(candidate);
+  const rowId = Number(row.__rowid || 0);
+  const where = rowId ? "rowid = ?" : "cache_key = ?";
+  const whereValue = rowId || row.cache_key;
   db.prepare(`UPDATE ${CACHE_TABLE} SET
     mtime = ?, mtime_ms = ?, size = ?, file_path = ?, candidate_mtime_ms = ?,
     candidate_size = ?, complete = ?, live = ?, summary_json = ?, candidate_json = ?, updated_at = ?
-    WHERE cache_key = ?`).run(
+    WHERE ${where}`).run(
     summary.mtime || isoTime(cachedCandidate.mtimeMs),
     numberTime(summary.mtime) || Number(cachedCandidate.mtimeMs || 0),
     Number(summary.size || cachedCandidate.size || 0),
@@ -471,16 +494,22 @@ function updateRowStatOnly(db, row, candidate) {
     JSON.stringify(summary),
     JSON.stringify(cachedCandidate),
     Date.now(),
-    row.cache_key,
+    whereValue,
   );
-  return db.prepare(`SELECT * FROM ${CACHE_TABLE} WHERE cache_key = ?`).get(row.cache_key) || null;
+  return rowId
+    ? db.prepare(`SELECT rowid AS __rowid, * FROM ${CACHE_TABLE} WHERE rowid = ?`).get(rowId) || null
+    : db.prepare(`SELECT rowid AS __rowid, * FROM ${CACHE_TABLE} WHERE cache_key = ?`).get(row.cache_key) || null;
 }
 
 async function refreshRowIfNeeded(db, row, homes, { parseChanged = true, parseIfListIncomplete = false } = {}) {
   const candidate = rowCandidate(row) || fallbackCandidate(rowSummary(row) || {});
   const refreshed = await refreshCandidateStats(candidate);
   if (!refreshed) {
-    db.prepare(`DELETE FROM ${CACHE_TABLE} WHERE path_key = ?`).run(row.path_key);
+    if (row.__rowid) {
+      db.prepare(`DELETE FROM ${CACHE_TABLE} WHERE rowid = ?`).run(row.__rowid);
+    } else {
+      db.prepare(`DELETE FROM ${CACHE_TABLE} WHERE cache_key = ?`).run(row.cache_key);
+    }
     return null;
   }
   const changed = Number(refreshed.mtimeMs || 0) !== Number(row.candidate_mtime_ms || 0)
@@ -494,7 +523,9 @@ async function refreshRowIfNeeded(db, row, homes, { parseChanged = true, parseIf
   }
   const summaries = await summarizeSessionCandidate(refreshed, homes);
   upsertRows(db, refreshed, summaries, homes);
-  return db.prepare(`SELECT * FROM ${CACHE_TABLE} WHERE cache_key = ?`).get(row.cache_key) || null;
+  return row.__rowid
+    ? db.prepare(`SELECT rowid AS __rowid, * FROM ${CACHE_TABLE} WHERE rowid = ?`).get(row.__rowid) || null
+    : db.prepare(`SELECT rowid AS __rowid, * FROM ${CACHE_TABLE} WHERE cache_key = ?`).get(row.cache_key) || null;
 }
 
 function matchesSource(row, source) {
@@ -515,18 +546,36 @@ function storedRowHomeKey(row) {
   return String(summary?.homeKey || candidate?.homeKey || candidate?.sourceHomeKey || "").trim();
 }
 
+function cacheRowIdentity(row) {
+  return JSON.stringify([engineKey(row?.engine), storedRowHomeKey(row), String(row?.ref || "")]);
+}
+
 function matchesActiveHome(row, homes) {
   const engine = engineKey(row.engine);
   const rowHomeKey = storedRowHomeKey(row);
   if (engine === "codex") {
     const active = homes?.activeCodexHomeKeys || codexHomeKeys(homes?.codexHomes || []);
-    return Boolean(rowHomeKey && active.has(rowHomeKey));
+    return rowHomeKey ? active.has(rowHomeKey) : Boolean(primaryCodexHomeKey(homes));
   }
   if (engine === "claude") {
-    return Boolean(rowHomeKey && activeClaudeHomeKeys(homes).has(rowHomeKey));
+    return rowHomeKey ? activeClaudeHomeKeys(homes).has(rowHomeKey) : Boolean(claudeHomeKey(homes?.claudeHome || ""));
   }
   if (engine === "trae") {
-    return Boolean(rowHomeKey && activeTraeHomeKeys(homes).has(rowHomeKey));
+    return rowHomeKey ? activeTraeHomeKeys(homes).has(rowHomeKey) : Boolean(activeTraeHomeKeys(homes).size);
+  }
+  return false;
+}
+
+function matchesCandidateScope(row, candidate, candidateHomeKey, homes) {
+  if (engineKey(row?.engine) !== engineKey(candidate?.engine)) {
+    return false;
+  }
+  const rowHomeKey = storedRowHomeKey(row);
+  if (rowHomeKey && candidateHomeKey) {
+    return rowHomeKey === candidateHomeKey;
+  }
+  if (!rowHomeKey) {
+    return matchesActiveHome(row, homes);
   }
   return false;
 }
@@ -570,7 +619,7 @@ async function readCachedSessions({ codexHome, claudeHome, traeHome, traeAppHome
   const db = await getDb();
   const codexHomes = await discoverCodexHomes(codexHome);
   const homes = { codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir, codexHomes, activeCodexHomeKeys: codexHomeKeys(codexHomes) };
-  const rows = db.prepare(`SELECT * FROM ${CACHE_TABLE} ORDER BY mtime_ms DESC`).all();
+  const rows = db.prepare(`SELECT rowid AS __rowid, * FROM ${CACHE_TABLE} ORDER BY mtime_ms DESC`).all();
   const out = [];
   const skip = Math.max(0, Number(offset || 0));
   const take = Number.isFinite(limit) ? Math.max(0, Number(limit || 0)) : Number.POSITIVE_INFINITY;
@@ -644,12 +693,12 @@ async function sessionListCacheUsableInfo({ source, codexHome, claudeHome, traeH
   const homes = { codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir, codexHomes, activeCodexHomeKeys: codexHomeKeys(codexHomes) };
   const activeHomeKey = Array.from(homes.activeCodexHomeKeys).sort().join(",");
   const cachedHomeKey = getMeta(db, "codex_home_keys", "");
-  const rows = db.prepare(`SELECT cache_key, ref, engine, home_key, summary_json, candidate_json FROM ${CACHE_TABLE}`).all();
+  const rows = db.prepare(`SELECT rowid AS __rowid, cache_key, ref, engine, home_key, summary_json, candidate_json FROM ${CACHE_TABLE}`).all();
   const count = rows.filter((row) => matchesSource(row, source) && matchesActiveHome(row, homes)).length;
   const includesCodex = !source || source === "all" || engineKey(source) === "codex";
   return {
     count,
-    codexHomesChanged: includesCodex && cachedHomeKey !== activeHomeKey,
+    codexHomesChanged: includesCodex && Boolean(cachedHomeKey) && cachedHomeKey !== activeHomeKey,
   };
 }
 
@@ -750,16 +799,15 @@ export async function reconcileSessionListCache(options) {
       }
     }
 
-    const stale = db.prepare(`SELECT DISTINCT path_key, engine, home_key, summary_json FROM ${CACHE_TABLE}`).all()
+    const stale = db.prepare(`SELECT rowid AS __rowid, cache_key, path_key, engine, home_key, summary_json, candidate_json FROM ${CACHE_TABLE}`).all()
       .filter((row) => matchesActiveHome(row, homes))
-      .map((row) => row.path_key)
-      .filter((key) => key && !candidateKeys.has(key));
+      .filter((row) => row.path_key && !candidateKeys.has(row.path_key));
     if (stale.length) {
-      const del = db.prepare(`DELETE FROM ${CACHE_TABLE} WHERE path_key = ?`);
+      const del = db.prepare(`DELETE FROM ${CACHE_TABLE} WHERE rowid = ?`);
       db.exec("BEGIN IMMEDIATE");
       try {
-        for (const key of stale) {
-          const result = del.run(key);
+        for (const row of stale) {
+          const result = del.run(row.__rowid);
           deleted += Number(result?.changes || 0);
         }
         db.exec("COMMIT");
@@ -833,8 +881,40 @@ export async function sessionListCacheStatus() {
   };
 }
 
-export async function sessionListCacheWatermark() {
+export async function sessionListCacheWatermark(options = null) {
   const db = await getDb();
+  if (options) {
+    const codexHomes = await discoverCodexHomes(options.codexHome);
+    const homes = {
+      codexHome: options.codexHome,
+      claudeHome: options.claudeHome,
+      traeHome: options.traeHome,
+      traeAppHome: options.traeAppHome,
+      traeRecordingsDir: options.traeRecordingsDir,
+      codexHomes,
+      activeCodexHomeKeys: codexHomeKeys(codexHomes),
+    };
+    const rows = db.prepare(`SELECT rowid AS __rowid, cache_key, ref, engine, home_key, mtime_ms, candidate_mtime_ms, updated_at, complete, live, summary_json, candidate_json FROM ${CACHE_TABLE}`).all()
+      .filter((row) => matchesActiveHome(row, homes));
+    if (!rows.length) {
+      return 0;
+    }
+    const signature = rows
+      .map((row) => [
+        row.__rowid,
+        row.cache_key,
+        row.ref,
+        row.home_key,
+        Number(row.candidate_mtime_ms || 0),
+        Number(row.mtime_ms || 0),
+        Number(row.updated_at || 0),
+        Number(row.complete || 0),
+        Number(row.live || 0),
+      ].join(":"))
+      .sort()
+      .join("|");
+    return Number.parseInt(createHash("sha256").update(signature).digest("hex").slice(0, 12), 16);
+  }
   const metaWatermark = Number(getMeta(db, "watermark_mtime_ms", "0")) || 0;
   const row = db.prepare(`SELECT MAX(candidate_mtime_ms) AS candidate_mtime_ms, MAX(mtime_ms) AS mtime_ms FROM ${CACHE_TABLE}`).get();
   return Math.max(

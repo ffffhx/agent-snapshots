@@ -328,7 +328,13 @@ export async function serveLocalViewer({ codexHome, claudeHome, traeHome, traeAp
                     traeAppHome,
                     traeRecordingsDir,
                 });
-                sendJson(response, { watermark: await sessionListCacheWatermark() });
+                sendJson(response, { watermark: await sessionListCacheWatermark({
+                        codexHome,
+                        claudeHome,
+                        traeHome,
+                        traeAppHome,
+                        traeRecordingsDir,
+                    }) });
                 return;
             }
             if (url.pathname === "/api/session-peek") {

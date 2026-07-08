@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawn } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
@@ -34,6 +34,7 @@ try {
     sessionDate: "2026-05-31",
   });
   await writeCodexFixture(codexHome);
+  await writeClaudeInsightFixture(claudeHome);
   await mkdir(claudeHome, { recursive: true });
   await mkdir(traeHome, { recursive: true });
   await mkdir(traeAppHome, { recursive: true });
@@ -83,6 +84,7 @@ try {
     ["GET /api/sessions-watermark returns a cheap list watermark", () => assertSessionsWatermark(viewerUrl)],
     ["Codex home discovery includes default home when CODEX_HOME is explicit", () => assertCodexHomeDiscoveryIncludesDefault()],
     ["multi-home Codex sessions list and round-trip refs", () => assertMultiHomeCodex(viewerUrl)],
+    ["session cache keeps legacy primary rows and scoped stale cleanup", () => assertSessionCacheHomeScoping(path.join(tempDir, "cache-home-scope"))],
     ["GET /api/session-peek returns lightweight redacted turns", () => assertSessionPeek(viewerUrl)],
     ["launcher prefs reject missing CSRF and persist pin changes", () => assertLauncherPrefs(viewerUrl, origin, csrfToken)],
     ["session notes CRUD is local-only and capped", () => assertSessionNotes(viewerUrl, origin, csrfToken)],
@@ -202,16 +204,19 @@ async function assertInsights(viewerUrl) {
 
   for (const command of payload.topCommands) {
     assert(typeof command.command === "string", "top command should include command string");
+    assert(!/[`\r\n]/.test(command.command), `top command should not expose shell-control text: ${JSON.stringify(command.command)}`);
     assert(typeof command.count === "number", "top command should include numeric count");
     assertEngineCounts({ total: command.count, ...(command.engineCounts || {}) }, `top command ${command.command}`);
     assert(typeof command.lastUsedAt === "string", "top command should include lastUsedAt string");
   }
+  assert(payload.topCommands.some((command) => command.command === "pnpm run"), `insights should retain the safe executable/script shape from the fixture: ${JSON.stringify(payload.topCommands)}`);
   for (const tool of payload.topTools) {
     assert(typeof tool.engine === "string", "top tool should include engine string");
     assert(typeof tool.name === "string", "top tool should include name string");
     assert(typeof tool.count === "number", "top tool should include numeric count");
     assert(typeof tool.lastUsedAt === "string", "top tool should include lastUsedAt string");
   }
+  assert(payload.topTools.some((tool) => tool.engine === "claude" && tool.name === "Bash"), `insights should include the Claude Bash fixture: ${JSON.stringify(payload.topTools)}`);
   for (const pattern of payload.promptPatterns) {
     assert(typeof pattern.id === "string", "prompt pattern should include id");
     assert(typeof pattern.prefix === "string", "prompt pattern should include prefix");
@@ -329,7 +334,7 @@ async function assertSessionHead(viewerUrl) {
   });
   assert(missing.status === 400, `missing session-head id should return 400, got ${missing.status}`);
 
-  const sessions = await fetchJson(`${viewerUrl}/api/sessions?source=all&limit=1&completeOnly=0`);
+  const sessions = await fetchJson(`${viewerUrl}/api/sessions?source=codex&limit=1&completeOnly=0`);
   assert(Array.isArray(sessions) && sessions.length > 0, "fixture should provide a real session");
   const id = sessions[0].ref || `codex:${sessions[0].id}`;
   const { response, payload } = await fetchJsonResponse(`${viewerUrl}/api/session-head?id=${encodeURIComponent(id)}`);
@@ -387,9 +392,7 @@ async function assertSessionPeek(viewerUrl) {
   });
   assert(notFound.status === 404, `unknown session-peek id should return 404, got ${notFound.status}`);
 
-  const sessions = await fetchJson(`${viewerUrl}/api/sessions?source=all&limit=1&completeOnly=0`);
-  assert(Array.isArray(sessions) && sessions.length > 0, "fixture should provide a real session");
-  const id = sessions[0].ref || `codex:${sessions[0].id}`;
+  const id = `codex:${SESSION_ID}`;
   const { response, payload } = await fetchJsonResponse(`${viewerUrl}/api/session-peek?id=${encodeURIComponent(id)}&turns=1`);
   assert(response.status === 200, `/api/session-peek should return 200 for ${id}, got ${response.status}`);
   assert(typeof payload.title === "string" && payload.title.length > 0, "session peek should include title");
@@ -677,6 +680,220 @@ async function assertColdSessionCacheLiveOnly(cacheDir) {
   }
 }
 
+async function assertSessionCacheHomeScoping(cacheRoot) {
+  const previousDisableAutodetect = process.env.AGENT_SNAPSHOT_DISABLE_CODEX_HOME_AUTODETECT;
+  const previousExtraHomes = process.env.AGENT_SNAPSHOT_EXTRA_CODEX_HOMES;
+  try {
+    process.env.AGENT_SNAPSHOT_DISABLE_CODEX_HOME_AUTODETECT = "1";
+    delete process.env.AGENT_SNAPSHOT_EXTRA_CODEX_HOMES;
+    await assertLegacyPrimaryCacheRow(path.join(cacheRoot, "legacy"));
+    await assertScopedStaleCleanup(path.join(cacheRoot, "stale"));
+  } finally {
+    if (previousDisableAutodetect === undefined) {
+      delete process.env.AGENT_SNAPSHOT_DISABLE_CODEX_HOME_AUTODETECT;
+    } else {
+      process.env.AGENT_SNAPSHOT_DISABLE_CODEX_HOME_AUTODETECT = previousDisableAutodetect;
+    }
+    if (previousExtraHomes === undefined) {
+      delete process.env.AGENT_SNAPSHOT_EXTRA_CODEX_HOMES;
+    } else {
+      process.env.AGENT_SNAPSHOT_EXTRA_CODEX_HOMES = previousExtraHomes;
+    }
+  }
+}
+
+async function assertLegacyPrimaryCacheRow(cacheDir) {
+  const previousXdgCacheHome = process.env.XDG_CACHE_HOME;
+  process.env.XDG_CACHE_HOME = cacheDir;
+  try {
+    const codexHome = path.join(cacheDir, "codex");
+    const filePath = path.join(codexHome, "sessions", "2026", "06", "02", "legacy-primary.jsonl");
+    await mkdir(path.dirname(filePath), { recursive: true });
+    await writeFile(filePath, "{}\n", "utf8");
+    const fileInfo = await stat(filePath);
+    const moduleUrl = pathToFileURL(path.join(ROOT_DIR, "dist/server/session-list-cache.mjs")).href + `?legacy-primary=${Date.now()}`;
+    const cache = await import(moduleUrl);
+    await cache.sessionListCacheStatus();
+    const { DatabaseSync } = await import("node:sqlite");
+    const db = new DatabaseSync(cache.sessionListCachePath());
+    try {
+      insertCacheRow(db, {
+        cacheKey: "codex\0\0\0codex:legacy-primary",
+        ref: "codex:legacy-primary",
+        id: "legacy-primary",
+        engine: "codex",
+        homeKey: "",
+        title: "Legacy primary row",
+        cwd: codexHome,
+        displayCwd: "legacy-primary",
+        mtimeMs: fileInfo.mtimeMs,
+        size: fileInfo.size,
+        filePath,
+        pathKey: `codex:${filePath}`,
+        summary: {
+          ref: "codex:legacy-primary",
+          id: "legacy-primary",
+          engine: "codex",
+          title: "Legacy primary row",
+          cwd: codexHome,
+          displayCwd: "legacy-primary",
+          mtime: fileInfo.mtime.toISOString(),
+          size: fileInfo.size,
+          filePath,
+          messageCount: 1,
+        },
+        candidate: {
+          key: `codex:${filePath}`,
+          engine: "codex",
+          kind: "asc-file",
+          filePath,
+          filePaths: [filePath],
+          mtimeMs: fileInfo.mtimeMs,
+          mtime: fileInfo.mtime.toISOString(),
+          size: fileInfo.size,
+          sizeBytes: fileInfo.size,
+        },
+      });
+    } finally {
+      db.close?.();
+    }
+    const rows = await cache.listSessionsWithCache({
+      listSessions: async () => {
+        throw new Error("legacy primary cache row was not considered usable");
+      },
+      codexHome,
+      claudeHome: path.join(cacheDir, "claude"),
+      traeHome: path.join(cacheDir, "trae"),
+      traeAppHome: path.join(cacheDir, "trae-app"),
+      traeRecordingsDir: path.join(cacheDir, "trae-recordings"),
+      source: "codex",
+      limit: 5,
+      offset: 0,
+      completeOnly: true,
+    });
+    assert(rows.some((row) => row.ref === "codex:legacy-primary"), `legacy no-home cache row should resolve as primary: ${JSON.stringify(rows)}`);
+  } finally {
+    if (previousXdgCacheHome === undefined) {
+      delete process.env.XDG_CACHE_HOME;
+    } else {
+      process.env.XDG_CACHE_HOME = previousXdgCacheHome;
+    }
+  }
+}
+
+async function assertScopedStaleCleanup(cacheDir) {
+  const previousXdgCacheHome = process.env.XDG_CACHE_HOME;
+  process.env.XDG_CACHE_HOME = cacheDir;
+  try {
+    const codexHome = path.join(cacheDir, "codex");
+    await mkdir(codexHome, { recursive: true });
+    const cacheUrl = pathToFileURL(path.join(ROOT_DIR, "dist/server/session-list-cache.mjs")).href + `?scoped-stale=${Date.now()}`;
+    const homesUrl = pathToFileURL(path.join(ROOT_DIR, "dist/sources/codex-homes.mjs")).href + `?scoped-stale=${Date.now()}`;
+    const [cache, homes] = await Promise.all([import(cacheUrl), import(homesUrl)]);
+    await cache.sessionListCacheStatus();
+    const activeHomeKey = homes.codexHomeKey(codexHome);
+    const inactiveHomeKey = "home-ffffffffffff";
+    const collisionPathKey = "codex:/synthetic/path-key-collision.jsonl";
+    const { DatabaseSync } = await import("node:sqlite");
+    let db = new DatabaseSync(cache.sessionListCachePath());
+    try {
+      for (const [ref, homeKey] of [["codex:active-stale", activeHomeKey], ["codex:inactive-stale", inactiveHomeKey]]) {
+        insertCacheRow(db, {
+          cacheKey: `codex\0${homeKey}\0${ref}`,
+          ref,
+          id: ref.replace("codex:", ""),
+          engine: "codex",
+          homeKey,
+          title: ref,
+          cwd: codexHome,
+          displayCwd: "collision",
+          mtimeMs: Date.parse("2026-06-01T00:00:00.000Z"),
+          size: 1,
+          filePath: `/missing/${ref}.jsonl`,
+          pathKey: collisionPathKey,
+          summary: {
+            ref,
+            id: ref.replace("codex:", ""),
+            engine: "codex",
+            codexHomeKey: homeKey,
+            title: ref,
+            cwd: codexHome,
+            displayCwd: "collision",
+            mtime: "2026-06-01T00:00:00.000Z",
+            size: 1,
+            filePath: `/missing/${ref}.jsonl`,
+            messageCount: 1,
+          },
+          candidate: {
+            key: collisionPathKey,
+            engine: "codex",
+            kind: "asc-file",
+            filePath: `/missing/${ref}.jsonl`,
+            filePaths: [`/missing/${ref}.jsonl`],
+            mtimeMs: Date.parse("2026-06-01T00:00:00.000Z"),
+            mtime: "2026-06-01T00:00:00.000Z",
+            size: 1,
+            sizeBytes: 1,
+            codexHomeKey: homeKey,
+          },
+        });
+      }
+    } finally {
+      db.close?.();
+    }
+    const result = await cache.reconcileSessionListCache({
+      codexHome,
+      claudeHome: path.join(cacheDir, "claude"),
+      traeHome: path.join(cacheDir, "trae"),
+      traeAppHome: path.join(cacheDir, "trae-app"),
+      traeRecordingsDir: path.join(cacheDir, "trae-recordings"),
+    });
+    assert(result.deleted === 1, `only active-home stale row should be deleted: ${JSON.stringify(result)}`);
+    db = new DatabaseSync(cache.sessionListCachePath());
+    try {
+      const remaining = db.prepare("SELECT ref FROM session_list_cache_v3 WHERE path_key = ? ORDER BY ref").all(collisionPathKey).map((row) => row.ref);
+      assert(JSON.stringify(remaining) === JSON.stringify(["codex:inactive-stale"]), `inactive-home row should survive scoped cleanup: ${JSON.stringify(remaining)}`);
+    } finally {
+      db.close?.();
+    }
+  } finally {
+    if (previousXdgCacheHome === undefined) {
+      delete process.env.XDG_CACHE_HOME;
+    } else {
+      process.env.XDG_CACHE_HOME = previousXdgCacheHome;
+    }
+  }
+}
+
+function insertCacheRow(db, row) {
+  db.prepare(`INSERT INTO session_list_cache_v3
+    (cache_key, ref, id, engine, home_key, title, cwd, display_cwd, mtime, mtime_ms, size, file_path, path_key,
+      candidate_mtime_ms, candidate_size, list_complete, complete, live, summary_json, candidate_json, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+    row.cacheKey,
+    row.ref,
+    row.id,
+    row.engine,
+    row.homeKey,
+    row.title,
+    row.cwd,
+    row.displayCwd,
+    new Date(row.mtimeMs).toISOString(),
+    row.mtimeMs,
+    row.size,
+    row.filePath,
+    row.pathKey,
+    row.mtimeMs,
+    row.size,
+    1,
+    1,
+    0,
+    JSON.stringify(row.summary),
+    JSON.stringify(row.candidate),
+    Date.now(),
+  );
+}
+
 async function assertClaudeQuotaBlockBoundary(claudeHome) {
   const sessionDir = path.join(claudeHome, "projects", "-tmp-quota-boundary");
   await mkdir(sessionDir, { recursive: true });
@@ -795,6 +1012,39 @@ async function writeCodexFixture(codexHome, options = {}) {
     },
   ];
   await writeFile(sessionPath, rows.map((row) => JSON.stringify(row)).join("\n") + "\n", "utf8");
+}
+
+async function writeClaudeInsightFixture(claudeHome) {
+  const sessionId = "desktop-api-claude-insight";
+  const sessionDir = path.join(claudeHome, "projects", "-tmp-desktop-api-insights");
+  await mkdir(sessionDir, { recursive: true });
+  const rows = [
+    {
+      sessionId,
+      cwd: path.join(tempDir, "claude-fixture-project"),
+      type: "user",
+      message: { role: "user", content: "Inspect insight command normalization." },
+      timestamp: "2026-06-01T00:00:00.000Z",
+    },
+    {
+      sessionId,
+      cwd: path.join(tempDir, "claude-fixture-project"),
+      type: "assistant",
+      message: {
+        role: "assistant",
+        content: [
+          {
+            type: "tool_use",
+            id: "toolu_insight_shell",
+            name: "Bash",
+            input: { command: "pnpm run `postinstall`\necho should-not-be-a-command-label" },
+          },
+        ],
+      },
+      timestamp: "2026-06-01T00:00:01.000Z",
+    },
+  ];
+  await writeFile(path.join(sessionDir, `${sessionId}.jsonl`), rows.map((row) => JSON.stringify(row)).join("\n") + "\n", "utf8");
 }
 
 function claudeAssistantUsageRow(messageId, timestampMs, usage) {
