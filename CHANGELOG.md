@@ -40,6 +40,14 @@
 - `agent-snapshot digest`：输出周报 Markdown
 - `agent-snapshot doctor`：环境诊断清单
 
+### 洞察与搜索
+- 洞察面板：常用命令 / 常用工具 / 常用提问模式 / 高频操作链，支持一键复制 Skill 草稿（SpecStory Lore 式启发式挖掘，无 LLM）
+- 搜索历史（最近 20 条）与保存的搜索（☆ 收藏为 chips）
+
+### 导出与发布
+- 导出 HTML 对齐阅读器：浮动大纲、工具组折叠、视图详略切换（完全离线自包含）
+- 修复 CI（sibling 依赖 checkout），新增 release workflow：打 v* tag 自动构建 mac/win/linux 安装包并发布 GitHub Release（electron-updater 更新源闭环）
+
 ### 数据与性能
 - 会话列表持久化元数据缓存：冷启动首屏从数秒降至约 150ms
 - 图库持久化索引：冷扫描从约 45s 降至约 100ms
