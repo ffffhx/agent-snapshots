@@ -62,6 +62,7 @@ $("statsOverlay").addEventListener("click", async (event) => {
     renderStatsFilter();
     renderStatsActivity();
     renderStatsProjects();
+    renderStatsInsights();
     return;
   }
   if (event.target.closest("[data-weekly-digest-toggle]")) {
@@ -74,6 +75,11 @@ $("statsOverlay").addEventListener("click", async (event) => {
   }
   if (event.target.closest("[data-weekly-digest-download]")) {
     downloadWeeklyDigestMarkdown();
+    return;
+  }
+  const skillDraftButton = event.target.closest("[data-skill-draft]");
+  if (skillDraftButton) {
+    await copyInsightSkillDraft(skillDraftButton.dataset.skillDraft, skillDraftButton.dataset.insightId || "");
     return;
   }
   if (event.target === $("statsOverlay")) {

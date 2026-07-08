@@ -18,6 +18,7 @@ import { resumeSessionInOrca } from "./orca-bridge.mjs";
 import { readClaudeBlockUsageEstimate, readCodexQuotaSnapshot } from "./quota-meter.mjs";
 import { buildUsageAnalytics } from "./usage-analytics.mjs";
 import { buildWeeklyDigest } from "./weekly-digest.mjs";
+import { buildInsights } from "./insights.mjs";
 import { listImageEntries, readImageBytes } from "./image-index.mjs";
 import { launcherPrefsApiResponse, readLauncherPrefs, readLauncherSessionNote, recordLauncherAccess, setLauncherSessionNote, setLauncherSessionPinned, } from "./launcher-prefs.mjs";
 import { discoverCodexHomes, resolveCodexHomeForRef } from "../sources/codex-homes.mjs";
@@ -213,6 +214,28 @@ export async function serveLocalViewer({ codexHome, claudeHome, traeHome, traeAp
                     limit: readPositiveInteger(url.searchParams.get("limit") || "20000", "limit"),
                 });
                 sendJson(response, digest);
+                return;
+            }
+            if (url.pathname === "/api/insights") {
+                reconcileSessionListCacheInBackground({
+                    codexHome,
+                    claudeHome,
+                    traeHome,
+                    traeAppHome,
+                    traeRecordingsDir,
+                });
+                const insights = await buildInsights({
+                    codexHome,
+                    claudeHome,
+                    traeHome,
+                    traeAppHome,
+                    traeRecordingsDir,
+                    listSessions: (options) => listSessionsWithCache({ ...options, listSessions }),
+                    loadSnapshot,
+                    source: url.searchParams.get("source") || "all",
+                    limit: readPositiveInteger(url.searchParams.get("limit") || "500", "limit"),
+                });
+                sendJson(response, insights);
                 return;
             }
             if (url.pathname === "/api/images") {

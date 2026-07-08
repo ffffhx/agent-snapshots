@@ -87,6 +87,7 @@ export const overlaysCss = `/* ---------- 搜索浮层 ---------- */
 .stats-section { min-width: 0; border-top: 1px solid var(--line); padding-top: 12px; }
 .stats-section-quota, .stats-section-usage { grid-column: span 5; }
 .stats-section-activity, .stats-section-projects { grid-column: span 7; }
+.stats-section-insights { grid-column: 1 / -1; }
 .stats-section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
 .stats-section h3 { margin: 0; color: var(--ink-soft); font: 700 13px/1.2 var(--sans); }
 .stats-section-meta { color: var(--faint); font: 700 10.5px/1.2 var(--mono); white-space: nowrap; }
@@ -193,6 +194,38 @@ export const overlaysCss = `/* ---------- 搜索浮层 ---------- */
 .weekly-project-table th, .weekly-project-table td { border-bottom: 1px solid var(--line); padding: 6px 4px; text-align: right; }
 .weekly-project-table th:first-child, .weekly-project-table td:first-child { width: 58%; overflow: hidden; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
 .weekly-project-table th { color: var(--faint); font: 800 10px/1.2 var(--mono); }
+.insights-panel { display: grid; gap: 10px; }
+.insights-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.insight-card {
+  min-width: 0; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--panel-wash); padding: 12px;
+}
+.insight-card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.insight-card-head b { min-width: 0; overflow: hidden; color: var(--ink); font: 750 13px/1.2 var(--sans); text-overflow: ellipsis; white-space: nowrap; }
+.insight-card-head span { flex: 0 0 auto; color: var(--faint); font: 800 10px/1.2 var(--mono); }
+.insight-list { display: grid; gap: 7px; }
+.insight-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center;
+  min-height: 31px; border-top: 1px solid rgba(127,110,80,0.12); padding-top: 7px;
+}
+.insight-row:first-child { border-top: 0; padding-top: 0; }
+.insight-main { display: grid; min-width: 0; gap: 3px; }
+.insight-main b, .insight-main small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.insight-main b { color: var(--ink-soft); font: 700 12px/1.25 var(--sans); }
+.insight-main small { color: var(--faint); font: 650 10px/1.25 var(--mono); }
+.insight-count {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 24px; height: 22px; border: 1px solid var(--line);
+  border-radius: 999px; background: rgba(255,255,255,0.28); color: var(--ink);
+  padding: 0 7px; font: 800 10px/1 var(--mono);
+}
+.insight-side { display: inline-flex; align-items: center; justify-content: flex-end; gap: 6px; min-width: 0; }
+.insight-copy { min-height: 24px; padding: 0 7px; font-size: 10px; }
+.insight-empty {
+  display: grid; min-height: 58px; place-items: center;
+  border: 1px dashed var(--line-2); border-radius: 8px;
+  color: var(--faint); font: 700 11px/1.35 var(--mono);
+}
 .project-ranks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .rank-title { margin: 0 0 8px; color: var(--muted); font: 800 10.5px/1 var(--mono); letter-spacing: 0.04em; }
 .rank-list { display: grid; gap: 7px; }
@@ -393,7 +426,8 @@ export const overlaysCss = `/* ---------- 搜索浮层 ---------- */
 @media (max-width: 900px) {
   .stats-filterbar { align-items: flex-start; flex-direction: column; }
   .stats-chip-group { justify-content: flex-start; }
-  .stats-section-quota, .stats-section-usage, .stats-section-activity, .stats-section-projects { grid-column: 1 / -1; }
+  .stats-section-quota, .stats-section-usage, .stats-section-activity, .stats-section-projects, .stats-section-insights { grid-column: 1 / -1; }
+  .insights-grid { grid-template-columns: 1fr; }
   .weekly-digest-toolbar { align-items: stretch; flex-direction: column; }
   .weekly-digest-actions { justify-content: flex-start; }
   .weekly-digest-grid { grid-template-columns: 1fr; }

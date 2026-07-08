@@ -77,6 +77,7 @@ try {
     ["GET /api/quota returns unavailable or quota window shape", () => assertQuota(viewerUrl)],
     ["GET /api/activity returns per-day engine aggregations", () => assertActivity(viewerUrl)],
     ["GET /api/weekly-digest returns weekly markdown shape", () => assertWeeklyDigest(viewerUrl)],
+    ["GET /api/insights returns heuristic insight shape", () => assertInsights(viewerUrl)],
     ["GET /api/images and /api/image return image entries safely", () => assertImages(viewerUrl)],
     ["GET /api/session-head validates missing and real ids", () => assertSessionHead(viewerUrl)],
     ["GET /api/sessions-watermark returns a cheap list watermark", () => assertSessionsWatermark(viewerUrl)],
@@ -183,6 +184,50 @@ async function assertWeeklyDigest(viewerUrl) {
       assert(typeof week.longestSession.ref === "string", "weekly longestSession should include ref");
       assert(typeof week.longestSession.turns === "number", "weekly longestSession should include turns");
     }
+  }
+}
+
+async function assertInsights(viewerUrl) {
+  const { response, payload } = await fetchJsonResponse(`${viewerUrl}/api/insights?limit=20`);
+  assert(response.status === 200, `/api/insights should return 200, got ${response.status}`);
+  assertValidIso(payload.generatedAt, "insights generatedAt");
+  assert(typeof payload.scanLimit === "number", "insights should include numeric scanLimit");
+  assert(typeof payload.scannedSessions === "number", "insights should include numeric scannedSessions");
+  assert(typeof payload.failedSessions === "number", "insights should include numeric failedSessions");
+  assertEngineCounts(payload.engines, "insights engines");
+  assert(Array.isArray(payload.topCommands), "insights should include topCommands array");
+  assert(Array.isArray(payload.topTools), "insights should include topTools array");
+  assert(Array.isArray(payload.promptPatterns), "insights should include promptPatterns array");
+  assert(Array.isArray(payload.workflowChains), "insights should include workflowChains array");
+
+  for (const command of payload.topCommands) {
+    assert(typeof command.command === "string", "top command should include command string");
+    assert(typeof command.count === "number", "top command should include numeric count");
+    assertEngineCounts({ total: command.count, ...(command.engineCounts || {}) }, `top command ${command.command}`);
+    assert(typeof command.lastUsedAt === "string", "top command should include lastUsedAt string");
+  }
+  for (const tool of payload.topTools) {
+    assert(typeof tool.engine === "string", "top tool should include engine string");
+    assert(typeof tool.name === "string", "top tool should include name string");
+    assert(typeof tool.count === "number", "top tool should include numeric count");
+    assert(typeof tool.lastUsedAt === "string", "top tool should include lastUsedAt string");
+  }
+  for (const pattern of payload.promptPatterns) {
+    assert(typeof pattern.id === "string", "prompt pattern should include id");
+    assert(typeof pattern.prefix === "string", "prompt pattern should include prefix");
+    assert(typeof pattern.count === "number", "prompt pattern should include numeric count");
+    assertEngineCounts({ total: pattern.count, ...(pattern.engineCounts || {}) }, `prompt pattern ${pattern.prefix}`);
+    assert(typeof pattern.example === "string", "prompt pattern should include example string");
+    assert(Array.isArray(pattern.examples), "prompt pattern should include examples array");
+    assert(Array.isArray(pattern.triggerPhrases), "prompt pattern should include triggerPhrases array");
+  }
+  for (const chain of payload.workflowChains) {
+    assert(typeof chain.id === "string", "workflow chain should include id");
+    assert(Array.isArray(chain.chain), "workflow chain should include chain array");
+    assert(typeof chain.label === "string", "workflow chain should include label");
+    assert(typeof chain.length === "number", "workflow chain should include numeric length");
+    assert(typeof chain.count === "number", "workflow chain should include numeric count");
+    assertEngineCounts({ total: chain.count, ...(chain.engineCounts || {}) }, `workflow chain ${chain.label}`);
   }
 }
 

@@ -288,6 +288,7 @@ async function loadStats() {
   loadStatsQuota(requestToken);
   loadStatsActivity(requestToken);
   loadStatsUsage(requestToken);
+  loadStatsInsights(requestToken);
   if (state.statsWeeklyDigestOpen) {
     loadStatsWeeklyDigest(requestToken);
   }
@@ -305,6 +306,7 @@ function renderStatsShell() {
         statsSectionShell("activity", "活跃度", "最近 26 周") +
         statsSectionShell("projects", "项目", "Top 项目") +
         statsSectionShell("usage", "用量", "Token / 成本") +
+        statsSectionShell("insights", "洞察", "最新 500 个会话") +
       "</div>" +
       "<p class='stats-note'>数据来自本机日志。Codex 的 token 为各轮累计（含缓存/重复上下文），成本仅按当前填写单价粗估。</p>" +
     "</div>";
@@ -413,6 +415,34 @@ async function loadStatsUsage(requestToken) {
   } catch (error) {
     if (requestToken === state.statsRequestToken) {
       $("statsUsagePanel").innerHTML = statsError(error, "用量统计失败");
+    }
+  }
+}
+
+async function loadStatsInsights(requestToken) {
+  state.statsInsightsLoading = true;
+  state.statsInsightsError = "";
+  renderStatsInsights();
+  try {
+    const response = await fetch("/api/insights?limit=500");
+    const insights = await response.json();
+    if (!response.ok) {
+      throw new Error(insights.error || "洞察分析失败");
+    }
+    if (requestToken !== state.statsRequestToken) {
+      return;
+    }
+    state.statsInsights = insights;
+    renderStatsInsights();
+  } catch (error) {
+    if (requestToken === state.statsRequestToken) {
+      state.statsInsightsError = error instanceof Error ? error.message : String(error);
+      renderStatsInsights();
+    }
+  } finally {
+    if (requestToken === state.statsRequestToken) {
+      state.statsInsightsLoading = false;
+      renderStatsInsights();
     }
   }
 }
@@ -818,6 +848,238 @@ async function copyText(text) {
   } catch (_error) {
     return false;
   }
+}
+
+function renderStatsInsights() {
+  const panel = $("statsInsightsPanel");
+  if (!panel) {
+    return;
+  }
+  const insights = state.statsInsights;
+  if (state.statsInsightsLoading && !insights) {
+    panel.innerHTML = renderStatsSkeleton();
+    return;
+  }
+  if (state.statsInsightsError && !insights) {
+    panel.innerHTML = statsError(state.statsInsightsError, "洞察分析失败");
+    return;
+  }
+  if (!insights) {
+    panel.innerHTML = renderStatsSkeleton();
+    return;
+  }
+  const filter = state.statsFilter;
+  const commands = filteredInsightRows(insights.topCommands || [], filter, 7);
+  const tools = filteredToolRows(insights.topTools || [], filter, 8);
+  const prompts = filteredInsightRows(insights.promptPatterns || [], filter, 5);
+  const chains = filteredInsightRows(insights.workflowChains || [], filter, 6);
+  const freshness = insights.cached ? "缓存" : "刚生成";
+  const scanned = formatTokenCount(insights.scannedSessions || 0) + " 会话 · " + freshness;
+  panel.innerHTML =
+    "<div class='insights-panel'>" +
+      "<div class='stats-muted'>" + esc((STATS_ENGINE_LABELS[filter] || filter) + " · " + scanned) + (state.statsInsightsError ? " · " + esc(state.statsInsightsError) : "") + "</div>" +
+      "<div class='insights-grid'>" +
+        insightCard("常用命令", "Shell", renderCommandInsightRows(commands)) +
+        insightCard("常用工具", "按来源", renderToolInsightRows(tools, filter)) +
+        insightCard("常用提问模式", "草稿，仅供人工整理", renderPromptInsightRows(prompts)) +
+        insightCard("高频操作链", "草稿，仅供人工整理", renderChainInsightRows(chains)) +
+      "</div>" +
+    "</div>";
+}
+
+function insightCard(title, meta, body) {
+  return "<article class='insight-card'>" +
+    "<div class='insight-card-head'><b>" + esc(title) + "</b><span>" + esc(meta) + "</span></div>" +
+    "<div class='insight-list'>" + body + "</div>" +
+  "</article>";
+}
+
+function filteredInsightRows(items, filter, limit) {
+  return (Array.isArray(items) ? items : [])
+    .map((entry) => ({ entry, visibleCount: insightVisibleCount(entry, filter) }))
+    .filter((row) => row.visibleCount > 0)
+    .sort((a, b) => (b.visibleCount - a.visibleCount) || compareInsightTime(a.entry, b.entry))
+    .slice(0, limit)
+    .map((row) => ({ ...row.entry, visibleCount: row.visibleCount }));
+}
+
+function filteredToolRows(items, filter, limit) {
+  return (Array.isArray(items) ? items : [])
+    .filter((entry) => filter === "all" || entry.engine === filter)
+    .map((entry) => ({ ...entry, visibleCount: Number(entry.count || 0) }))
+    .filter((entry) => entry.visibleCount > 0)
+    .sort((a, b) => (b.visibleCount - a.visibleCount) || compareInsightTime(a, b) || String(a.name || "").localeCompare(String(b.name || ""), "zh-CN"))
+    .slice(0, limit);
+}
+
+function insightVisibleCount(entry, filter) {
+  if (!entry) {
+    return 0;
+  }
+  if (filter === "all") {
+    return Number(entry.count || 0);
+  }
+  const counts = entry.engineCounts || {};
+  return Number(counts[filter] || 0);
+}
+
+function compareInsightTime(a, b) {
+  return (new Date(b?.lastUsedAt || 0).getTime() || 0) - (new Date(a?.lastUsedAt || 0).getTime() || 0);
+}
+
+function renderCommandInsightRows(rows) {
+  if (!rows.length) {
+    return renderInsightEmpty("暂无命令数据");
+  }
+  return rows.map((entry) =>
+    "<div class='insight-row'>" +
+      "<span class='insight-main'><b title='" + esc(entry.command || "") + "'>" + esc(entry.command || "未知命令") + "</b><small>" + esc(insightLastUsed(entry.lastUsedAt)) + "</small></span>" +
+      "<span class='insight-count'>" + esc(formatTokenCount(entry.visibleCount || entry.count)) + "</span>" +
+    "</div>"
+  ).join("");
+}
+
+function renderToolInsightRows(rows, filter) {
+  if (!rows.length) {
+    return renderInsightEmpty("暂无工具数据");
+  }
+  return rows.map((entry) => {
+    const label = filter === "all" ? (STATS_ENGINE_LABELS[entry.engine] || entry.engine || "来源") + " · " + (entry.name || "Tool") : (entry.name || "Tool");
+    return "<div class='insight-row'>" +
+      "<span class='insight-main'><b title='" + esc(label) + "'>" + esc(label) + "</b><small>" + esc(insightLastUsed(entry.lastUsedAt)) + "</small></span>" +
+      "<span class='insight-count'>" + esc(formatTokenCount(entry.visibleCount || entry.count)) + "</span>" +
+    "</div>";
+  }).join("");
+}
+
+function renderPromptInsightRows(rows) {
+  if (!rows.length) {
+    return renderInsightEmpty("暂无重复模式");
+  }
+  return rows.map((entry) =>
+    "<div class='insight-row insight-row-action'>" +
+      "<span class='insight-main'><b title='" + esc(entry.example || entry.prefix || "") + "'>" + esc(entry.prefix || "提问模式") + "</b><small>" + esc(entry.example || insightLastUsed(entry.lastUsedAt)) + "</small></span>" +
+      "<span class='insight-side'><span class='insight-count'>" + esc(formatTokenCount(entry.visibleCount || entry.count)) + "</span><button class='stats-mini-action insight-copy' type='button' data-skill-draft='prompt' data-insight-id='" + esc(entry.id || "") + "' title='复制 SKILL.md 草稿，仅供人工整理'>复制草稿</button></span>" +
+    "</div>"
+  ).join("");
+}
+
+function renderChainInsightRows(rows) {
+  if (!rows.length) {
+    return renderInsightEmpty("暂无操作链数据");
+  }
+  return rows.map((entry) =>
+    "<div class='insight-row insight-row-action'>" +
+      "<span class='insight-main'><b title='" + esc(entry.label || "") + "'>" + esc(entry.label || "操作链") + "</b><small>" + esc(insightLastUsed(entry.lastUsedAt)) + "</small></span>" +
+      "<span class='insight-side'><span class='insight-count'>" + esc(formatTokenCount(entry.visibleCount || entry.count)) + "</span><button class='stats-mini-action insight-copy' type='button' data-skill-draft='chain' data-insight-id='" + esc(entry.id || "") + "' title='复制 SKILL.md 草稿，仅供人工整理'>复制草稿</button></span>" +
+    "</div>"
+  ).join("");
+}
+
+function renderInsightEmpty(text) {
+  return "<div class='insight-empty'>" + esc(text) + "</div>";
+}
+
+function insightLastUsed(value) {
+  const text = relativePast(value);
+  return text ? "上次 " + text : "时间未知";
+}
+
+async function copyInsightSkillDraft(type, id) {
+  const insights = state.statsInsights || {};
+  const item = type === "prompt"
+    ? (insights.promptPatterns || []).find((entry) => entry.id === id)
+    : (insights.workflowChains || []).find((entry) => entry.id === id);
+  if (!item) {
+    showToast("未找到可导出的洞察", true);
+    return;
+  }
+  const markdown = type === "prompt" ? promptPatternSkillDraft(item) : workflowChainSkillDraft(item);
+  const copied = await copyText(markdown);
+  showToast(copied ? "已复制 Skill 草稿，仅供人工整理" : "复制失败", !copied);
+}
+
+function promptPatternSkillDraft(pattern) {
+  const triggers = uniqueDraftLines([pattern.prefix].concat(pattern.triggerPhrases || [], pattern.examples || [])).slice(0, 6);
+  return [
+    "# " + draftTitle("常用提问模式", pattern.prefix),
+    "",
+    "> 草稿，仅供人工整理。由 Agent Snapshots 洞察基于本机会话历史启发式生成，发布前请人工校对、补充边界与安全约束。",
+    "",
+    "## Description",
+    "当用户以「" + draftInline(pattern.prefix) + "」或相近开头提出需求时，复用历史中反复出现的处理方式：先界定目标，再读取必要上下文，最后给出可验证的结果。",
+    "",
+    "## Trigger Phrases",
+    triggers.map((item) => "- " + draftInline(item)).join("\\n") || "- " + draftInline(pattern.prefix || "相近提问开头"),
+    "",
+    "## Steps",
+    "1. 复述用户目标，并确认是需要改动、分析、排障还是总结。",
+    "2. 搜索并读取最相关的本地文件、会话或上下文，避免只凭记忆判断。",
+    "3. 按仓库现有模式执行最小必要改动或分析，记录关键依据。",
+    "4. 运行可用的检查或给出无法验证的原因。",
+    "5. 用简短结论说明结果、影响范围和后续人工整理点。",
+    "",
+    "## Notes",
+    "- 这个草稿来自 " + formatTokenCount(pattern.count || 0) + " 次相似提问，请人工合并重复触发词。",
+  ].join("\\n");
+}
+
+function workflowChainSkillDraft(chain) {
+  const label = chain.label || (chain.chain || []).join(" → ");
+  const triggerLines = uniqueDraftLines([
+    "需要按 " + label + " 完成任务",
+    "修复问题并验证结果",
+    "读取上下文、修改并运行检查",
+  ]);
+  const steps = (chain.chain || []).map((name, index) => String(index + 1) + ". " + toolStepText(name));
+  return [
+    "# " + draftTitle("高频操作链", label),
+    "",
+    "> 草稿，仅供人工整理。由 Agent Snapshots 洞察基于本机工具调用链启发式生成，发布前请人工校对、补充适用场景。",
+    "",
+    "## Description",
+    "当任务通常需要按「" + draftInline(label) + "」推进时，使用这个流程保持上下文读取、改动和验证顺序清晰。",
+    "",
+    "## Trigger Phrases",
+    triggerLines.map((item) => "- " + draftInline(item)).join("\\n"),
+    "",
+    "## Steps",
+    steps.join("\\n") || "1. 按任务需要读取上下文、执行操作并验证结果。",
+    "",
+    "## Notes",
+    "- 这个草稿来自 " + formatTokenCount(chain.count || 0) + " 次历史操作链，请人工确认每一步是否应保留。",
+  ].join("\\n");
+}
+
+function toolStepText(name) {
+  const key = String(name || "").toLowerCase();
+  if (key === "read") return "Read：读取相关文件、配置或会话上下文，先建立事实依据。";
+  if (key === "edit" || key === "multiedit" || key === "write" || key === "apply_patch") return name + "：按既有代码风格做最小必要修改，并避免无关重构。";
+  if (key === "bash") return "Bash：运行目标检查、测试或诊断命令，保留失败信息用于下一步判断。";
+  if (key === "websearch") return "WebSearch：只在需要当前信息或外部事实时检索，并优先使用权威来源。";
+  if (key === "grep" || key === "rg" || key === "glob") return name + "：快速定位相关文件和调用点，缩小处理范围。";
+  return name + "：执行该工具对应的必要操作，并记录输入、输出和后续判断。";
+}
+
+function draftTitle(prefix, value) {
+  const text = draftInline(value).replace(/[#[\\]<>]/g, "").trim();
+  const short = Array.from(text || "未命名模式").slice(0, 28).join("");
+  return prefix + "：" + short;
+}
+
+function uniqueDraftLines(items) {
+  const out = [];
+  for (const item of items || []) {
+    const text = draftInline(item);
+    if (text && !out.includes(text)) {
+      out.push(text);
+    }
+  }
+  return out;
+}
+
+function draftInline(value) {
+  return String(value || "").replace(/\\s+/g, " ").trim().slice(0, 180);
 }
 
 function heatLevel(count, max) {
