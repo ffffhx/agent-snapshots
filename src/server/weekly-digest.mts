@@ -4,15 +4,12 @@ import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-const ENGINE_KEYS = ["codex", "claude", "trae"];
+const ENGINE_KEYS = ["codex", "claude"];
 const DEFAULT_SCAN_LIMIT = 20_000;
 
 export async function buildWeeklyDigest({
   codexHome,
   claudeHome,
-  traeHome,
-  traeAppHome,
-  traeRecordingsDir,
   listSessions,
   weeks = 1,
   limit = DEFAULT_SCAN_LIMIT,
@@ -23,9 +20,6 @@ export async function buildWeeklyDigest({
   const sessions = await listSessions({
     codexHome,
     claudeHome,
-    traeHome,
-    traeAppHome,
-    traeRecordingsDir,
     source: "all",
     includeArchived: true,
     completeOnly: true,
@@ -166,12 +160,12 @@ function emptyWeek(range) {
   const end = parseLocalDate(range.endDate);
   while (date.getTime() <= end.getTime()) {
     const key = localDateKey(date);
-    dayMap.set(key, { date: key, sessions: 0, codex: 0, claude: 0, trae: 0 });
+    dayMap.set(key, { date: key, sessions: 0, codex: 0, claude: 0 });
     date = addDays(date, 1);
   }
   return {
     range,
-    sessionCount: { total: 0, codex: 0, claude: 0, trae: 0 },
+    sessionCount: { total: 0, codex: 0, claude: 0 },
     totalTokens: { input: 0, output: 0, total: 0, indexedSessions: 0 },
     topProjects: [],
     busiestDay: null,
@@ -219,7 +213,7 @@ export function renderWeeklyDigestMarkdown(digest) {
     } else {
       lines.push(`- Tokens：${formatTokenShort(week.totalTokens.total)}（输入 ${formatTokenShort(week.totalTokens.input)} / 输出 ${formatTokenShort(week.totalTokens.output)}，${comparisonText(week.comparison?.totalTokens)}）`);
     }
-    lines.push(`- 按来源：Codex ${formatInteger(week.sessionCount.codex)}，Claude Code ${formatInteger(week.sessionCount.claude)}，Trae ${formatInteger(week.sessionCount.trae)}`);
+    lines.push(`- 按来源：Codex ${formatInteger(week.sessionCount.codex)}，Claude Code ${formatInteger(week.sessionCount.claude)}`);
     lines.push(`- 最活跃的一天：${week.busiestDay ? `${week.busiestDay.date}（${formatInteger(week.busiestDay.sessions)} 次会话）` : "暂无会话"}`);
     lines.push(`- 最长会话：${week.longestSession ? `${mdText(week.longestSession.title)}（${formatInteger(week.longestSession.turns)} turns，ref：${mdText(week.longestSession.ref)}）` : "暂无会话"}`);
     lines.push("");

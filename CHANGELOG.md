@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- 移除 Trae 支持（该工具不再支持 Trae 引擎）
+- 修复 Electron 内嵌服务 libuv 线程池僵死导致搜索永久挂起的问题：新增 `/api/health` 探针（带超时的 fs 检测）、Electron 看门狗自动重启服务子进程（原端口无感恢复）、子进程 `UV_THREADPOOL_SIZE=16`
+- 搜索性能与体验：索引建成后交互搜索不再触发后台同步（改为启动延迟预热 + 每 5 分钟定时刷新 + 30 秒冷却），稳态搜索毫秒级；搜索请求加超时，进入搜索立即显示"正在搜索…"，失败/超时明确提示
+- 修复启动索引预热阻塞事件循环导致桌面应用随机弹"local viewer server did not start in time"的问题（预热延迟至启动 10 秒后）
+- 启动器改为常驻窗口：移除"失焦自动隐藏"行为及托盘开关，隐藏只保留 ⌥Space 切换和关闭按钮两种主动方式
+
 ## 0.2.0 — 2026-07-08
 
 桌面应用（Electron）大版本升级：对标 Agent Sessions、cmux、Conductor、官方 Codex/Claude Code 桌面端等同类产品，补齐桌面集成能力并大幅增强阅读、分析与实时体验。

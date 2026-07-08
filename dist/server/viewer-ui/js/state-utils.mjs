@@ -39,7 +39,6 @@ const state = {
 const SOURCE_MODULES = [
   { key: "codex", label: "Codex" },
   { key: "claude", label: "Claude Code" },
-  { key: "trae", label: "Trae" },
 ];
 const SESSION_BATCH_LIMIT = 200;
 const LIVE_TAIL_INTERVAL_MS = 4000;

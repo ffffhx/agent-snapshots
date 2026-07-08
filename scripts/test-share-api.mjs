@@ -436,17 +436,13 @@ async function assertLocalViewerPublish(apiUrl) {
   const codexHome = path.join(tempDir, "codex-home");
   const sessionDir = path.join(codexHome, "sessions");
   const sessionPath = path.join(sessionDir, "local-publish-session.jsonl");
-  const traeRecordingsDir = path.join(tempDir, "trae-recordings");
-  const traeRecordingPath = path.join(traeRecordingsDir, "dom-thread-local-viewer-test.jsonl");
   const tokenFile = path.join(tempDir, "local-publisher-agent.json");
   const viewerPort = await getFreePort();
   const viewerUrl = `http://127.0.0.1:${viewerPort}`;
   let viewerProcess;
 
   await mkdir(sessionDir, { recursive: true });
-  await mkdir(traeRecordingsDir, { recursive: true });
   await writeFile(sessionPath, `${createCodexSessionJsonl()}\n`, "utf8");
-  await writeFile(traeRecordingPath, `${createTraeRecordingJsonl()}\n`, "utf8");
   await writeFile(
     tokenFile,
     `${JSON.stringify({
@@ -471,12 +467,6 @@ async function assertLocalViewerPublish(apiUrl) {
         codexHome,
         "--claude-home",
         path.join(tempDir, "claude-home"),
-        "--trae-home",
-        path.join(tempDir, "trae-home"),
-        "--trae-app-home",
-        path.join(tempDir, "trae-app-home"),
-        "--trae-recordings-dir",
-        traeRecordingsDir,
       ],
       {
         cwd: ROOT_DIR,
@@ -503,11 +493,6 @@ async function assertLocalViewerPublish(apiUrl) {
 
     const output = collectChildOutput(viewerProcess);
     await waitForJson(`${viewerUrl}/api/sessions?source=codex&limit=5`, output, viewerProcess);
-    const allSessions = await fetchJson(`${viewerUrl}/api/sessions?source=all&limit=5&completeOnly=0`);
-    assert(
-      allSessions.some((session) => session.source === "trae" && session.sourceKind === "recorded"),
-      "local viewer should list Trae recorded sessions without runtime reference errors"
-    );
     const viewerHtml = await fetchText(viewerUrl);
     assert(viewerHtml.includes(apiUrl), "local viewer should read share API URL from the agent config file");
     assert(viewerHtml.includes(SITE_URL.replace(/\/+$/, "")), "local viewer should read site URL from the agent config file");
@@ -708,31 +693,6 @@ function createCodexSessionJsonl() {
           model_context_window: 237500,
         },
       },
-    },
-  ].map((row) => JSON.stringify(row)).join("\n");
-}
-
-function createTraeRecordingJsonl() {
-  return [
-    {
-      schema: "trae-local-recorder-event/v1",
-      kind: "dom-message",
-      source: "dom",
-      domThreadId: "dom-thread-local-viewer-test",
-      pageSession: "page-local-viewer-test",
-      capturedAt: "2026-05-28T00:00:01.000Z",
-      sequence: 1,
-      body: JSON.stringify({ role: "user", text: "Trae captured question" }),
-    },
-    {
-      schema: "trae-local-recorder-event/v1",
-      kind: "dom-message",
-      source: "dom",
-      domThreadId: "dom-thread-local-viewer-test",
-      pageSession: "page-local-viewer-test",
-      capturedAt: "2026-05-28T00:00:02.000Z",
-      sequence: 2,
-      body: JSON.stringify({ role: "assistant", text: "Trae captured answer" }),
     },
   ].map((row) => JSON.stringify(row)).join("\n");
 }

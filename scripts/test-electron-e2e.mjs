@@ -112,9 +112,6 @@ async function createCleanEnv(root) {
   const home = path.join(root, "home");
   const codexHome = path.join(root, "codex");
   const claudeHome = path.join(root, "claude");
-  const traeHome = path.join(root, "trae");
-  const traeAppHome = path.join(root, "trae-app");
-  const traeRecordingsDir = path.join(root, "trae-recordings");
   const prefsDir = path.join(root, "prefs");
   const cacheHome = path.join(root, "cache");
   const configHome = path.join(root, "config");
@@ -123,9 +120,6 @@ async function createCleanEnv(root) {
     home,
     codexHome,
     claudeHome,
-    traeHome,
-    traeAppHome,
-    traeRecordingsDir,
     prefsDir,
     cacheHome,
     configHome,
@@ -175,9 +169,6 @@ async function createCleanEnv(root) {
     LANG: env.LANG || "en_US.UTF-8",
     LOGNAME: env.LOGNAME || env.USER || "agent-snapshots-e2e",
     PWD: ROOT_DIR,
-    TRAE_APP_HOME: traeAppHome,
-    TRAE_HOME: traeHome,
-    TRAE_RECORDINGS_DIR: traeRecordingsDir,
     USER: env.USER || "agent-snapshots-e2e",
     XDG_CACHE_HOME: cacheHome,
     XDG_CONFIG_HOME: configHome,

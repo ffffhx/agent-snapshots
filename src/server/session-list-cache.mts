@@ -74,7 +74,7 @@ async function getDb() {
 
 function engineKey(engine) {
   const value = String(engine || "").toLowerCase();
-  return value === "claude" || value === "trae" ? value : "codex";
+  return value === "claude" ? value : "codex";
 }
 
 function expandHome(value) {
@@ -113,48 +113,8 @@ function claudeHomeKey(home) {
   return scopedHomeKey("claude", home);
 }
 
-function traeHomeKind(summary = null, candidate = null) {
-  const kind = String(candidate?.kind || "").toLowerCase();
-  const sourceKind = String(summary?.sourceKind || "").toLowerCase();
-  if (kind === "trae-recorded" || sourceKind === "recorded") {
-    return "recorded";
-  }
-  if (kind === "trae-memory" || sourceKind === "memory") {
-    return "memory";
-  }
-  if (kind === "trae-input-history" || sourceKind === "input-history") {
-    return "input-history";
-  }
-  return "";
-}
-
-function traeHomeRootForKind(kind, homes = {}) {
-  if (kind === "recorded") {
-    return homes?.traeRecordingsDir || "";
-  }
-  if (kind === "memory") {
-    return homes?.traeHome || "";
-  }
-  if (kind === "input-history") {
-    return homes?.traeAppHome || "";
-  }
-  return "";
-}
-
-function traeHomeKey(kind, home) {
-  return kind ? scopedHomeKey(`trae:${kind}`, home) : "";
-}
-
 function activeClaudeHomeKeys(homes = {}) {
   return new Set([claudeHomeKey(homes?.claudeHome || "")].filter(Boolean));
-}
-
-function activeTraeHomeKeys(homes = {}) {
-  return new Set([
-    traeHomeKey("recorded", homes?.traeRecordingsDir || ""),
-    traeHomeKey("memory", homes?.traeHome || ""),
-    traeHomeKey("input-history", homes?.traeAppHome || ""),
-  ].filter(Boolean));
 }
 
 function primaryCodexHomeKey(homes = {}) {
@@ -176,14 +136,6 @@ function homeKeyOf(summary, candidate = null, homes = {}) {
     return String(summary?.homeKey || candidate?.homeKey || candidate?.sourceHomeKey || "").trim()
       || claudeHomeKey(homes?.claudeHome || "");
   }
-  if (engine === "trae") {
-    const explicit = String(summary?.homeKey || candidate?.homeKey || candidate?.sourceHomeKey || "").trim();
-    if (explicit) {
-      return explicit;
-    }
-    const kind = traeHomeKind(summary, candidate);
-    return traeHomeKey(kind, traeHomeRootForKind(kind, homes));
-  }
   return "";
 }
 
@@ -200,7 +152,6 @@ function candidateScopeHomeKey(candidate, homes = {}) {
     engine: cached.engine,
     codexHomeKey: cached.codexHomeKey,
     homeKey: cached.homeKey,
-    sourceKind: traeHomeKind(null, cached),
   }, cached, homes);
 }
 
@@ -225,10 +176,6 @@ function isCodexActivePath(summary) {
 
 function deriveRuntimeState(summary) {
   const engine = engineKey(summary?.engine);
-  if (engine === "trae") {
-    const complete = summary?.sourceKind ? summary.sourceKind === "recorded" : summary?.complete !== false;
-    return { live: false, complete };
-  }
   if (engine === "claude" && (summary?.historyOnly === true || (summary?.sourceKind && summary.sourceKind !== "transcript"))) {
     return { live: false, complete: false };
   }
@@ -249,14 +196,7 @@ function deriveRuntimeState(summary) {
   return { live: false, complete: true };
 }
 
-function listCompleteForSource(summary, source = "all") {
-  const engine = engineKey(summary?.engine);
-  if (source === "trae") {
-    return summary?.sourceKind ? summary.sourceKind === "recorded" : Number(summary?.messageCount || 0) > 0;
-  }
-  if (engine === "trae" && source === "trae") {
-    return summary?.sourceKind === "recorded";
-  }
+function listCompleteForSource(summary) {
   return Number(summary?.messageCount || 0) > 0;
 }
 
@@ -320,7 +260,7 @@ function fallbackCandidate(summary) {
   return cacheCandidate({
     key: `${engineKey(summary.engine)}:${summary.filePath || refOf(summary)}`,
     engine: engineKey(summary.engine),
-    kind: engineKey(summary.engine) === "trae" ? `trae-${summary.sourceKind || "summary"}` : "asc-file",
+    kind: "asc-file",
     filePath: summary.filePath || "",
     filePaths,
     mtimeMs,
@@ -366,7 +306,7 @@ function upsertRows(db, candidate, summaries, homes = {}) {
       upsert.run(
         cacheKey,
         ref,
-        summary.id || ref.replace(/^(codex|claude|trae):/, ""),
+        summary.id || ref.replace(/^(codex|claude):/, ""),
         engineKey(summary.engine),
         homeKey,
         summary.title || "",
@@ -560,9 +500,6 @@ function matchesActiveHome(row, homes) {
   if (engine === "claude") {
     return rowHomeKey ? activeClaudeHomeKeys(homes).has(rowHomeKey) : Boolean(claudeHomeKey(homes?.claudeHome || ""));
   }
-  if (engine === "trae") {
-    return rowHomeKey ? activeTraeHomeKeys(homes).has(rowHomeKey) : Boolean(activeTraeHomeKeys(homes).size);
-  }
   return false;
 }
 
@@ -615,10 +552,10 @@ function filterSummariesForRequest(summaries, { source, cwd, completeOnly, liveO
   return out;
 }
 
-async function readCachedSessions({ codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir, source, cwd, completeOnly, liveOnly, limit, offset }) {
+async function readCachedSessions({ codexHome, claudeHome, source, cwd, completeOnly, liveOnly, limit, offset }) {
   const db = await getDb();
   const codexHomes = await discoverCodexHomes(codexHome);
-  const homes = { codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir, codexHomes, activeCodexHomeKeys: codexHomeKeys(codexHomes) };
+  const homes = { codexHome, claudeHome, codexHomes, activeCodexHomeKeys: codexHomeKeys(codexHomes) };
   const rows = db.prepare(`SELECT rowid AS __rowid, * FROM ${CACHE_TABLE} ORDER BY mtime_ms DESC`).all();
   const out = [];
   const skip = Math.max(0, Number(offset || 0));
@@ -687,10 +624,10 @@ export async function sessionListCacheRowCount() {
   return Number(row?.c || 0);
 }
 
-async function sessionListCacheUsableInfo({ source, codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir }) {
+async function sessionListCacheUsableInfo({ source, codexHome, claudeHome }) {
   const db = await getDb();
   const codexHomes = await discoverCodexHomes(codexHome);
-  const homes = { codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir, codexHomes, activeCodexHomeKeys: codexHomeKeys(codexHomes) };
+  const homes = { codexHome, claudeHome, codexHomes, activeCodexHomeKeys: codexHomeKeys(codexHomes) };
   const activeHomeKey = Array.from(homes.activeCodexHomeKeys).sort().join(",");
   const cachedHomeKey = getMeta(db, "codex_home_keys", "");
   const rows = db.prepare(`SELECT rowid AS __rowid, cache_key, ref, engine, home_key, summary_json, candidate_json FROM ${CACHE_TABLE}`).all();
@@ -718,17 +655,11 @@ export async function listSessionsWithCache(options) {
     source,
     codexHome: options.codexHome,
     claudeHome: options.claudeHome,
-    traeHome: options.traeHome,
-    traeAppHome: options.traeAppHome,
-    traeRecordingsDir: options.traeRecordingsDir,
   });
   const rows = cacheInfo.codexHomesChanged ? 0 : cacheInfo.count;
   const homes = {
     codexHome: options.codexHome,
     claudeHome: options.claudeHome,
-    traeHome: options.traeHome,
-    traeAppHome: options.traeAppHome,
-    traeRecordingsDir: options.traeRecordingsDir,
     codexHomes,
     activeCodexHomeKeys: codexHomeKeys(codexHomes),
   };
@@ -759,9 +690,6 @@ export async function reconcileSessionListCache(options) {
   const homes = {
     codexHome: options.codexHome,
     claudeHome: options.claudeHome,
-    traeHome: options.traeHome,
-    traeAppHome: options.traeAppHome,
-    traeRecordingsDir: options.traeRecordingsDir,
     codexHomes,
     activeCodexHomeKeys: codexHomeKeys(codexHomes),
   };
@@ -888,9 +816,6 @@ export async function sessionListCacheWatermark(options = null) {
     const homes = {
       codexHome: options.codexHome,
       claudeHome: options.claudeHome,
-      traeHome: options.traeHome,
-      traeAppHome: options.traeAppHome,
-      traeRecordingsDir: options.traeRecordingsDir,
       codexHomes,
       activeCodexHomeKeys: codexHomeKeys(codexHomes),
     };

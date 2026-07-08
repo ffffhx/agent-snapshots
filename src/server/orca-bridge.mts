@@ -52,7 +52,7 @@ async function bringOrcaToFront() {
 
 // The resume command per engine, run inside an Orca terminal in the session's
 // project. Codex threads resume with `codex resume`; Claude Code conversations
-// resume by session id with `claude --resume`. (Trae has no CLI resume.)
+// resume by session id with `claude --resume`.
 const RESUME_COMMAND = {
   codex: (id, codexHome = "") => `${codexEnvPrefix(codexHome)}codex resume ${id}`,
   claude: (id) => `claude --resume ${id}`,

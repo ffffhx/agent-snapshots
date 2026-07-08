@@ -58,9 +58,6 @@ async function getDb() {
 export async function listImageEntries({
   codexHome,
   claudeHome,
-  traeHome,
-  traeAppHome,
-  traeRecordingsDir,
   listSessions,
   loadSnapshot,
   source = "all",
@@ -71,7 +68,7 @@ export async function listImageEntries({
   const pageOffset = Math.max(0, Number(offset) || 0);
   const targetCount = pageOffset + pageLimit;
   const imageSource = normalizeSource(source);
-  const pageCacheKey = imagePageCacheKey({ codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir, source: imageSource, limit: pageLimit, offset: pageOffset });
+  const pageCacheKey = imagePageCacheKey({ codexHome, claudeHome, source: imageSource, limit: pageLimit, offset: pageOffset });
   const cachedPage = imagePageCache.get(pageCacheKey);
   if (cachedPage && Date.now() - cachedPage.time < PAGE_CACHE_MS) {
     return cachedPage.result;
@@ -79,9 +76,6 @@ export async function listImageEntries({
   const sessions = await listSessions({
     codexHome,
     claudeHome,
-    traeHome,
-    traeAppHome,
-    traeRecordingsDir,
     limit: MAX_SCAN_SESSIONS,
     cwd: "",
     includeArchived: true,
@@ -99,9 +93,6 @@ export async function listImageEntries({
       const sessionResult = await readSessionImages(session, {
         codexHome,
         claudeHome,
-        traeHome,
-        traeAppHome,
-        traeRecordingsDir,
         loadSnapshot,
       });
       entries.push(...sessionResult.entries);
@@ -134,9 +125,6 @@ export async function readImageBytes({
   ref,
   codexHome,
   claudeHome,
-  traeHome,
-  traeAppHome,
-  traeRecordingsDir,
   loadSnapshot,
 }) {
   const target = decodeImageId(ref);
@@ -148,9 +136,6 @@ export async function readImageBytes({
     snapshot = await loadSnapshot(target.sessionRef, {
       codexHome,
       claudeHome,
-      traeHome,
-      traeAppHome,
-      traeRecordingsDir,
       includeTools: false,
       includeToolOutput: false,
       redact: false,
@@ -184,9 +169,6 @@ async function readSessionImages(session, options) {
   const snapshot = await options.loadSnapshot(ref, {
     codexHome: options.codexHome,
     claudeHome: options.claudeHome,
-    traeHome: options.traeHome,
-    traeAppHome: options.traeAppHome,
-    traeRecordingsDir: options.traeRecordingsDir,
     includeTools: false,
     includeToolOutput: false,
     redact: false,
@@ -578,27 +560,23 @@ function normalizeFilePath(value) {
   return path.resolve(String(value || "")).replace(/\\/g, "/");
 }
 
-function imagePageCacheKey({ codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir, source, limit, offset }) {
+function imagePageCacheKey({ codexHome, claudeHome, source, limit, offset }) {
   return [
     normalizeSource(source),
     String(limit),
     String(offset),
     codexHome || "",
     claudeHome || "",
-    traeHome || "",
-    traeAppHome || "",
-    traeRecordingsDir || "",
   ].join("\x1f");
 }
 
 function normalizeSource(value) {
   const key = String(value || "all").toLowerCase();
-  return key === "claude" || key === "trae" || key === "codex" ? key : "all";
+  return key === "claude" || key === "codex" ? key : "all";
 }
 
 function engineLabelFor(engine) {
   if (engine === "claude") return "Claude Code";
-  if (engine === "trae") return "Trae";
   return "Codex";
 }
 

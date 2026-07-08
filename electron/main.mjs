@@ -57,7 +57,6 @@ const POLL_INTERVAL_MS = 5000;
 const TRAY_RECENT_REFRESH_MS = 30000;
 const DEFAULT_SETTINGS = {
   settingsVersion: SETTINGS_VERSION,
-  hideOnBlur: true,
   openAtLogin: false,
   completionSound: true,
   preventSleepWithLiveSessions: false,
@@ -70,6 +69,9 @@ const require = createRequire(import.meta.url);
 
 let serverProcess = null;
 let serverPort = 0;
+let serverRestarting = false;
+let serverHealthTimer = null;
+let serverHealthFailures = 0;
 let startUrl = "";
 let mainWindow = null;
 let viewerWindow = null;
@@ -79,7 +81,6 @@ let quickLook = null;
 let settings = null;
 let quitting = false;
 let launcherBoundsTimer = null;
-let launcherDragUntil = 0;
 let pollTimer = null;
 let pollInFlight = false;
 let recentTrayTimer = null;
@@ -211,11 +212,17 @@ function clearTrackedTimers() {
 
 /** Launch the local viewer server as a child process and wait until it's ready. */
 async function startServer() {
-  serverPort = await findFreePort();
+  // Reuse the previous port across watchdog restarts so already-loaded
+  // windows keep pointing at a valid origin.
+  serverPort = serverPort || (await findFreePort());
   const args = [cliEntry(), "serve", "--host", HOST, "--port", String(serverPort)];
   serverProcess = spawn(process.execPath, args, {
     cwd: APP_ROOT,
-    env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
+    // The Electron-as-node runtime has been observed to permanently wedge its
+    // libuv threadpool under bursty fs load (idle workers stop picking up
+    // queued fs requests). A larger pool reduces the burst pressure; the
+    // health watchdog below recovers the process when it wedges anyway.
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: "1", UV_THREADPOOL_SIZE: process.env.UV_THREADPOOL_SIZE || "16" },
     stdio: ["ignore", "pipe", "pipe"],
   });
 
@@ -223,20 +230,82 @@ async function startServer() {
   serverProcess.stderr.on("data", (chunk) => process.stderr.write(`[server] ${chunk}`));
   serverProcess.on("exit", (code, signal) => {
     serverProcess = null;
-    if (!quitting) {
+    if (quitting || serverRestarting) {
+      return;
+    }
+    restartServer(`server exited unexpectedly (code ${code ?? "?"}, signal ${signal ?? "none"})`).catch(() => {
       dialog.showErrorBox(
         "Agent Snapshots",
-        `本地查看器服务意外停止（代码 ${code ?? "?"}，信号 ${signal ?? "none"}）。`,
+        `本地查看器服务意外停止（代码 ${code ?? "?"}，信号 ${signal ?? "none"}），且自动重启失败。`,
       );
       app.quit();
-    }
+    });
   });
 
   await waitForServer(serverPort);
+  startServerHealthWatchdog();
   return `http://${HOST}:${serverPort}/`;
 }
 
+/** Poll /api/health (a threadpool-exercising fs stat) and restart the server
+ * child when it stops answering: a wedged libuv threadpool keeps cached
+ * endpoints alive while every fs-backed route hangs forever. */
+function startServerHealthWatchdog() {
+  clearInterval(serverHealthTimer);
+  serverHealthFailures = 0;
+  serverHealthTimer = setInterval(async () => {
+    if (quitting || serverRestarting || !serverProcess) {
+      return;
+    }
+    try {
+      const res = await fetch(`http://${HOST}:${serverPort}/api/health?timeoutMs=4000`, {
+        signal: AbortSignal.timeout(8000),
+      });
+      const body = await res.json().catch(() => null);
+      if (res.ok && body?.ok) {
+        serverHealthFailures = 0;
+        return;
+      }
+      serverHealthFailures += 1;
+    } catch {
+      serverHealthFailures += 1;
+    }
+    if (serverHealthFailures >= 3) {
+      serverHealthFailures = 0;
+      await restartServer("health probe failed 3 times").catch((error) => {
+        console.error("[server] watchdog restart failed:", error);
+      });
+    }
+  }, 30_000);
+}
+
+async function restartServer(reason) {
+  if (serverRestarting || quitting) {
+    return;
+  }
+  serverRestarting = true;
+  console.warn(`[server] restarting embedded server: ${reason}`);
+  try {
+    const dying = serverProcess;
+    serverProcess = null;
+    if (dying) {
+      // The typical restart cause is a wedged process; SIGKILL is the only
+      // signal guaranteed to take it down.
+      dying.kill("SIGKILL");
+      await new Promise((resolve) => {
+        dying.once("exit", resolve);
+        setTimeout(resolve, 3000);
+      });
+    }
+    await startServer();
+  } finally {
+    serverRestarting = false;
+  }
+}
+
 function stopServer() {
+  clearInterval(serverHealthTimer);
+  serverHealthTimer = null;
   if (serverProcess) {
     serverProcess.kill("SIGTERM");
     serverProcess = null;
@@ -516,7 +585,7 @@ function normalizeSessionRef(value) {
   if (!text || text.length > MAX_SESSION_REF_LENGTH || /[\u0000-\u001f\u007f]/.test(text)) {
     return "";
   }
-  const match = /^(codex|claude|trae):(.+)$/i.exec(text);
+  const match = /^(codex|claude):(.+)$/i.exec(text);
   if (!match) {
     return /^[A-Za-z0-9._-]+$/.test(text) ? `codex:${text}` : "";
   }
@@ -538,9 +607,6 @@ function engineBadge(session) {
   const engine = String(session?.engine || "codex").toLowerCase();
   if (engine === "claude") {
     return "Claude";
-  }
-  if (engine === "trae") {
-    return "Trae";
   }
   if (engine === "codex") {
     return "Codex";
@@ -680,28 +746,7 @@ function createLauncherWindow() {
     }
   });
 
-  mainWindow.on("blur", () => {
-    setTrackedTimeout(() => {
-      if (
-        setting("hideOnBlur")
-        && mainWindow
-        && !mainWindow.isDestroyed()
-        && mainWindow.isVisible()
-        && !mainWindow.isFocused()
-        && !mainWindow.webContents.isDevToolsOpened()
-        && Date.now() > launcherDragUntil
-      ) {
-        saveLauncherBoundsNow();
-        mainWindow.hide();
-      }
-    }, 160);
-  });
-
-  mainWindow.on("will-move", () => {
-    launcherDragUntil = Date.now() + 800;
-  });
   mainWindow.on("move", () => {
-    launcherDragUntil = Date.now() + 800;
     scheduleLauncherBoundsSave();
   });
   mainWindow.on("resize", scheduleLauncherBoundsSave);
@@ -808,11 +853,6 @@ function toggleLauncherWindow() {
     return;
   }
   showLauncherWindow({ centerOnCursor: true });
-}
-
-function setHideOnBlur(enabled) {
-  writeSetting("hideOnBlur", Boolean(enabled));
-  rebuildTrayMenu();
 }
 
 function setCompletionSound(enabled) {
@@ -988,12 +1028,6 @@ function rebuildTrayMenu() {
     { type: "separator" },
     { label: "全局快捷键", submenu: globalShortcutSubmenu() },
     { type: "separator" },
-    {
-      label: "失焦自动隐藏",
-      type: "checkbox",
-      checked: Boolean(setting("hideOnBlur")),
-      click: (item) => setHideOnBlur(item.checked),
-    },
     {
       label: "完成提示音",
       type: "checkbox",

@@ -1,7 +1,7 @@
 {
   "name": "agent-snapshots",
   "version": "0.2.0",
-  "description": "Local-first read-only snapshots for Codex, Claude Code, and Trae sessions.",
+  "description": "Local-first read-only snapshots for Codex and Claude Code sessions.",
   "type": "module",
   "packageManager": "pnpm@10.20.0",
   "bin": {
@@ -15,7 +15,6 @@
   "keywords": [
     "codex",
     "claude",
-    "trae",
     "agent",
     "snapshot",
     "sessions",

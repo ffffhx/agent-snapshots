@@ -178,10 +178,10 @@ export function HomePage() {
         <div className="hero-copy">
           <p className="eyebrow">本地优先 / 只读审阅 / 可脱敏分享</p>
           <h1 id="hero-title">Agent Snapshots</h1>
-          <p className="lede">把 Codex、Claude Code 和 Trae 的本地会话整理成可审阅、可导出、可发布的只读快照。</p>
+          <p className="lede">把 Codex 和 Claude Code 的本地会话整理成可审阅、可导出、可发布的只读快照。</p>
           <div className="hero-stats" aria-label="能力概览">
             <span>
-              <b>3</b> agent sources
+              <b>2</b> agent sources
             </span>
             <span>
               <b>0</b> cloud sync required
@@ -317,9 +317,6 @@ function ProductShot() {
           </span>
           <span>
             Claude <b>0</b>
-          </span>
-          <span>
-            Trae <b>9</b>
           </span>
         </div>
         <div className="shot-project active">

@@ -22,7 +22,6 @@ export function renderLauncherApp(csrfToken) {
         <button class="scope active" data-scope="all" type="button">全部</button>
         <button class="scope" data-scope="codex" type="button">Codex</button>
         <button class="scope" data-scope="claude" type="button">Claude</button>
-        <button class="scope" data-scope="trae" type="button">Trae</button>
       </div>
     </header>
     <section id="workspace" class="workspace">
@@ -48,7 +47,7 @@ export function renderLauncherApp(csrfToken) {
         <span>→ / ⌘P</span><b>预览</b>
         <span>← / esc</span><b>关闭预览</b>
         <span>↑↓</span><b>选择</b>
-        <span>⌘1-4</span><b>切换范围</b>
+        <span>⌘1-3</span><b>切换范围</b>
         <span>⌘/</span><b>快捷键</b>
         <span>esc</span><b>关闭</b>
       </div>
@@ -96,7 +95,6 @@ html,body{height:100%;background:transparent;color:var(--ink);font-family:var(--
 .badge{display:grid;place-items:center;width:26px;height:26px;border-radius:7px;font:800 11px/1 var(--mono);color:#fff}
 .badge.codex{background:linear-gradient(180deg,#3a2f1d,#2a2214);color:#e6d9bd;border:1px solid rgba(233,220,196,0.18)}
 .badge.claude{background:linear-gradient(180deg,#7a3a1f,#5e2c17);color:#f4dcc4}
-.badge.trae{background:#2f5d49;color:#dbeee5}
 .rc{min-width:0;overflow:hidden}
 .rt{overflow:hidden;color:var(--ink);font:500 14px/1.3 var(--sans);text-overflow:ellipsis;white-space:nowrap}
 .rs{overflow:hidden;margin-top:2px;color:var(--dim);font:500 11.5px/1.3 var(--mono);text-overflow:ellipsis;white-space:nowrap}
@@ -193,9 +191,9 @@ function launcherJs() {
     return `
 const $=(id)=>document.getElementById(id);
 const esc=(v)=>String(v==null?"":v).replace(/[&<>"']/g,(c)=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const SCOPES=["all","codex","claude","trae"];
-const SCOPE_LABELS={all:"全部",codex:"Codex",claude:"Claude",trae:"Trae"};
-const state={items:[],sel:0,scope:"all",query:"",mode:"recent",token:0,loading:false,searchMs:0,matched:0,pinnedPrefs:[],pinnedSet:new Set(),accessPrefs:{},projectPrefs:{},noteRefs:new Set(),notePreviews:{},pinnedCount:0,liveCount:0,recentCount:0,quota:null,ambientLiveCount:0,shortcutsOpen:false,previewOpen:false,previewLoading:false,previewError:false,previewKey:"",previewData:null,previewToken:0};
+const SCOPES=["all","codex","claude"];
+const SCOPE_LABELS={all:"全部",codex:"Codex",claude:"Claude"};
+const state={items:[],sel:0,scope:"all",query:"",mode:"recent",token:0,loading:false,searchMs:0,matched:0,searchFailed:false,pinnedPrefs:[],pinnedSet:new Set(),accessPrefs:{},projectPrefs:{},noteRefs:new Set(),notePreviews:{},pinnedCount:0,liveCount:0,recentCount:0,quota:null,ambientLiveCount:0,shortcutsOpen:false,previewOpen:false,previewLoading:false,previewError:false,previewKey:"",previewData:null,previewToken:0};
 let timer=0;
 let ambientTimer=0;
 let ambientToken=0;
@@ -219,15 +217,15 @@ function relTime(v){
   if(s<86400*30) return Math.floor(s/86400)+" 天";
   return new Date(t).toISOString().slice(0,10);
 }
-function engineKey(it){ const e=(it.engine||"").toLowerCase(); return e==="claude"||e==="trae"?e:"codex"; }
-function badgeChar(k){ return k==="codex"?"C":k==="claude"?"◇":"T"; }
+function engineKey(it){ const e=(it.engine||"").toLowerCase(); return e==="claude"?e:"codex"; }
+function badgeChar(k){ return k==="codex"?"C":"◇"; }
 function bareSessionId(it){
   const id=String(it&&it.id||"").trim();
   if(id) return id;
   const ref=String(it&&it.ref||"");
   const match=/^codex:(home-[0-9a-f]{12}):(.+)$/.exec(ref);
   if(match) return match[2];
-  return ref.replace(/^(codex|claude|trae):/,"");
+  return ref.replace(/^(codex|claude):/,"");
 }
 function sessionKey(it){
   const ref=String(it&&it.ref||"").trim();
@@ -240,7 +238,6 @@ function isCompleteItem(it){
   if(it.complete===true) return true;
   if(it.complete===false) return false;
   const k=engineKey(it);
-  if(k==="trae") return it.sourceKind==="recorded";
   const count=Number(it.messageCount);
   if(Number.isFinite(count)) return count>0;
   if(k==="claude") return it.sourceKind==="transcript" && it.historyOnly!==true;
@@ -252,7 +249,6 @@ function isLiveCandidate(it){
   if(it.live===false) return false;
   if(it.complete===false) return true;
   if(it.complete===true) return false;
-  if(engineKey(it)==="trae") return false;
   return !isCompleteItem(it);
 }
 function isRunning(it){ return !!(it && (it._live===true || it.live===true || it.complete===false)); }
@@ -384,7 +380,7 @@ function normalizePinnedPrefs(pinned){
   for(const item of pinned){
     const ref=String(item&&item.ref||"").trim();
     const engine=String(item&&item.engine||"").trim().toLowerCase();
-    if(!ref || !["codex","claude","trae"].includes(engine) || seen.has(ref)) continue;
+    if(!ref || !["codex","claude"].includes(engine) || seen.has(ref)) continue;
     out.push({ref,engine,pinnedAt:String(item&&item.pinnedAt||"")});
     seen.add(ref);
   }
@@ -496,6 +492,7 @@ async function run(){
   state.loading=true;
   state.searchMs=0;
   state.matched=0;
+  state.searchFailed=false;
   state.pinnedCount=0;
   state.liveCount=0;
   state.recentCount=0;
@@ -529,12 +526,14 @@ async function run(){
     return;
   }
   state.mode="search";
+  state.items=[];
+  state.sel=0;
   render(true);
   try{
     const started=performance.now();
     const p=new URLSearchParams({q,source:state.scope,limit:"40",includeTools:"1"});
     const [searchResult,prefsResult]=await Promise.allSettled([
-      fetch("/api/search?"+p.toString()).then(x=>x.json()),
+      fetch("/api/search?"+p.toString(),{signal:AbortSignal.timeout(30000)}).then(x=>x.json()),
       fetchLauncherPrefs()
     ]);
     if(token!==state.token) return;
@@ -544,7 +543,7 @@ async function run(){
     state.items=Array.isArray(r.results)?r.results:[];
     state.matched=Number(r.matched||state.items.length)||state.items.length;
     state.searchMs=Math.max(0,Math.round(performance.now()-started));
-  }catch(e){ if(token===state.token) state.items=[]; }
+  }catch(e){ if(token===state.token){ state.items=[]; state.searchFailed=true; } }
   if(token===state.token){ state.loading=false; state.sel=0; render(); }
 }
 
@@ -779,8 +778,8 @@ function searchLabel(){
 
 function emptyMessage(){
   const label=SCOPE_LABELS[state.scope]||"当前范围";
+  if(state.query&&state.searchFailed) return "搜索失败或超时，请重试";
   if(state.query) return "没有匹配的 "+label+" 会话";
-  if(state.scope==="trae") return "暂无 Trae 会话 · Trae 会话仅支持查看，按 ⌘↵ 打开完整视图";
   if(state.scope==="codex") return "暂无 Codex 会话";
   if(state.scope==="claude") return "暂无 Claude 会话";
   return "暂无会话";
@@ -795,7 +794,7 @@ function row(it,i){
   const snip=it.snippet?highlight(it.snippet,it.terms):"";
   const sub=[proj,relTime(it.mtime)].filter(Boolean).join(" · ");
   const subLine=state.mode==="search"&&snip?snip:esc(sub);
-  const hint=k==="trae"?"⌘↵ 查看":"点击 Orca 继续";
+  const hint="点击 Orca 继续";
   const pinned=isPinnedItem(it);
   const key=sessionKey(it);
   const notePreview=key?String(state.notePreviews[key]||""):"";
@@ -804,7 +803,7 @@ function row(it,i){
   const freqMarker=it&&it._frecencyBoosted?"<span class='freq-marker' title='常用' aria-label='常用'>⚡</span>":"";
   const live=isRunning(it)?"<span class='live-chip'><span class='live-dot'></span>进行中</span>":"";
   const pin=actionButton("pin",pinned?"取消置顶":"置顶","⭐","pinact"+(pinned?" active":""));
-  const copy=k==="trae"?"":actionButton("copy","复制恢复命令",iconCopy());
+  const copy=actionButton("copy","复制恢复命令",iconCopy());
   const actions="<span class='actions'>"+pin+copy+actionButton("open","完整视图",iconOpen())+"</span>";
   return "<div class='row"+(i===state.sel?" sel":"")+"' data-i='"+i+"' title='"+esc(rowTitle)+"'>"+
     "<span class='badge "+k+"'>"+badgeChar(k)+"</span>"+
@@ -1013,13 +1012,9 @@ function renderPeekTurn(turn){
 }
 
 function updateHint(){
-  const it=state.items[state.sel];
-  const k=it?engineKey(it):(state.scope==="trae"?"trae":"codex");
   const sep="<span class='sep'>·</span>";
   const status="<span class='stat'>"+esc(statusText())+"</span>";
-  const primary=k==="trae"
-    ? "Trae 无法恢复"+sep+"<kbd>⌘↵</kbd> <span class='act'>完整视图</span>"
-    : "<span class='act'>点击 在 Orca 继续</span>"+sep+"<kbd>⌘↵</kbd> 完整视图";
+  const primary="<span class='act'>点击 在 Orca 继续</span>"+sep+"<kbd>⌘↵</kbd> 完整视图";
   const preview=state.previewOpen
     ? "<kbd>←</kbd> <span class='act'>关闭预览</span>"+sep+"<kbd>esc</kbd> 关闭预览"
     : "<kbd>→</kbd> 预览"+sep+"<kbd>⌘P</kbd> 预览";
@@ -1076,7 +1071,7 @@ function touchLauncherAccess(it){
 function resumeCommand(it){
   const k=engineKey(it);
   const id=bareSessionId(it);
-  if(!id || k==="trae") return "";
+  if(!id) return "";
   return k==="claude"?"claude --resume "+id:"codex resume "+id;
 }
 
@@ -1139,8 +1134,6 @@ async function copyText(text){
 
 async function resumeOrOpen(it){
   if(!it) return;
-  const k=engineKey(it);
-  if(k==="trae"){ showToast("Trae 会话无法在 Orca 中恢复 · 按 ⌘↵ 打开完整视图",false); return; }
   showToast("正在唤起 Orca…",false);
   try{
     const p=new URLSearchParams({id:it.ref||"",cwd:it.cwd||it.displayCwd||"",title:it.title||""});
@@ -1192,7 +1185,7 @@ function handleCommandKey(e){
     toggleShortcuts();
     return true;
   }
-  if(/^[1-4]$/.test(e.key)){
+  if(/^[1-3]$/.test(e.key)){
     e.preventDefault();
     setScope(SCOPES[Number(e.key)-1]);
     return true;

@@ -28,7 +28,7 @@ function fakeSemanticEmbed(texts) {
   return Promise.resolve(texts.map((text) => {
     const value = String(text || "").toLowerCase();
     const vector = [
-      countMatches(value, /hide|hidden|source|trae|隐藏|来源|列表/g),
+      countMatches(value, /hide|hidden|source|隐藏|来源|列表/g),
       countMatches(value, /deploy|release|发布|部署/g),
       countMatches(value, /price|cost|价格|费用/g),
     ];
@@ -129,7 +129,7 @@ test("semantic session search persists and reuses indexed embeddings", async () 
       {
         id: "a",
         ref: "codex:a",
-        title: "Hide Trae source",
+        title: "Hide external source",
         engine: "codex",
         engineLabel: "Codex",
         cwd: "/tmp/proj",
@@ -148,7 +148,7 @@ test("semantic session search persists and reuses indexed embeddings", async () 
       },
     ];
     const snapshots = {
-      "codex:a": { id: "a", ref: "codex:a", turns: [{ role: "user", turn: 1, text: "隐藏某个来源的会话列表，把 Trae source hide 掉。" }] },
+      "codex:a": { id: "a", ref: "codex:a", turns: [{ role: "user", turn: 1, text: "隐藏某个来源的会话列表，把 external source hide 掉。" }] },
       "codex:b": { id: "b", ref: "codex:b", turns: [{ role: "user", turn: 1, text: "Prepare deploy release checklist." }] },
     };
     let loadCount = 0;
@@ -195,7 +195,7 @@ test("semantic index prewarm fills stale entries without a query", async () => {
       {
         id: "a",
         ref: "codex:a",
-        title: "Hide Trae source",
+        title: "Hide external source",
         engine: "codex",
         engineLabel: "Codex",
         cwd: "/tmp/proj",
@@ -214,7 +214,7 @@ test("semantic index prewarm fills stale entries without a query", async () => {
       },
     ];
     const snapshots = {
-      "codex:a": { id: "a", ref: "codex:a", turns: [{ role: "user", turn: 1, text: "隐藏某个来源的会话列表，把 Trae source hide 掉。" }] },
+      "codex:a": { id: "a", ref: "codex:a", turns: [{ role: "user", turn: 1, text: "隐藏某个来源的会话列表，把 external source hide 掉。" }] },
       "codex:b": { id: "b", ref: "codex:b", turns: [{ role: "user", turn: 1, text: "Compare model price and cost." }] },
     };
     let loadCount = 0;
@@ -338,9 +338,6 @@ test("lists Claude history-only sessions through claude and all sources", async 
     const allSessions = await listSessions({
       codexHome: path.join(home, "codex"),
       claudeHome: home,
-      traeHome: path.join(home, "trae"),
-      traeAppHome: path.join(home, "trae-app"),
-      traeRecordingsDir: path.join(home, "recordings"),
       source: "all",
       limit: Infinity,
       completeOnly: false,

@@ -14,7 +14,7 @@ const MAX_CHUNKS_PER_SESSION = 8;
 const EMBED_BATCH_SIZE = 32;
 const DEFAULT_MAX_INDEX_SESSIONS = 1200;
 let loadedIndex = null;
-export async function semanticSearchSessions({ codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir, query, limit = DEFAULT_RESULT_LIMIT, scanLimit = DEFAULT_SCAN_LIMIT, updateLimit = DEFAULT_UPDATE_LIMIT, cwd = "", includeArchived = true, source = "all", completeOnly = true, includeTools = false, includeToolOutput = false, model = defaultEmbeddingModel(), baseUrl = defaultOllamaBaseUrl(), indexPath = defaultSemanticIndexPath(), listSessions, loadSnapshot, embedder = embedTexts, }) {
+export async function semanticSearchSessions({ codexHome, claudeHome, query, limit = DEFAULT_RESULT_LIMIT, scanLimit = DEFAULT_SCAN_LIMIT, updateLimit = DEFAULT_UPDATE_LIMIT, cwd = "", includeArchived = true, source = "all", completeOnly = true, includeTools = false, includeToolOutput = false, model = defaultEmbeddingModel(), baseUrl = defaultOllamaBaseUrl(), indexPath = defaultSemanticIndexPath(), listSessions, loadSnapshot, embedder = embedTexts, }) {
     const cleanQuery = String(query || "").trim();
     const resultLimit = clampInteger(limit, 1, MAX_RESULT_LIMIT, DEFAULT_RESULT_LIMIT);
     if (!cleanQuery) {
@@ -27,9 +27,6 @@ export async function semanticSearchSessions({ codexHome, claudeHome, traeHome, 
     const prepared = await ensureSemanticSessionIndex({
         codexHome,
         claudeHome,
-        traeHome,
-        traeAppHome,
-        traeRecordingsDir,
         scanLimit,
         updateLimit,
         cwd,
@@ -160,7 +157,7 @@ export async function semanticIndexStatus(indexPath = defaultSemanticIndexPath()
         };
     }
 }
-async function ensureSemanticSessionIndex({ codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir, scanLimit = DEFAULT_SCAN_LIMIT, updateLimit = DEFAULT_UPDATE_LIMIT, cwd = "", includeArchived = true, source = "all", completeOnly = true, includeTools = false, includeToolOutput = false, model = defaultEmbeddingModel(), baseUrl = defaultOllamaBaseUrl(), indexPath = defaultSemanticIndexPath(), listSessions, loadSnapshot, embedder = embedTexts, }) {
+async function ensureSemanticSessionIndex({ codexHome, claudeHome, scanLimit = DEFAULT_SCAN_LIMIT, updateLimit = DEFAULT_UPDATE_LIMIT, cwd = "", includeArchived = true, source = "all", completeOnly = true, includeTools = false, includeToolOutput = false, model = defaultEmbeddingModel(), baseUrl = defaultOllamaBaseUrl(), indexPath = defaultSemanticIndexPath(), listSessions, loadSnapshot, embedder = embedTexts, }) {
     const sessionScanLimit = clampInteger(scanLimit, 1, MAX_SCAN_LIMIT, DEFAULT_SCAN_LIMIT);
     const sessionUpdateLimit = clampInteger(updateLimit, 0, MAX_UPDATE_LIMIT, DEFAULT_UPDATE_LIMIT);
     const embeddingModel = String(model || defaultEmbeddingModel()).trim() || defaultEmbeddingModel();
@@ -170,9 +167,6 @@ async function ensureSemanticSessionIndex({ codexHome, claudeHome, traeHome, tra
     const sessions = await listSessions({
         codexHome,
         claudeHome,
-        traeHome,
-        traeAppHome,
-        traeRecordingsDir,
         limit: sessionScanLimit,
         cwd,
         includeArchived,
@@ -203,9 +197,6 @@ async function ensureSemanticSessionIndex({ codexHome, claudeHome, traeHome, tra
             const snapshot = await loadSnapshot(ref, {
                 codexHome,
                 claudeHome,
-                traeHome,
-                traeAppHome,
-                traeRecordingsDir,
                 includeTools,
                 includeToolOutput,
                 redact: true,

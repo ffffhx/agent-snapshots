@@ -23,7 +23,7 @@ import { listImageEntries, readImageBytes } from "./image-index.mjs";
 import { launcherPrefsApiResponse, readLauncherPrefs, readLauncherSessionNote, recordLauncherAccess, setLauncherSessionNote, setLauncherSessionPinned, } from "./launcher-prefs.mjs";
 import { discoverCodexHomes, resolveCodexHomeForRef } from "../sources/codex-homes.mjs";
 const execFileAsync = promisify(execFile);
-export async function serveLocalViewer({ codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir, host, port, defaultServerLimit, snapshotLogoSvg, shareConfig, listSessions, loadSnapshot, searchSessions, applySafetyChecksOption, snapshotApiResponse, publishAllSnapshots, publishSnapshot, createShareRequestPayload, stableSnapshotShareId, renderMarkdown, renderHtml, readPositiveInteger, readNonNegativeInteger, safeFileName, }) {
+export async function serveLocalViewer({ codexHome, claudeHome, host, port, defaultServerLimit, snapshotLogoSvg, shareConfig, listSessions, loadSnapshot, searchSessions, applySafetyChecksOption, snapshotApiResponse, publishAllSnapshots, publishSnapshot, createShareRequestPayload, stableSnapshotShareId, renderMarkdown, renderHtml, readPositiveInteger, readNonNegativeInteger, safeFileName, }) {
     const csrfToken = createMutationCsrfToken();
     const sessionHeadCache = new Map();
     const server = http.createServer(async (request, response) => {
@@ -51,6 +51,33 @@ export async function serveLocalViewer({ codexHome, claudeHome, traeHome, traeAp
                 send(response, 200, "image/svg+xml; charset=utf-8", snapshotLogoSvg);
                 return;
             }
+            if (url.pathname === "/api/health") {
+                // Liveness probe that exercises the libuv threadpool: the embedded
+                // Electron-as-node runtime can wedge its fs threadpool under bursty
+                // reads, leaving cached endpoints healthy while every fs-backed route
+                // hangs. A stat that cannot finish within the deadline means the
+                // process needs a restart, which the Electron watchdog handles.
+                const timeoutMs = Math.min(Math.max(Number(url.searchParams.get("timeoutMs")) || 4000, 500), 15000);
+                const started = Date.now();
+                let fsProbeTimer;
+                let ok = true;
+                try {
+                    await Promise.race([
+                        stat(codexHome).catch(() => null),
+                        new Promise((_, reject) => {
+                            fsProbeTimer = setTimeout(() => reject(new Error("fs probe timed out")), timeoutMs);
+                        }),
+                    ]);
+                }
+                catch {
+                    ok = false;
+                }
+                finally {
+                    clearTimeout(fsProbeTimer);
+                }
+                sendJson(response, { ok, fsMs: Date.now() - started }, ok ? 200 : 503);
+                return;
+            }
             if (url.pathname === "/api/sessions") {
                 const limit = url.searchParams.get("all") === "1"
                     ? Number.POSITIVE_INFINITY
@@ -60,9 +87,6 @@ export async function serveLocalViewer({ codexHome, claudeHome, traeHome, traeAp
                     listSessions,
                     codexHome,
                     claudeHome,
-                    traeHome,
-                    traeAppHome,
-                    traeRecordingsDir,
                     limit,
                     offset,
                     cwd: url.searchParams.get("cwd") || "",
@@ -84,29 +108,33 @@ export async function serveLocalViewer({ codexHome, claudeHome, traeHome, traeAp
                 const completeOnly = url.searchParams.get("completeOnly") !== "0";
                 const includeTools = url.searchParams.get("includeTools") === "1" || url.searchParams.get("includeToolOutput") === "1";
                 const includeToolOutput = url.searchParams.get("includeToolOutput") === "1";
-                // Keep the persistent index fresh in the background for future searches.
-                // One overlap-guarded full pass warms the whole corpus (~30s) so later
-                // searches are instant; the live fallback below covers the cold window.
-                syncSearchIndexInBackground({
-                    codexHome,
-                    claudeHome,
-                    traeHome,
-                    traeAppHome,
-                    traeRecordingsDir,
-                    source: "all",
-                    includeArchived,
-                    completeOnly,
-                    scanLimit: 20000,
-                    updateLimit: 20000,
-                    includeTools: true,
-                    includeToolOutput,
-                });
+                const rowCount = await indexRowCount();
+                const coversAll = rowCount > 0 && await searchIndexCoversCodexHomes({ codexHome, source: "all" });
+                // Bootstrap the persistent index only while it does not cover the
+                // corpus yet. Once covered, interactive searches never trigger a sync
+                // pass: a pass re-parses every changed session and blocks the event
+                // loop for seconds, which is exactly what search-as-you-type cannot
+                // afford. Freshness comes from the periodic refresh timer started at
+                // server boot.
+                if (!coversAll) {
+                    syncSearchIndexInBackground({
+                        codexHome,
+                        claudeHome,
+                        source: "all",
+                        includeArchived,
+                        completeOnly,
+                        scanLimit: 20000,
+                        updateLimit: 20000,
+                        includeTools: true,
+                        includeToolOutput,
+                    });
+                }
                 let result;
                 // Serve from the fast index once it holds anything; otherwise do a live
                 // disk scan for this query while the index warms up in the background.
                 const indexReady = url.searchParams.get("noIndex") !== "1"
-                    && (await indexRowCount()) > 0
-                    && await searchIndexCoversCodexHomes({ codexHome, source });
+                    && rowCount > 0
+                    && (source === "all" ? coversAll : await searchIndexCoversCodexHomes({ codexHome, source }));
                 if (indexReady) {
                     result = await searchIndexed({ query, source, cwd, limit });
                 }
@@ -114,9 +142,6 @@ export async function serveLocalViewer({ codexHome, claudeHome, traeHome, traeAp
                     result = await searchSessions({
                         codexHome,
                         claudeHome,
-                        traeHome,
-                        traeAppHome,
-                        traeRecordingsDir,
                         query,
                         limit,
                         scanLimit,
@@ -135,16 +160,10 @@ export async function serveLocalViewer({ codexHome, claudeHome, traeHome, traeAp
                 reconcileSessionListCacheInBackground({
                     codexHome,
                     claudeHome,
-                    traeHome,
-                    traeAppHome,
-                    traeRecordingsDir,
                 });
                 syncSearchIndexInBackground({
                     codexHome,
                     claudeHome,
-                    traeHome,
-                    traeAppHome,
-                    traeRecordingsDir,
                     source: "all",
                     scanLimit: 20000,
                     updateLimit: 20000,
@@ -172,9 +191,6 @@ export async function serveLocalViewer({ codexHome, claudeHome, traeHome, traeAp
                 syncSearchIndexInBackground({
                     codexHome,
                     claudeHome,
-                    traeHome,
-                    traeAppHome,
-                    traeRecordingsDir,
                     source: "all",
                     scanLimit: 20000,
                     updateLimit: 20000,
@@ -183,9 +199,6 @@ export async function serveLocalViewer({ codexHome, claudeHome, traeHome, traeAp
                 const analytics = await buildUsageAnalytics({
                     codexHome,
                     claudeHome,
-                    traeHome,
-                    traeAppHome,
-                    traeRecordingsDir,
                     listSessions,
                     limit,
                 });
@@ -196,9 +209,6 @@ export async function serveLocalViewer({ codexHome, claudeHome, traeHome, traeAp
                 syncSearchIndexInBackground({
                     codexHome,
                     claudeHome,
-                    traeHome,
-                    traeAppHome,
-                    traeRecordingsDir,
                     source: "all",
                     scanLimit: 20000,
                     updateLimit: 20000,
@@ -206,9 +216,6 @@ export async function serveLocalViewer({ codexHome, claudeHome, traeHome, traeAp
                 const digest = await buildWeeklyDigest({
                     codexHome,
                     claudeHome,
-                    traeHome,
-                    traeAppHome,
-                    traeRecordingsDir,
                     listSessions: (options) => listSessionsWithCache({ ...options, listSessions }),
                     weeks: readPositiveInteger(url.searchParams.get("weeks") || "1", "weeks"),
                     limit: readPositiveInteger(url.searchParams.get("limit") || "20000", "limit"),
@@ -220,16 +227,10 @@ export async function serveLocalViewer({ codexHome, claudeHome, traeHome, traeAp
                 reconcileSessionListCacheInBackground({
                     codexHome,
                     claudeHome,
-                    traeHome,
-                    traeAppHome,
-                    traeRecordingsDir,
                 });
                 const insights = await buildInsights({
                     codexHome,
                     claudeHome,
-                    traeHome,
-                    traeAppHome,
-                    traeRecordingsDir,
                     listSessions: (options) => listSessionsWithCache({ ...options, listSessions }),
                     loadSnapshot,
                     source: url.searchParams.get("source") || "all",
@@ -242,9 +243,6 @@ export async function serveLocalViewer({ codexHome, claudeHome, traeHome, traeAp
                 const result = await listImageEntries({
                     codexHome,
                     claudeHome,
-                    traeHome,
-                    traeAppHome,
-                    traeRecordingsDir,
                     listSessions: (options) => listSessionsWithCache({ ...options, listSessions }),
                     loadSnapshot,
                     source: url.searchParams.get("source") || "all",
@@ -264,9 +262,6 @@ export async function serveLocalViewer({ codexHome, claudeHome, traeHome, traeAp
                     ref,
                     codexHome,
                     claudeHome,
-                    traeHome,
-                    traeAppHome,
-                    traeRecordingsDir,
                     loadSnapshot,
                 });
                 if (!image) {
@@ -291,9 +286,6 @@ export async function serveLocalViewer({ codexHome, claudeHome, traeHome, traeAp
                 const snapshot = await loadSnapshot(id, {
                     codexHome,
                     claudeHome,
-                    traeHome,
-                    traeAppHome,
-                    traeRecordingsDir,
                     includeTools: false,
                     includeToolOutput: false,
                     redact: false,
@@ -311,9 +303,6 @@ export async function serveLocalViewer({ codexHome, claudeHome, traeHome, traeAp
                 const head = await readSessionHead(id, {
                     codexHome,
                     claudeHome,
-                    traeHome,
-                    traeAppHome,
-                    traeRecordingsDir,
                     loadSnapshot,
                     cache: sessionHeadCache,
                 });
@@ -324,16 +313,10 @@ export async function serveLocalViewer({ codexHome, claudeHome, traeHome, traeAp
                 reconcileSessionListCacheInBackground({
                     codexHome,
                     claudeHome,
-                    traeHome,
-                    traeAppHome,
-                    traeRecordingsDir,
                 });
                 sendJson(response, { watermark: await sessionListCacheWatermark({
                         codexHome,
                         claudeHome,
-                        traeHome,
-                        traeAppHome,
-                        traeRecordingsDir,
                     }) });
                 return;
             }
@@ -350,9 +333,6 @@ export async function serveLocalViewer({ codexHome, claudeHome, traeHome, traeAp
                     peek = await readSessionPeek(id, {
                         codexHome,
                         claudeHome,
-                        traeHome,
-                        traeAppHome,
-                        traeRecordingsDir,
                         loadSnapshot,
                         cache: sessionHeadCache,
                         turnLimit,
@@ -498,9 +478,6 @@ export async function serveLocalViewer({ codexHome, claudeHome, traeHome, traeAp
                 const result = await semanticSearchSessions({
                     codexHome,
                     claudeHome,
-                    traeHome,
-                    traeAppHome,
-                    traeRecordingsDir,
                     listSessions,
                     loadSnapshot,
                     query,
@@ -527,9 +504,6 @@ export async function serveLocalViewer({ codexHome, claudeHome, traeHome, traeAp
                 const result = await prewarmSemanticIndex({
                     codexHome,
                     claudeHome,
-                    traeHome,
-                    traeAppHome,
-                    traeRecordingsDir,
                     listSessions,
                     loadSnapshot,
                     scanLimit,
@@ -554,9 +528,6 @@ export async function serveLocalViewer({ codexHome, claudeHome, traeHome, traeAp
                 const snapshot = await loadSnapshot(id, {
                     codexHome,
                     claudeHome,
-                    traeHome,
-                    traeAppHome,
-                    traeRecordingsDir,
                     includeTools: url.searchParams.get("includeTools") === "1" || url.searchParams.get("includeToolOutput") === "1",
                     includeToolOutput: url.searchParams.get("includeToolOutput") === "1",
                     redact: url.searchParams.get("redact") !== "0",
@@ -576,9 +547,6 @@ export async function serveLocalViewer({ codexHome, claudeHome, traeHome, traeAp
                 const snapshot = await loadSnapshot(id, {
                     codexHome,
                     claudeHome,
-                    traeHome,
-                    traeAppHome,
-                    traeRecordingsDir,
                     includeTools: url.searchParams.get("includeTools") === "1" || url.searchParams.get("includeToolOutput") === "1",
                     includeToolOutput: url.searchParams.get("includeToolOutput") === "1",
                     redact: url.searchParams.get("redact") !== "0",
@@ -602,9 +570,6 @@ export async function serveLocalViewer({ codexHome, claudeHome, traeHome, traeAp
                 const result = await publishAllSnapshots({
                     codexHome,
                     claudeHome,
-                    traeHome,
-                    traeAppHome,
-                    traeRecordingsDir,
                     cwd: url.searchParams.get("cwd") || "",
                     includeArchived: url.searchParams.get("liveOnly") !== "1",
                     source: "all",
@@ -635,9 +600,6 @@ export async function serveLocalViewer({ codexHome, claudeHome, traeHome, traeAp
                 const snapshot = await loadSnapshot(id, {
                     codexHome,
                     claudeHome,
-                    traeHome,
-                    traeAppHome,
-                    traeRecordingsDir,
                     includeTools: url.searchParams.get("includeTools") === "1" || url.searchParams.get("includeToolOutput") === "1",
                     includeToolOutput: url.searchParams.get("includeToolOutput") === "1",
                     redact: true,
@@ -674,9 +636,6 @@ export async function serveLocalViewer({ codexHome, claudeHome, traeHome, traeAp
                     const snapshot = await loadSnapshot(id, {
                         codexHome,
                         claudeHome,
-                        traeHome,
-                        traeAppHome,
-                        traeRecordingsDir,
                         includeTools: false,
                         includeToolOutput: false,
                         redact: true,
@@ -716,9 +675,6 @@ export async function serveLocalViewer({ codexHome, claudeHome, traeHome, traeAp
                 const snapshot = await loadSnapshot(id, {
                     codexHome,
                     claudeHome,
-                    traeHome,
-                    traeAppHome,
-                    traeRecordingsDir,
                     includeTools: url.searchParams.get("includeTools") === "1" || url.searchParams.get("includeToolOutput") === "1",
                     includeToolOutput: url.searchParams.get("includeToolOutput") === "1",
                     redact: true,
@@ -743,9 +699,6 @@ export async function serveLocalViewer({ codexHome, claudeHome, traeHome, traeAp
                 const snapshot = await loadSnapshot(id, {
                     codexHome,
                     claudeHome,
-                    traeHome,
-                    traeAppHome,
-                    traeRecordingsDir,
                     includeTools: url.searchParams.get("includeTools") === "1" || url.searchParams.get("includeToolOutput") === "1",
                     includeToolOutput: url.searchParams.get("includeToolOutput") === "1",
                     redact: url.searchParams.get("redact") !== "0",
@@ -771,6 +724,30 @@ export async function serveLocalViewer({ codexHome, claudeHome, traeHome, traeAp
         server.once("error", reject);
         server.listen(port, host, resolve);
     });
+    // Warm the persistent search index at boot instead of on the first search:
+    // until one full pass completes and records its coverage meta, every query
+    // falls back to a live disk scan of the whole corpus (~15s+). After that,
+    // a periodic refresh keeps it fresh — deliberately NOT tied to interactive
+    // searches, because a sync pass re-parses every changed session and can
+    // stall the event loop for seconds while it runs.
+    const refreshSearchIndex = () => syncSearchIndexInBackground({
+        codexHome,
+        claudeHome,
+        source: "all",
+        scanLimit: 20000,
+        updateLimit: 20000,
+        includeTools: true,
+    });
+    // Delay the first pass: its session enumeration blocks the event loop in
+    // multi-second chunks, and running it immediately can starve the desktop
+    // app's startup probe (it polls with a 1.5s timeout and gives up after 20s,
+    // showing a "did not start in time" dialog). Ten seconds keeps startup and
+    // first paint responsive; previously-built coverage meta persists, so early
+    // searches still hit the index.
+    const searchIndexWarmupTimer = setTimeout(refreshSearchIndex, 10_000);
+    searchIndexWarmupTimer.unref?.();
+    const searchIndexRefreshTimer = setInterval(refreshSearchIndex, 5 * 60_000);
+    searchIndexRefreshTimer.unref?.();
     const url = `http://${host}:${port}`;
     console.log(`Codex Snapshot is running at ${url}`);
     console.log(`Codex home: ${codexHome}`);
@@ -779,9 +756,6 @@ export async function serveLocalViewer({ codexHome, claudeHome, traeHome, traeAp
         console.log(`Codex extra home${home.label ? ` (${home.label})` : ""}: ${home.home}`);
     }
     console.log(`Claude Code home: ${claudeHome}`);
-    console.log(`Trae home: ${traeHome}`);
-    console.log(`Trae app home: ${traeAppHome}`);
-    console.log(`Trae recordings: ${traeRecordingsDir}`);
 }
 async function readJsonRequestBody(request) {
     const chunks = [];
@@ -800,7 +774,7 @@ async function readJsonRequestBody(request) {
     }
     return JSON.parse(text);
 }
-async function readSessionHead(id, { codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir, loadSnapshot, cache }) {
+async function readSessionHead(id, { codexHome, claudeHome, loadSnapshot, cache }) {
     const cached = cache.get(id);
     if (cached?.filePath) {
         const fileInfo = await stat(cached.filePath).catch(() => null);
@@ -811,9 +785,6 @@ async function readSessionHead(id, { codexHome, claudeHome, traeHome, traeAppHom
     const snapshot = await loadSnapshot(id, {
         codexHome,
         claudeHome,
-        traeHome,
-        traeAppHome,
-        traeRecordingsDir,
         includeTools: false,
         includeToolOutput: false,
         redact: false,
@@ -836,13 +807,10 @@ async function rememberSessionHead(id, snapshot, cache) {
     });
     return head;
 }
-async function readSessionPeek(id, { codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir, loadSnapshot, cache, turnLimit }) {
+async function readSessionPeek(id, { codexHome, claudeHome, loadSnapshot, cache, turnLimit }) {
     const snapshot = await loadSnapshot(id, {
         codexHome,
         claudeHome,
-        traeHome,
-        traeAppHome,
-        traeRecordingsDir,
         includeTools: false,
         includeToolOutput: false,
         redact: true,
@@ -861,7 +829,7 @@ async function readSessionPeek(id, { codexHome, claudeHome, traeHome, traeAppHom
 }
 function normalizePeekSessionRef(value) {
     const text = String(value || "").trim();
-    const match = /^(codex|claude|trae):(.+)$/i.exec(text);
+    const match = /^(codex|claude):(.+)$/i.exec(text);
     if (!match) {
         return "";
     }
@@ -910,9 +878,6 @@ function isSnapshotComplete(snapshot) {
         return false;
     }
     const engine = String(snapshot?.engine || "").toLowerCase();
-    if (engine === "trae") {
-        return true;
-    }
     if (engine === "codex") {
         const filePath = normalizeSessionPath(snapshot?.filePath || snapshot?.displayFilePath || "");
         if (filePath.includes("/archived_sessions/")) {

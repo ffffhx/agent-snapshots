@@ -153,7 +153,7 @@ export function renderServerApp(csrfToken, shareConfig = {}) {
         </div>
         <button id="closeSearch" class="search-close" type="button" title="关闭搜索">关闭</button>
       </div>
-      <input id="globalSearch" class="global-search-input" type="search" placeholder="关键词，可加 source: role: project: before: after: -排除" title="支持过滤语法：source:codex/claude/trae、role:user/assistant、project:名称、before:2026-01-01、after:2026-01-01、-排除词" role="combobox" aria-label="搜索关键词" aria-expanded="true" aria-autocomplete="list" aria-controls="searchResults" autocomplete="off" spellcheck="false">
+      <input id="globalSearch" class="global-search-input" type="search" placeholder="关键词，可加 source: role: project: before: after: -排除" title="支持过滤语法：source:codex/claude、role:user/assistant、project:名称、before:2026-01-01、after:2026-01-01、-排除词" role="combobox" aria-label="搜索关键词" aria-expanded="true" aria-autocomplete="list" aria-controls="searchResults" autocomplete="off" spellcheck="false">
       <div class="search-controls" role="group" aria-label="搜索范围">
         <button class="search-mode active" type="button" data-search-mode="keyword">关键词</button>
         <button class="search-mode" type="button" data-search-mode="semantic">语义</button>

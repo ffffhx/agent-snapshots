@@ -313,7 +313,6 @@ function renderQuickLookHtml(baseUrl) {
       font: 900 11px/1 var(--mono);
     }
     .badge.claude { background: #c58d5a; }
-    .badge.trae { background: #7fb8b1; }
     .row-main {
       min-width: 0;
       display: grid;
@@ -539,13 +538,12 @@ function renderQuickLookHtml(baseUrl) {
 
       function engineKey(item) {
         const value = String(item && item.engine || "").toLowerCase();
-        return value === "claude" || value === "trae" ? value : "codex";
+        return value === "claude" ? value : "codex";
       }
 
       function engineLabel(item) {
         const key = engineKey(item);
         if (key === "claude") return "C";
-        if (key === "trae") return "T";
         return "X";
       }
 

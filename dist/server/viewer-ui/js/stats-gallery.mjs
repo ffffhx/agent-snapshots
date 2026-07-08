@@ -4,14 +4,12 @@ const STATS_FILTERS = [
   { key: "all", label: "全部" },
   { key: "codex", label: "Codex" },
   { key: "claude", label: "Claude" },
-  { key: "trae", label: "Trae" },
 ];
-const STATS_ENGINE_LABELS = { all: "全部", codex: "Codex", claude: "Claude Code", trae: "Trae" };
+const STATS_ENGINE_LABELS = { all: "全部", codex: "Codex", claude: "Claude Code" };
 const GALLERY_FILTERS = [
   { key: "all", label: "全部" },
   { key: "codex", label: "Codex" },
   { key: "claude", label: "Claude" },
-  { key: "trae", label: "Trae" },
 ];
 
 function loadStatsRate() {
@@ -267,7 +265,6 @@ function updateGalleryLightbox() {
 
 function galleryEngineLabel(engine) {
   if (engine === "claude") return "Claude";
-  if (engine === "trae") return "Trae";
   return engine === "codex" ? "Codex" : "";
 }
 
@@ -473,7 +470,6 @@ function statsEngineCounts() {
     all: Number(engines.total || 0),
     codex: Number(engines.codex || 0),
     claude: Number(engines.claude || 0),
-    trae: Number(engines.trae || 0),
   };
 }
 
@@ -747,7 +743,7 @@ function weeklyRangeText(week) {
 
 function weeklyEngineText(week) {
   const counts = week?.sessionCount || {};
-  return "Codex " + formatTokenCount(counts.codex) + " · Claude " + formatTokenCount(counts.claude) + " · Trae " + formatTokenCount(counts.trae);
+  return "Codex " + formatTokenCount(counts.codex) + " · Claude " + formatTokenCount(counts.claude);
 }
 
 function weeklyBusiestText(week) {

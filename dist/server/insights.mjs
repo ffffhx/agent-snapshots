@@ -9,7 +9,7 @@ import { stripAppDirectives as stripCodexAppDirectives } from "../shared/sanitiz
 const DEFAULT_SCAN_LIMIT = 500;
 const MAX_SCAN_LIMIT = 500;
 const INSIGHTS_TABLE = "insights_cache_v1";
-const ENGINE_KEYS = ["codex", "claude", "trae"];
+const ENGINE_KEYS = ["codex", "claude"];
 const SHELL_TOOL_NAMES = new Set([
     "bash",
     "shell",
@@ -54,11 +54,11 @@ async function getDb() {
     })();
     return dbPromise;
 }
-export async function buildInsights({ codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir, listSessions, loadSnapshot, source = "all", limit = DEFAULT_SCAN_LIMIT, }) {
+export async function buildInsights({ codexHome, claudeHome, listSessions, loadSnapshot, source = "all", limit = DEFAULT_SCAN_LIMIT, }) {
     const started = Date.now();
     const scanLimit = clampPositive(limit, DEFAULT_SCAN_LIMIT, MAX_SCAN_LIMIT);
     const insightSource = normalizeSource(source);
-    const scopeKey = insightsScopeKey({ codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir, source: insightSource, scanLimit });
+    const scopeKey = insightsScopeKey({ codexHome, claudeHome, source: insightSource, scanLimit });
     const watermarkBefore = await safeSessionWatermark();
     if (watermarkBefore) {
         const cached = await readPersistedInsights(scopeKey, watermarkBefore);
@@ -73,9 +73,6 @@ export async function buildInsights({ codexHome, claudeHome, traeHome, traeAppHo
     const sessions = await listSessions({
         codexHome,
         claudeHome,
-        traeHome,
-        traeAppHome,
-        traeRecordingsDir,
         limit: scanLimit,
         cwd: "",
         includeArchived: true,
@@ -97,9 +94,6 @@ export async function buildInsights({ codexHome, claudeHome, traeHome, traeAppHo
     const result = await mineInsightsFromSessions(sessions.slice(0, scanLimit), {
         codexHome,
         claudeHome,
-        traeHome,
-        traeAppHome,
-        traeRecordingsDir,
         loadSnapshot,
         scanLimit,
         watermark,
@@ -114,7 +108,7 @@ async function mineInsightsFromSessions(sessions, options) {
     const toolMap = new Map();
     const promptMap = new Map();
     const chainMap = new Map();
-    const engines = { total: 0, codex: 0, claude: 0, trae: 0 };
+    const engines = { total: 0, codex: 0, claude: 0 };
     let failedSessions = 0;
     for (const session of sessions) {
         const engine = engineKey(session?.engine);
@@ -221,9 +215,6 @@ async function snapshotInsightData(session, options) {
     const snapshot = await options.loadSnapshot(ref, {
         codexHome: options.codexHome,
         claudeHome: options.claudeHome,
-        traeHome: options.traeHome,
-        traeAppHome: options.traeAppHome,
-        traeRecordingsDir: options.traeRecordingsDir,
         includeTools: true,
         includeToolOutput: false,
         redact: false,
@@ -699,7 +690,7 @@ function baseInsightEntry(fields) {
     };
 }
 function zeroEngineCounts() {
-    return { codex: 0, claude: 0, trae: 0 };
+    return { codex: 0, claude: 0 };
 }
 function maxIso(current, next) {
     const currentTime = new Date(current || 0).getTime();
@@ -738,7 +729,7 @@ function engineKey(value) {
 }
 function normalizeSource(value) {
     const source = String(value || "all").toLowerCase();
-    return source === "codex" || source === "claude" || source === "trae" ? source : "all";
+    return source === "codex" || source === "claude" ? source : "all";
 }
 function clampPositive(value, fallback, max) {
     const number = Number(value || 0);
@@ -763,9 +754,6 @@ function insightsScopeKey(options) {
         codexHome: normalizePathForScope(options.codexHome),
         extraCodexHomes: String(process.env.AGENT_SNAPSHOT_EXTRA_CODEX_HOMES || ""),
         claudeHome: normalizePathForScope(options.claudeHome),
-        traeHome: normalizePathForScope(options.traeHome),
-        traeAppHome: normalizePathForScope(options.traeAppHome),
-        traeRecordingsDir: normalizePathForScope(options.traeRecordingsDir),
     })).digest("hex");
 }
 function normalizePathForScope(value) {
@@ -835,7 +823,6 @@ function materializeInsightsResult(result) {
             total: Number(result?.engines?.total || 0),
             codex: Number(result?.engines?.codex || 0),
             claude: Number(result?.engines?.claude || 0),
-            trae: Number(result?.engines?.trae || 0),
         },
         topCommands: Array.isArray(result?.topCommands) ? result.topCommands : [],
         topTools: Array.isArray(result?.topTools) ? result.topTools : [],

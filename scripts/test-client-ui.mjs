@@ -150,7 +150,7 @@ async function launcherRuntime() {
     ],
     `
 ${escPrelude()}
-const SCOPES = ["all", "codex", "claude", "trae"];
+const SCOPES = ["all", "codex", "claude"];
 const state = { accessPrefs: {}, projectPrefs: {}, scope: "all" };
 let runCallCount = 0;
 function run() { runCallCount += 1; }
@@ -228,7 +228,6 @@ test("launcher builds resume commands per engine", async () => {
   const { resumeCommand } = await launcherRuntime();
   assert.equal(resumeCommand({ engine: "codex", id: "abc123" }), "codex resume abc123");
   assert.equal(resumeCommand({ engine: "claude", ref: "claude:ccc-111" }), "claude --resume ccc-111");
-  assert.equal(resumeCommand({ engine: "trae", id: "ttt" }), "");
 });
 
 test("launcher scope filtering updates active scope and ignores invalid scopes", async () => {
@@ -237,7 +236,6 @@ test("launcher scope filtering updates active scope and ignores invalid scopes",
       <button class="scope active" data-scope="all"></button>
       <button class="scope" data-scope="codex"></button>
       <button class="scope" data-scope="claude"></button>
-      <button class="scope" data-scope="trae"></button>
     </body>
   `, async () => {
     const { state, runCalls, setScope } = await launcherRuntime();
@@ -534,7 +532,7 @@ test("viewer insight skill drafts escape markdown control text from history", as
   assert.ok(runtime.draftInline("a\n# b").includes("\\# b"), "draftInline should escape headings after whitespace normalization");
 });
 
-test("viewer live-session detection handles codex claude and trae edge cases", async () => {
+test("viewer live-session detection handles codex and claude edge cases", async () => {
   const { isLiveSessionItem } = await viewerRuntime(
     ["sessionEngineKey", "normalizedSessionPath", "isLiveSessionItem"],
     "",
@@ -545,7 +543,6 @@ test("viewer live-session detection handles codex claude and trae edge cases", a
   assert.equal(isLiveSessionItem({ engine: "claude", historyOnly: true, complete: false }), false);
   assert.equal(isLiveSessionItem({ engine: "claude", sourceKind: "summary", complete: false }), false);
   assert.equal(isLiveSessionItem({ engine: "claude", sourceKind: "transcript", complete: false }), true);
-  assert.equal(isLiveSessionItem({ engine: "trae", complete: false }), false);
 });
 
 test("viewer selectSession renders failed snapshot loads without throwing", async () => {

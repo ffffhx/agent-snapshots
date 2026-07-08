@@ -130,7 +130,7 @@ function termLength(term) {
 }
 
 function engineKey(engine) {
-  return engine === "claude" || engine === "trae" ? engine : "codex";
+  return engine === "claude" ? engine : "codex";
 }
 
 function refOf(summary) {
@@ -172,9 +172,6 @@ export async function searchIndexCoversCodexHomes({ codexHome, source = "all" } 
 export async function syncSearchIndex({
   codexHome,
   claudeHome,
-  traeHome,
-  traeAppHome,
-  traeRecordingsDir,
   source = "all",
   cwd = "",
   includeArchived = true,
@@ -186,7 +183,7 @@ export async function syncSearchIndex({
   withTokens = true,
 }) {
   const db = await getDb();
-  const homes = { codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir };
+  const homes = { codexHome, claudeHome };
   const sessions = await listSessions({ ...homes, limit: scanLimit, cwd, includeArchived, source, completeOnly });
   const getStmt = db.prepare("SELECT mtime FROM docs WHERE cache_key = ?");
   const upsert = db.prepare(`INSERT INTO docs
@@ -311,8 +308,14 @@ export async function syncSearchIndex({
 
 // Fire-and-forget incremental sync, guarded so overlapping searches don't stack
 // multiple full passes. Errors are swallowed — the live fallback covers gaps.
+// A pass re-reads every live session and issues synchronous sqlite writes that
+// block the event loop, so rapid search-as-you-type must not restart it each
+// keystroke: after a pass completes, further requests are ignored for a cool-off.
+const SYNC_COOL_OFF_MS = 30_000;
+let lastSyncFinishedAt = 0;
+
 export function syncSearchIndexInBackground(options) {
-  if (syncing) {
+  if (syncing || Date.now() - lastSyncFinishedAt < SYNC_COOL_OFF_MS) {
     return;
   }
   syncing = true;
@@ -321,6 +324,7 @@ export function syncSearchIndexInBackground(options) {
     .catch(() => {})
     .finally(() => {
       syncing = false;
+      lastSyncFinishedAt = Date.now();
     });
 }
 

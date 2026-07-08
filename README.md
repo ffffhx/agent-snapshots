@@ -1,6 +1,6 @@
 # Agent Snapshots
 
-面向 Codex、Claude Code 和 Trae 的本地优先、只读会话查看器与桌面应用。
+面向 Codex 和 Claude Code 的本地优先、只读会话查看器与桌面应用。
 
 它会把你电脑上的 agent 会话整理成可以浏览、搜索、导出、脱敏和分享的快照。适合复盘一次调试过程、沉淀问题排查记录，或者把一段 agent 协作过程发给同事看。
 
@@ -10,8 +10,8 @@
 
 ## 它能做什么
 
-- 读取本地 Codex、Claude Code、Trae 会话历史，并在浏览器里用只读界面查看。
-- 按来源和项目组织会话，支持 Codex / Claude Code / Trae 标签页、正在进行的会话标记和实时跟随。
+- 读取本地 Codex、Claude Code 会话历史，并在浏览器里用只读界面查看。
+- 按来源和项目组织会话，支持 Codex / Claude Code 标签页、正在进行的会话标记和实时跟随。
 - 默认隐藏 system/developer/bootstrap 消息和工具输出，可在标准、详细、摘要视图之间切换。
 - 支持全文搜索、语义搜索、会话内语义搜索、图片图库、使用统计和 Codex 配额仪表。
 - 自动脱敏常见 token、密钥、Cookie、本地 home 路径等敏感信息。
@@ -58,7 +58,7 @@ agent-snapshot serve --port 4321
 ## 怎么使用
 
 1. 打开本地查看器：<http://127.0.0.1:4321/>。
-2. 在左侧选择 Codex、Claude Code 或 Trae 标签页，再按项目选择会话。
+2. 在左侧选择 Codex 或 Claude Code 标签页，再按项目选择会话。
 3. 查看会话内容，按需切换 `脱敏`、主题、阅读字号、密度、视图详略和大纲。
 4. 用 `⌘K` 搜索全部历史，或在当前会话里输入大意做语义搜索。
 5. 点击 `导出 HTML`、`导出 Markdown`、`Gist` 或 `发布分享` 输出只读快照。
@@ -89,17 +89,14 @@ gh auth login
 
 - Codex：`$CODEX_HOME` 或 `~/.codex`
 - Claude Code：`$CLAUDE_HOME` 或 `~/.claude`
-- Trae：`$TRAE_HOME` 或 `~/.trae-cn`
-- Trae 应用数据：`$TRAE_APP_HOME` 或 `~/Library/Application Support/Trae CN`
-- Trae 本地录制：`$TRAE_RECORDINGS_DIR` 或 `~/.agent-snapshot/trae-recordings`
 
 ## 桌面应用
 
 桌面应用复用同一个本地查看器，但外面包了一层 Electron：
 
-- 托盘菜单可显示/隐藏启动器、打开最近会话、切换失焦自动隐藏、开机自启、完成提示音、有会话运行时防休眠、检查更新和退出。
-- 全局快捷键 `Alt+Space` 打开或隐藏启动器；启动器关闭和失焦默认隐藏，不会退出应用。
-- 启动器支持 全部 / Codex / Claude / Trae 范围和 `⌘1` 到 `⌘4` 切换，点击 Codex / Claude 会话会优先在 Orca 继续，Orca 不可用时在 macOS Terminal / iTerm2 回退打开。
+- 托盘菜单可显示/隐藏启动器、打开最近会话、切换开机自启、完成提示音、有会话运行时防休眠、检查更新和退出。
+- 全局快捷键 `Alt+Space` 打开或隐藏启动器；启动器是常驻窗口，失焦不会自动隐藏，关闭窗口也不会退出应用。
+- 启动器支持 全部 / Codex / Claude 范围和 `⌘1` 到 `⌘3` 切换，点击 Codex / Claude 会话会优先在 Orca 继续，Orca 不可用时在 macOS Terminal / iTerm2 回退打开。
 - 支持 `agent-snapshots://launcher` 和 `agent-snapshots://session/<ref>` 深链接。
 - 打包版本会通过 GitHub Releases 检查更新。
 
@@ -110,7 +107,7 @@ gh auth login
 | 快捷键 | 位置 | 作用 |
 | --- | --- | --- |
 | `Alt+Space` | 桌面应用 | 显示/隐藏启动器 |
-| `⌘1` - `⌘4` | 启动器 | 切换 全部 / Codex / Claude / Trae |
+| `⌘1` - `⌘3` | 启动器 | 切换 全部 / Codex / Claude |
 | `↑` / `↓` | 启动器、搜索弹层 | 移动选择 |
 | 点击会话 | 启动器 | 在 Orca 继续 Codex / Claude 会话 |
 | `⌘↵` | 启动器 | 打开完整视图 |

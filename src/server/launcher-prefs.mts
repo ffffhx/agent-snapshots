@@ -3,7 +3,7 @@ import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
-export type LauncherEngine = "codex" | "claude" | "trae";
+export type LauncherEngine = "codex" | "claude";
 
 export interface LauncherPinnedSession {
   ref: string;
@@ -213,7 +213,7 @@ function normalizePinInput(input: LauncherPinInput): { ok: true; ref: string; en
     return { ok: false, error: "missing ref" };
   }
 
-  const refMatch = /^(codex|claude|trae):(.+)$/i.exec(rawRef);
+  const refMatch = /^(codex|claude):(.+)$/i.exec(rawRef);
   const refEngine = refMatch ? normalizeEngine(refMatch[1]) : null;
   const bodyEngine = normalizeEngine(input.engine);
   const engine = bodyEngine || refEngine;
@@ -238,7 +238,7 @@ function normalizePinInput(input: LauncherPinInput): { ok: true; ref: string; en
 
 function normalizeEngine(value: unknown): LauncherEngine | null {
   const text = String(value || "").trim().toLowerCase();
-  return text === "codex" || text === "claude" || text === "trae" ? text : null;
+  return text === "codex" || text === "claude" ? text : null;
 }
 
 function normalizeTouchInput(input: LauncherTouchInput): { ok: true; ref: string; cwd: string; at: string } | { ok: false; error: string } {
@@ -257,7 +257,7 @@ function normalizeTouchInput(input: LauncherTouchInput): { ok: true; ref: string
 
 function normalizeSessionRef(value: unknown): string {
   const text = String(value || "").trim();
-  const match = /^(codex|claude|trae):(.+)$/i.exec(text);
+  const match = /^(codex|claude):(.+)$/i.exec(text);
   const engine = match ? normalizeEngine(match[1]) : null;
   const id = String(match?.[2] || "").trim();
   return engine && id ? `${engine}:${id}` : "";

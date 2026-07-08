@@ -69,9 +69,6 @@ type Embedder = (texts: string[], options: { model: string; baseUrl: string }) =
 type SemanticSearchSessionsOptions = {
   codexHome?: string;
   claudeHome?: string;
-  traeHome?: string;
-  traeAppHome?: string;
-  traeRecordingsDir?: string;
   query: string;
   limit?: number;
   scanLimit?: number;
@@ -113,9 +110,6 @@ let loadedIndex: { path: string; data: SemanticIndexFile } | null = null;
 export async function semanticSearchSessions({
   codexHome,
   claudeHome,
-  traeHome,
-  traeAppHome,
-  traeRecordingsDir,
   query,
   limit = DEFAULT_RESULT_LIMIT,
   scanLimit = DEFAULT_SCAN_LIMIT,
@@ -147,9 +141,6 @@ export async function semanticSearchSessions({
   const prepared = await ensureSemanticSessionIndex({
     codexHome,
     claudeHome,
-    traeHome,
-    traeAppHome,
-    traeRecordingsDir,
     scanLimit,
     updateLimit,
     cwd,
@@ -291,9 +282,6 @@ export async function semanticIndexStatus(indexPath: string = defaultSemanticInd
 async function ensureSemanticSessionIndex({
   codexHome,
   claudeHome,
-  traeHome,
-  traeAppHome,
-  traeRecordingsDir,
   scanLimit = DEFAULT_SCAN_LIMIT,
   updateLimit = DEFAULT_UPDATE_LIMIT,
   cwd = "",
@@ -319,9 +307,6 @@ async function ensureSemanticSessionIndex({
   const sessions = await listSessions({
     codexHome,
     claudeHome,
-    traeHome,
-    traeAppHome,
-    traeRecordingsDir,
     limit: sessionScanLimit,
     cwd,
     includeArchived,
@@ -355,9 +340,6 @@ async function ensureSemanticSessionIndex({
       const snapshot = await loadSnapshot(ref, {
         codexHome,
         claudeHome,
-        traeHome,
-        traeAppHome,
-        traeRecordingsDir,
         includeTools,
         includeToolOutput,
         redact: true,

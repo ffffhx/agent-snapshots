@@ -485,8 +485,7 @@ function renderFacets() {
   const projects = new Map();
   for (const result of raw) {
     const label = result.engineLabel || "Codex";
-    const engine = String(result.engine || "").toLowerCase();
-    const key = engine === "trae" || /trae/i.test(label) ? "trae" : /claude/i.test(label) ? "claude" : "codex";
+    const key = /claude/i.test(label) ? "claude" : "codex";
     const entry = sources.get(key) || { key, label, count: 0 };
     entry.count += 1;
     sources.set(key, entry);
@@ -887,7 +886,7 @@ async function runSearch() {
   }
 
   try {
-    const response = await fetch((semanticMode ? "/api/semantic-search?" : "/api/search?") + params.toString());
+    const response = await fetch((semanticMode ? "/api/semantic-search?" : "/api/search?") + params.toString(), { signal: AbortSignal.timeout(30000) });
     const payload = await response.json();
     if (requestToken !== state.search.requestToken) {
       return;
@@ -1052,7 +1051,7 @@ function renderSearchResult(result, index) {
     "<div class='search-result-actions'>" +
       "<button type='button' class='sr-act' data-sr-action='open' title='打开会话（↵）'>打开</button>" +
       "<button type='button' class='sr-act' data-sr-action='in-session' title='打开并在此会话内搜索'>会话内搜</button>" +
-      (result.engine !== "trae" ? "<button type='button' class='sr-act sr-act-orca' data-sr-action='resume-orca' title='在 Orca 中打开终端并恢复此会话'>↗ Orca 继续</button>" : "") +
+      "<button type='button' class='sr-act sr-act-orca' data-sr-action='resume-orca' title='在 Orca 中打开终端并恢复此会话'>↗ Orca 继续</button>" +
       "<button type='button' class='sr-act' data-sr-action='export-html' title='导出为 HTML'>导出 HTML</button>" +
       "<button type='button' class='sr-act' data-sr-action='copy-path' title='复制项目路径'>复制路径</button>" +
     "</div>" +

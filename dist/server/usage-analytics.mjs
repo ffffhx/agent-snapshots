@@ -2,11 +2,11 @@
 import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-const ENGINE_KEYS = ["codex", "claude", "trae"];
+const ENGINE_KEYS = ["codex", "claude"];
 const DEFAULT_SCAN_LIMIT = 20_000;
 const ACTIVITY_WEEKS = 26;
-export async function buildUsageAnalytics({ codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir, listSessions, limit = DEFAULT_SCAN_LIMIT, }) {
-    const homes = { codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir };
+export async function buildUsageAnalytics({ codexHome, claudeHome, listSessions, limit = DEFAULT_SCAN_LIMIT, }) {
+    const homes = { codexHome, claudeHome };
     const sessions = await listSessions({
         ...homes,
         source: "all",
@@ -17,11 +17,11 @@ export async function buildUsageAnalytics({ codexHome, claudeHome, traeHome, tra
     const range = activityRange();
     const dayMap = new Map();
     for (const date of range.dates) {
-        dayMap.set(date, { date, total: 0, codex: 0, claude: 0, trae: 0 });
+        dayMap.set(date, { date, total: 0, codex: 0, claude: 0 });
     }
-    const hours = Array.from({ length: 24 }, (_, hour) => ({ hour, total: 0, codex: 0, claude: 0, trae: 0 }));
+    const hours = Array.from({ length: 24 }, (_, hour) => ({ hour, total: 0, codex: 0, claude: 0 }));
     const projectMap = new Map();
-    const engines = { total: 0, codex: 0, claude: 0, trae: 0 };
+    const engines = { total: 0, codex: 0, claude: 0 };
     for (const session of sessions) {
         const engine = engineKey(session.engine);
         const when = sessionDate(session);

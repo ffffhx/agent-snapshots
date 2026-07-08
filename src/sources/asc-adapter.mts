@@ -6,7 +6,7 @@
 // functions. codex/claude sessions are parsed + projected by ASC (which we feed
 // our own privacy redaction, markdown renderer, and risk detector), and ASC's
 // snapshot semantics are the source of truth. The legacy `local-history` parser
-// still owns what ASC has no equivalent for: trae, Claude history-only sessions
+// still owns what ASC has no equivalent for: Claude history-only sessions
 // (no transcript file), and searchSessions (document indexing/scoring).
 //
 // Contract: the three exported functions keep the exact same signatures and
@@ -32,8 +32,6 @@ import {
   matchSearchDocument,
   foldSearchText,
   searchTerms,
-  discoverTraeSessionSummaryCandidates,
-  summarizeTraeSessionCandidate,
 } from "./local-history.mjs";
 import {
   codexHomeCacheKey,
@@ -99,7 +97,6 @@ function projectKindForCodexCwd(cwd) {
 
 function refEngine(ref) {
   if (ref.startsWith("claude:")) return "claude";
-  if (ref.startsWith("trae:")) return "trae";
   if (ref.startsWith("codex:")) return "codex";
   return "codex";
 }
@@ -131,7 +128,7 @@ function stripSessionDirectives(session) {
 export async function loadSnapshot(ref, opts) {
   const engine = refEngine(ref);
   if (!ASC_ENGINES.has(engine)) {
-    return legacyLoadSnapshot(ref, opts); // trae stays on legacy
+    return legacyLoadSnapshot(ref, opts);
   }
   const { codexHome, claudeHome, includeTools, includeToolOutput, redact } = opts;
   let selectedCodexHome = codexHome;
@@ -567,9 +564,6 @@ function addFileChangeRisks(snapshot, fileChanges, turnNumber) {
 export async function searchSessions({
   codexHome,
   claudeHome,
-  traeHome,
-  traeAppHome,
-  traeRecordingsDir,
   query,
   limit = DEFAULT_SEARCH_LIMIT,
   scanLimit = DEFAULT_SEARCH_SCAN_LIMIT,
@@ -598,7 +592,7 @@ export async function searchSessions({
     };
   }
 
-  const homes = { codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir };
+  const homes = { codexHome, claudeHome };
   const sessions = await listSessions({
     ...homes,
     limit: sessionScanLimit,
@@ -665,10 +659,6 @@ export async function listSessions(opts) {
     completeOnly = false,
   } = opts;
 
-  if (source === "trae") {
-    return legacyListSessions(opts);
-  }
-
   const codexHomes = await discoverCodexHomes(codexHome);
 
   if (source === "codex" || source === "claude") {
@@ -681,20 +671,14 @@ export async function listSessions(opts) {
   }
 
   if (source === "all") {
-    // codex + claude via ASC; trae still via legacy. Merge by mtime desc and
-    // dedupe by ref (engine-prefixed id), mirroring the legacy "all" semantics.
+    // codex + claude via ASC. Merge by mtime desc and dedupe by ref
+    // (engine-prefixed id), mirroring the legacy "all" semantics.
     const codex = listCodexHomes(codexHomes, { claudeHome, cwd, includeArchived }, { limit, completeOnly });
     const claude = ascListEngine("claude", { codexHome, claudeHome, cwd, includeArchived }, { limit, completeOnly });
     const claudeHistory = await listClaudeHistoryOnly(opts);
-    let trae = [];
-    try {
-      trae = await legacyListSessions({ ...opts, source: "trae", completeOnly: false, limit: Infinity });
-    } catch {
-      trae = [];
-    }
     const seen = new Set();
     const merged = [];
-    for (const s of [...codex, ...claude, ...claudeHistory, ...trae]) {
+    for (const s of [...codex, ...claude, ...claudeHistory]) {
       if (s.ref && seen.has(s.ref)) {
         continue;
       }
@@ -789,9 +773,6 @@ function ascListEngine(engine, { codexHome, claudeHome, cwd, includeArchived = t
 export async function discoverSessionSummaryCandidates({
   codexHome,
   claudeHome,
-  traeHome,
-  traeAppHome,
-  traeRecordingsDir,
   source = "all",
   includeArchived = true,
 }) {
@@ -808,9 +789,6 @@ export async function discoverSessionSummaryCandidates({
     for (const file of discoverFor("claude", codexHome, claudeHome, { includeArchived: true })) {
       candidates.push(ascSummaryCandidate(file));
     }
-  }
-  if (source === "all" || source === "trae") {
-    candidates.push(...await discoverTraeSessionSummaryCandidates({ traeHome, traeAppHome, traeRecordingsDir }));
   }
   candidates.sort((a, b) => b.mtimeMs - a.mtimeMs);
   return candidates;
@@ -835,10 +813,7 @@ function ascSummaryCandidate(file) {
   };
 }
 
-export async function summarizeSessionCandidate(candidate, { codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir } = {}) {
-  if (candidate?.engine === "trae") {
-    return summarizeTraeSessionCandidate(candidate, { traeHome, traeAppHome, traeRecordingsDir });
-  }
+export async function summarizeSessionCandidate(candidate, { codexHome, claudeHome } = {}) {
   const file = {
     path: candidate.path || candidate.filePath,
     engine: candidate.engine || "codex",

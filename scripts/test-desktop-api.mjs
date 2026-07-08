@@ -21,9 +21,6 @@ try {
   const codexHome = path.join(tempDir, "codex");
   const extraCodexHome = path.join(tempDir, "orca", "home");
   const claudeHome = path.join(tempDir, "claude");
-  const traeHome = path.join(tempDir, "trae");
-  const traeAppHome = path.join(tempDir, "trae-app");
-  const traeRecordingsDir = path.join(tempDir, "trae-recordings");
   const prefsDir = path.join(tempDir, "prefs");
   const cacheHome = path.join(tempDir, "cache");
 
@@ -36,9 +33,6 @@ try {
   await writeCodexFixture(codexHome);
   await writeClaudeInsightFixture(claudeHome);
   await mkdir(claudeHome, { recursive: true });
-  await mkdir(traeHome, { recursive: true });
-  await mkdir(traeAppHome, { recursive: true });
-  await mkdir(traeRecordingsDir, { recursive: true });
   await mkdir(prefsDir, { recursive: true });
   await mkdir(cacheHome, { recursive: true });
 
@@ -63,9 +57,6 @@ try {
       CLAUDE_HOME: claudeHome,
       CODEX_HOME: codexHome,
       HOME: tempDir,
-      TRAE_APP_HOME: traeAppHome,
-      TRAE_HOME: traeHome,
-      TRAE_RECORDINGS_DIR: traeRecordingsDir,
       XDG_CACHE_HOME: cacheHome,
     },
     stdio: ["ignore", "pipe", "pipe"],
@@ -82,6 +73,7 @@ try {
     ["GET /api/images and /api/image return image entries safely", () => assertImages(viewerUrl)],
     ["GET /api/session-head validates missing and real ids", () => assertSessionHead(viewerUrl)],
     ["GET /api/sessions-watermark returns a cheap list watermark", () => assertSessionsWatermark(viewerUrl)],
+    ["GET /api/health reports a threadpool-backed fs probe", () => assertHealth(viewerUrl)],
     ["Codex home discovery includes default home when CODEX_HOME is explicit", () => assertCodexHomeDiscoveryIncludesDefault()],
     ["multi-home Codex sessions list and round-trip refs", () => assertMultiHomeCodex(viewerUrl)],
     ["session cache keeps legacy primary rows and scoped stale cleanup", () => assertSessionCacheHomeScoping(path.join(tempDir, "cache-home-scope"))],
@@ -355,6 +347,13 @@ async function assertSessionsWatermark(viewerUrl) {
   assert(Object.hasOwn(payload, "watermark"), "warm sessions watermark payload should include watermark");
   assert(Number.isFinite(Number(payload.watermark)), `warm sessions watermark should be numeric, got ${JSON.stringify(payload)}`);
   assert(elapsedMs < 250, `/api/sessions-watermark should be fast when warm, took ${elapsedMs}ms`);
+}
+
+async function assertHealth(viewerUrl) {
+  const { response, payload } = await fetchJsonResponse(`${viewerUrl}/api/health?timeoutMs=4000`, { timeoutMs: 6000 });
+  assert(response.status === 200, `/api/health should return 200 on a healthy server, got ${response.status}`);
+  assert(payload.ok === true, `/api/health should report ok:true, got ${JSON.stringify(payload)}`);
+  assert(Number.isFinite(Number(payload.fsMs)), `/api/health should report a numeric fsMs, got ${JSON.stringify(payload)}`);
 }
 
 async function assertMultiHomeCodex(viewerUrl) {
@@ -647,22 +646,9 @@ async function assertColdSessionCacheLiveOnly(cacheDir) {
           messageCount: 1,
           mtime: "2026-06-01T00:00:01.000Z",
         },
-        {
-          engine: "trae",
-          ref: "trae:input-history",
-          id: "input-history",
-          title: "Input history",
-          sourceKind: "input-history",
-          complete: false,
-          messageCount: 1,
-          mtime: "2026-06-01T00:00:02.000Z",
-        },
       ],
       codexHome: path.join(cacheDir, "codex"),
       claudeHome: path.join(cacheDir, "claude"),
-      traeHome: path.join(cacheDir, "trae"),
-      traeAppHome: path.join(cacheDir, "trae-app"),
-      traeRecordingsDir: path.join(cacheDir, "trae-recordings"),
       source: "all",
       limit: 20,
       offset: 0,
@@ -763,9 +749,6 @@ async function assertLegacyPrimaryCacheRow(cacheDir) {
       },
       codexHome,
       claudeHome: path.join(cacheDir, "claude"),
-      traeHome: path.join(cacheDir, "trae"),
-      traeAppHome: path.join(cacheDir, "trae-app"),
-      traeRecordingsDir: path.join(cacheDir, "trae-recordings"),
       source: "codex",
       limit: 5,
       offset: 0,
@@ -844,9 +827,6 @@ async function assertScopedStaleCleanup(cacheDir) {
     const result = await cache.reconcileSessionListCache({
       codexHome,
       claudeHome: path.join(cacheDir, "claude"),
-      traeHome: path.join(cacheDir, "trae"),
-      traeAppHome: path.join(cacheDir, "trae-app"),
-      traeRecordingsDir: path.join(cacheDir, "trae-recordings"),
     });
     assert(result.deleted === 1, `only active-home stale row should be deleted: ${JSON.stringify(result)}`);
     db = new DatabaseSync(cache.sessionListCachePath());
@@ -1078,7 +1058,7 @@ function assertQuotaWindow(value, label) {
 
 function assertEngineCounts(value, label) {
   assert(value && typeof value === "object", `${label} should be an object`);
-  for (const key of ["total", "codex", "claude", "trae"]) {
+  for (const key of ["total", "codex", "claude"]) {
     assert(typeof value[key] === "number" && Number.isFinite(value[key]), `${label}.${key} should be a number`);
   }
 }

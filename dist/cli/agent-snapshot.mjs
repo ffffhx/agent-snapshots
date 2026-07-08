@@ -1,17 +1,15 @@
 #!/usr/bin/env node
 // @ts-nocheck
 import { execFile } from "node:child_process";
-import { existsSync, readFileSync, renameSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
-import { appendFile, mkdir, readdir, readFile, rm, stat, unlink, writeFile } from "node:fs/promises";
-import http from "node:http";
+import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { sanitizeSnapshotHtml as sanitizeSnapshotTurnHtml, stripAppDirectives as stripCodexAppDirectives, } from "../shared/sanitize.js";
 import { buildTranscriptOutlineItems, isInterruptionMarker, renderTranscriptHtml } from "../renderers/transcript.js";
-import { send, sendJson } from "../server/http.js";
 import { createGitHubGist } from "../server/gist-publish.mjs";
 import { serveLocalViewer } from "../server/local-viewer.mjs";
 import { readCodexQuotaSnapshot } from "../server/quota-meter.mjs";
@@ -20,15 +18,13 @@ import { semanticIndexStatus } from "../server/semantic-index.mjs";
 import { sessionListCachePath, sessionListCacheStatus } from "../server/session-list-cache.mjs";
 import { buildWeeklyDigest, renderWeeklyDigestMarkdown } from "../server/weekly-digest.mjs";
 import { discoverCodexHomes } from "../sources/codex-homes.mjs";
-import { discoverSessionSummaryCandidates, listSessions, loadSnapshot, searchSessions } from "../sources/index.mjs";
+import { listSessions, loadSnapshot, searchSessions } from "../sources/index.mjs";
 const packageRoot = findPackageRoot(path.dirname(fileURLToPath(import.meta.url)));
 const cliPath = fileURLToPath(import.meta.url);
 const VERSION = readPackageVersion(packageRoot);
 const DEFAULT_LIMIT = 40;
 const DEFAULT_SERVER_LIMIT = 80;
-const DEFAULT_TRAE_RECORDER_PORT = 4732;
 const DEFAULT_VIEWER_PORT = 4321;
-const MAX_TRAE_CAPTURE_POST_BYTES = 64 * 1024 * 1024;
 const DEFAULT_SNAPSHOT_SHARE_API_URL = "https://8-218-149-148.anyip.dev/agent-snapshots";
 const DEFAULT_SNAPSHOT_SHARE_SITE_URL = "https://ffffhx.github.io/agent-snapshots";
 const DEFAULT_DAEMON_LABEL = "com.agent-snapshots.viewer";
@@ -86,35 +82,14 @@ async function main() {
     }
     const codexHome = path.resolve(parsed.options.codexHome || process.env.CODEX_HOME || path.join(os.homedir(), ".codex"));
     const claudeHome = path.resolve(parsed.options.claudeHome || process.env.CLAUDE_HOME || path.join(os.homedir(), ".claude"));
-    const traeHome = path.resolve(parsed.options.traeHome || process.env.TRAE_HOME || path.join(os.homedir(), ".trae-cn"));
-    const traeAppHome = path.resolve(parsed.options.traeAppHome || process.env.TRAE_APP_HOME || path.join(os.homedir(), "Library", "Application Support", "Trae CN"));
-    // The data dir was ~/.codex-snapshot before the agent-snapshots rename;
-    // adopt the old dir once so existing Trae recordings survive the rename.
-    const dataDir = path.join(os.homedir(), ".agent-snapshot");
-    const legacyDataDir = path.join(os.homedir(), ".codex-snapshot");
-    if (!existsSync(dataDir) && existsSync(legacyDataDir)) {
-        try {
-            renameSync(legacyDataDir, dataDir);
-        }
-        catch {
-            // Keep using the default below; worst case recordings restart fresh.
-        }
-    }
-    const traeRecordingsDir = path.resolve(parsed.options.traeRecordingsDir || process.env.TRAE_RECORDINGS_DIR || path.join(dataDir, "trae-recordings"));
     if (parsed.command === "digest") {
         await ensureDigestTokenIndex({
             codexHome,
             claudeHome,
-            traeHome,
-            traeAppHome,
-            traeRecordingsDir,
         });
         const digest = await buildWeeklyDigest({
             codexHome,
             claudeHome,
-            traeHome,
-            traeAppHome,
-            traeRecordingsDir,
             listSessions,
             weeks: parsed.options.weeks || 1,
         });
@@ -127,7 +102,7 @@ async function main() {
         return;
     }
     if (parsed.command === "doctor") {
-        const report = await buildDoctorReport({ codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir });
+        const report = await buildDoctorReport({ codexHome, claudeHome });
         if (parsed.options.json) {
             console.log(JSON.stringify(report, null, 2));
         }
@@ -140,9 +115,6 @@ async function main() {
         const sessions = await listSessions({
             codexHome,
             claudeHome,
-            traeHome,
-            traeAppHome,
-            traeRecordingsDir,
             limit: parsed.options.limit || DEFAULT_LIMIT,
             cwd: parsed.options.cwd,
             includeArchived: parsed.options.includeArchived,
@@ -164,9 +136,6 @@ async function main() {
         const result = await searchSessions({
             codexHome,
             claudeHome,
-            traeHome,
-            traeAppHome,
-            traeRecordingsDir,
             query,
             limit: parsed.options.limit || 10,
             scanLimit: parsed.options.scanLimit || 600,
@@ -193,9 +162,6 @@ async function main() {
         const snapshot = await loadSnapshot(ref, {
             codexHome,
             claudeHome,
-            traeHome,
-            traeAppHome,
-            traeRecordingsDir,
             includeTools: parsed.options.includeTools,
             includeToolOutput: parsed.options.includeToolOutput,
             redact: !parsed.options.noRedact,
@@ -220,9 +186,6 @@ async function main() {
         const snapshot = await loadSnapshot(ref, {
             codexHome,
             claudeHome,
-            traeHome,
-            traeAppHome,
-            traeRecordingsDir,
             includeTools: parsed.options.includeTools,
             includeToolOutput: parsed.options.includeToolOutput,
             redact: !parsed.options.noRedact,
@@ -255,9 +218,6 @@ async function main() {
         const snapshot = await loadSnapshot(ref, {
             codexHome,
             claudeHome,
-            traeHome,
-            traeAppHome,
-            traeRecordingsDir,
             includeTools: parsed.options.includeTools,
             includeToolOutput: parsed.options.includeToolOutput,
             redact: !parsed.options.noRedact,
@@ -281,18 +241,7 @@ async function main() {
     if (parsed.command === "serve") {
         const port = parsed.options.port || DEFAULT_VIEWER_PORT;
         const host = parsed.options.host || "127.0.0.1";
-        await serve({ codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir, host, port });
-        return;
-    }
-    if (parsed.command === "record-trae") {
-        const port = parsed.options.port || DEFAULT_TRAE_RECORDER_PORT;
-        const host = parsed.options.host || "127.0.0.1";
-        await serveTraeRecorder({
-            host,
-            port,
-            traeRecordingsDir,
-            recordSensitiveContext: parsed.options.recordSensitiveContext,
-        });
+        await serve({ codexHome, claudeHome, host, port });
         return;
     }
     throw new Error(`unknown command: ${parsed.command}`);
@@ -325,10 +274,6 @@ function parseArgs(args) {
         withSafety: false,
         source: "codex",
         claudeHome: "",
-        traeAppHome: "",
-        traeHome: "",
-        traeRecordingsDir: "",
-        recordSensitiveContext: false,
         weeks: 0,
     };
     const positionals = [];
@@ -377,10 +322,6 @@ function parseArgs(args) {
             options.noRedact = true;
             continue;
         }
-        if (arg === "--record-sensitive-context") {
-            options.recordSensitiveContext = true;
-            continue;
-        }
         if (arg === "--allow-unredacted") {
             options.allowUnredacted = true;
             continue;
@@ -393,7 +334,7 @@ function parseArgs(args) {
             options.includeArchived = false;
             continue;
         }
-        if (arg === "--codex-home" || arg === "--claude-home" || arg === "--trae-home" || arg === "--trae-app-home" || arg === "--trae-recordings-dir" || arg === "--cwd" || arg === "--limit" || arg === "--scan-limit" || arg === "--weeks" || arg === "--output" || arg === "-o" || arg === "--port" || arg === "--host" || arg === "--source" || arg === "--api-url" || arg === "--site-url" || arg === "--share-token" || arg === "--expires-in-days" || arg === "--label") {
+        if (arg === "--codex-home" || arg === "--claude-home" || arg === "--cwd" || arg === "--limit" || arg === "--scan-limit" || arg === "--weeks" || arg === "--output" || arg === "-o" || arg === "--port" || arg === "--host" || arg === "--source" || arg === "--api-url" || arg === "--site-url" || arg === "--share-token" || arg === "--expires-in-days" || arg === "--label") {
             const value = args[index + 1];
             if (!value) {
                 throw new Error(`${arg} requires a value`);
@@ -403,15 +344,6 @@ function parseArgs(args) {
             }
             else if (arg === "--claude-home") {
                 options.claudeHome = value;
-            }
-            else if (arg === "--trae-home") {
-                options.traeHome = value;
-            }
-            else if (arg === "--trae-app-home") {
-                options.traeAppHome = value;
-            }
-            else if (arg === "--trae-recordings-dir") {
-                options.traeRecordingsDir = value;
             }
             else if (arg === "--cwd") {
                 options.cwd = value;
@@ -438,8 +370,8 @@ function parseArgs(args) {
                 options.host = value;
             }
             else if (arg === "--source") {
-                if (!["codex", "claude", "trae", "all"].includes(value)) {
-                    throw new Error("--source must be codex, claude, trae, or all");
+                if (!["codex", "claude", "all"].includes(value)) {
+                    throw new Error("--source must be codex, claude, or all");
                 }
                 options.source = value;
             }
@@ -688,15 +620,12 @@ function formatDaemonCommand(config) {
 function readOptionalPositiveInteger(value, label) {
     return value ? readPositiveInteger(value, label) : 0;
 }
-async function buildDoctorReport({ codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir }) {
+async function buildDoctorReport({ codexHome, claudeHome }) {
     const now = Date.now();
     const codexHomes = await safeDiagnostic("codexHomes", () => discoverCodexHomes(codexHome), []);
     const codexSessions = await safeDiagnostic("codexSessions", () => listSessions({
         codexHome,
         claudeHome,
-        traeHome,
-        traeAppHome,
-        traeRecordingsDir,
         limit: Number.POSITIVE_INFINITY,
         includeArchived: true,
         source: "codex",
@@ -705,16 +634,6 @@ async function buildDoctorReport({ codexHome, claudeHome, traeHome, traeAppHome,
     const codexSessionCounts = countBy(codexSessions, (session) => session.codexHomeKey || "");
     const claudeHomeExists = await pathExists(claudeHome);
     const claudeProjectCount = await directoryEntryCount(path.join(claudeHome, "projects"));
-    const traeCandidates = await safeDiagnostic("traeCandidates", () => discoverSessionSummaryCandidates({
-        codexHome,
-        claudeHome,
-        traeHome,
-        traeAppHome,
-        traeRecordingsDir,
-        source: "trae",
-        includeArchived: true,
-    }), []);
-    const traeCounts = countBy(traeCandidates, (candidate) => candidate.kind || "unknown");
     const cacheStatus = await safeDiagnostic("sessionListCache", () => sessionListCacheStatus(), null);
     const searchStats = await safeDiagnostic("searchIndex", () => searchIndexStats(), null);
     const semanticStatus = await safeDiagnostic("semanticIndex", () => semanticIndexStatus(), null);
@@ -736,11 +655,6 @@ async function buildDoctorReport({ codexHome, claudeHome, traeHome, traeAppHome,
                 exists: claudeHomeExists,
                 projectCount: claudeProjectCount,
             },
-            trae: [
-                { label: "Trae home", path: traeHome, exists: await pathExists(traeHome), candidates: Number(traeCounts.get("trae-memory") || 0) },
-                { label: "Trae app home", path: traeAppHome, exists: await pathExists(traeAppHome), candidates: Number(traeCounts.get("trae-input-history") || 0) },
-                { label: "Trae recordings", path: traeRecordingsDir, exists: await pathExists(traeRecordingsDir), candidates: Number(traeCounts.get("trae-recorded") || 0) },
-            ],
         },
         sessionListCache: {
             path: cacheStatus?.path || sessionListCachePath(),
@@ -795,7 +709,7 @@ async function safeDiagnostic(_label, fn, fallback) {
         return fallback;
     }
 }
-async function ensureDigestTokenIndex({ codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir }) {
+async function ensureDigestTokenIndex({ codexHome, claudeHome }) {
     const stats = await safeDiagnostic("digestSearchIndex", () => searchIndexStats(), null);
     if (Number(stats?.sessionsWithTokens || 0) > 0) {
         return;
@@ -803,9 +717,6 @@ async function ensureDigestTokenIndex({ codexHome, claudeHome, traeHome, traeApp
     const sessions = await safeDiagnostic("digestSessions", () => listSessions({
         codexHome,
         claudeHome,
-        traeHome,
-        traeAppHome,
-        traeRecordingsDir,
         source: "all",
         includeArchived: true,
         completeOnly: true,
@@ -818,9 +729,6 @@ async function ensureDigestTokenIndex({ codexHome, claudeHome, traeHome, traeApp
     const result = await syncSearchIndex({
         codexHome,
         claudeHome,
-        traeHome,
-        traeAppHome,
-        traeRecordingsDir,
         source: "all",
         includeArchived: true,
         completeOnly: true,
@@ -879,11 +787,6 @@ function renderDoctorReport(report) {
         lines.push(`  ${checkSymbol(home.exists)} ${home.path}${label} · sessions ${formatInteger(home.sessionCount)}`);
     }
     lines.push(checkLine(report.homes.claude.exists, "Claude Code home", `${report.homes.claude.path} · projects ${formatInteger(report.homes.claude.projectCount)}`));
-    const traeExisting = report.homes.trae.filter((item) => item.exists).length;
-    lines.push(checkLine(traeExisting > 0 ? true : null, "Trae homes", `${traeExisting}/${report.homes.trae.length} 个路径存在`));
-    for (const home of report.homes.trae) {
-        lines.push(`  ${checkSymbol(home.exists)} ${home.label}: ${home.path} · candidates ${formatInteger(home.candidates)}`);
-    }
     const cache = report.sessionListCache;
     lines.push(checkLine(cache.available ? (cache.rows > 0 ? true : null) : false, "Session-list cache", `${cache.path} · rows ${formatInteger(cache.rows)} · watermark ${cache.watermark ? ageText(cache.watermarkAgeMs) : "无"}`));
     const search = report.searchIndex;
@@ -1039,13 +942,10 @@ function browserShareConfig() {
         siteUrl: resolveShareSiteUrl(""),
     };
 }
-async function publishAllSnapshots({ codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir, cwd, includeArchived, source, completeOnly, limit, includeTools, includeToolOutput, safety, }) {
+async function publishAllSnapshots({ codexHome, claudeHome, cwd, includeArchived, source, completeOnly, limit, includeTools, includeToolOutput, safety, }) {
     const sessions = await listSessions({
         codexHome,
         claudeHome,
-        traeHome,
-        traeAppHome,
-        traeRecordingsDir,
         limit,
         cwd,
         includeArchived,
@@ -1068,9 +968,6 @@ async function publishAllSnapshots({ codexHome, claudeHome, traeHome, traeAppHom
             const snapshot = await loadSnapshot(ref, {
                 codexHome,
                 claudeHome,
-                traeHome,
-                traeAppHome,
-                traeRecordingsDir,
                 includeTools,
                 includeToolOutput,
                 redact: true,
@@ -2101,13 +1998,10 @@ function formatDate(value) {
     }
     return date.toISOString().replace("T", " ").slice(0, 16);
 }
-async function serve({ codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir, host, port }) {
+async function serve({ codexHome, claudeHome, host, port }) {
     await serveLocalViewer({
         codexHome,
         claudeHome,
-        traeHome,
-        traeAppHome,
-        traeRecordingsDir,
         host,
         port,
         defaultServerLimit: DEFAULT_SERVER_LIMIT,
@@ -2128,1185 +2022,6 @@ async function serve({ codexHome, claudeHome, traeHome, traeAppHome, traeRecordi
         readNonNegativeInteger,
         safeFileName,
     });
-}
-async function serveTraeRecorder({ host, port, traeRecordingsDir, recordSensitiveContext }) {
-    await mkdir(traeRecordingsDir, { recursive: true });
-    const endpoint = `http://${host}:${port}/capture`;
-    const wsEndpoint = `ws://${host}:${port}/capture-ws`;
-    const server = http.createServer(async (request, response) => {
-        try {
-            setCorsHeaders(response);
-            if (request.method === "OPTIONS") {
-                response.writeHead(204);
-                response.end();
-                return;
-            }
-            const url = new URL(request.url || "/", `http://${request.headers.host || `${host}:${port}`}`);
-            if (url.pathname === "/") {
-                send(response, 200, "text/html; charset=utf-8", renderTraeRecorderHome({ host, port, traeRecordingsDir, recordSensitiveContext }));
-                return;
-            }
-            if (url.pathname === "/health") {
-                sendJson(response, {
-                    ok: true,
-                    endpoint,
-                    wsEndpoint,
-                    recordingsDir: traeRecordingsDir,
-                    recordSensitiveContext,
-                });
-                return;
-            }
-            if (url.pathname === "/trae-recorder.js") {
-                send(response, 200, "application/javascript; charset=utf-8", renderTraeRecorderScript({ endpoint, wsEndpoint, recordSensitiveContext }));
-                return;
-            }
-            if (url.pathname === "/capture" && request.method === "POST") {
-                const event = await readJsonRequest(request, MAX_TRAE_CAPTURE_POST_BYTES);
-                const saved = await saveTraeCaptureEvent(event, { traeRecordingsDir, recordSensitiveContext });
-                sendJson(response, saved);
-                return;
-            }
-            send(response, 404, "text/plain; charset=utf-8", "not found");
-        }
-        catch (error) {
-            sendJson(response, { error: error instanceof Error ? error.message : String(error) }, 500);
-        }
-    });
-    server.on("upgrade", (request, socket) => {
-        handleTraeRecorderUpgrade(request, socket, { traeRecordingsDir, recordSensitiveContext });
-    });
-    await new Promise((resolve, reject) => {
-        server.once("error", reject);
-        server.listen(port, host, resolve);
-    });
-    const url = `http://${host}:${port}`;
-    console.log(`Trae local recorder is running at ${url}`);
-    console.log(`Recorder script: import("${url}/trae-recorder.js")`);
-    console.log(`Recorder WebSocket: ${wsEndpoint}`);
-    console.log(`Recordings dir: ${traeRecordingsDir}`);
-    console.log(`Sensitive context recording: ${recordSensitiveContext ? "enabled" : "disabled"}`);
-}
-function handleTraeRecorderUpgrade(request, socket, { traeRecordingsDir, recordSensitiveContext }) {
-    try {
-        const url = new URL(request.url || "/", `http://${request.headers.host || "127.0.0.1"}`);
-        if (url.pathname !== "/capture-ws") {
-            socket.destroy();
-            return;
-        }
-        const key = request.headers["sec-websocket-key"];
-        if (!key) {
-            socket.destroy();
-            return;
-        }
-        const accept = createHash("sha1")
-            .update(`${key}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`)
-            .digest("base64");
-        socket.write([
-            "HTTP/1.1 101 Switching Protocols",
-            "Upgrade: websocket",
-            "Connection: Upgrade",
-            `Sec-WebSocket-Accept: ${accept}`,
-            "",
-            "",
-        ].join("\r\n"));
-        let buffer = Buffer.alloc(0);
-        let fragmentedOpcode = 0;
-        let fragmentedPayloads = [];
-        const handleTextPayload = (payload) => {
-            try {
-                const event = JSON.parse(payload.toString("utf8"));
-                saveTraeCaptureEvent(event, {
-                    traeRecordingsDir,
-                    recordSensitiveContext,
-                }).catch(() => { });
-            }
-            catch { }
-        };
-        socket.on("data", (chunk) => {
-            buffer = Buffer.concat([buffer, chunk]);
-            const parsed = readWebSocketFrames(buffer);
-            buffer = parsed.remaining;
-            for (const frame of parsed.frames) {
-                if (frame.opcode === 0x8) {
-                    socket.end();
-                    return;
-                }
-                if (frame.opcode === 0x1) {
-                    if (frame.fin) {
-                        handleTextPayload(frame.payload);
-                    }
-                    else {
-                        fragmentedOpcode = frame.opcode;
-                        fragmentedPayloads = [frame.payload];
-                    }
-                    continue;
-                }
-                if (frame.opcode === 0x0 && fragmentedOpcode === 0x1) {
-                    fragmentedPayloads.push(frame.payload);
-                    if (frame.fin) {
-                        handleTextPayload(Buffer.concat(fragmentedPayloads));
-                        fragmentedOpcode = 0;
-                        fragmentedPayloads = [];
-                    }
-                }
-            }
-        });
-    }
-    catch {
-        socket.destroy();
-    }
-}
-function readWebSocketFrames(buffer) {
-    const frames = [];
-    let offset = 0;
-    while (buffer.length - offset >= 2) {
-        const first = buffer[offset];
-        const second = buffer[offset + 1];
-        const fin = (first & 0x80) !== 0;
-        const opcode = first & 0x0f;
-        const masked = (second & 0x80) !== 0;
-        let length = second & 0x7f;
-        let headerLength = 2;
-        if (length === 126) {
-            if (buffer.length - offset < 4) {
-                break;
-            }
-            length = buffer.readUInt16BE(offset + 2);
-            headerLength = 4;
-        }
-        else if (length === 127) {
-            if (buffer.length - offset < 10) {
-                break;
-            }
-            const high = buffer.readUInt32BE(offset + 2);
-            const low = buffer.readUInt32BE(offset + 6);
-            length = high * 2 ** 32 + low;
-            headerLength = 10;
-        }
-        const maskLength = masked ? 4 : 0;
-        const totalLength = headerLength + maskLength + length;
-        if (buffer.length - offset < totalLength) {
-            break;
-        }
-        const mask = masked ? buffer.subarray(offset + headerLength, offset + headerLength + 4) : null;
-        const payloadStart = offset + headerLength + maskLength;
-        const payload = Buffer.from(buffer.subarray(payloadStart, payloadStart + length));
-        if (mask) {
-            for (let index = 0; index < payload.length; index += 1) {
-                payload[index] ^= mask[index % 4];
-            }
-        }
-        frames.push({ fin, opcode, payload });
-        offset += totalLength;
-    }
-    return {
-        frames,
-        remaining: buffer.subarray(offset),
-    };
-}
-function setCorsHeaders(response) {
-    response.setHeader("access-control-allow-origin", "*");
-    response.setHeader("access-control-allow-methods", "GET,POST,OPTIONS");
-    response.setHeader("access-control-allow-headers", "content-type");
-    response.setHeader("access-control-max-age", "86400");
-}
-async function readJsonRequest(request, limitBytes) {
-    const chunks = [];
-    let total = 0;
-    for await (const chunk of request) {
-        total += chunk.length;
-        if (total > limitBytes) {
-            throw new Error(`capture body is larger than ${formatBytes(limitBytes)}`);
-        }
-        chunks.push(chunk);
-    }
-    const text = Buffer.concat(chunks).toString("utf8");
-    if (!text.trim()) {
-        throw new Error("empty capture body");
-    }
-    return JSON.parse(text);
-}
-async function saveTraeCaptureEvent(event, { traeRecordingsDir, recordSensitiveContext }) {
-    if (!event || typeof event !== "object") {
-        throw new Error("capture event must be a JSON object");
-    }
-    const pageSession = safeCaptureId(event.pageSession || event.page?.session || `trae-${new Date().toISOString().slice(0, 10)}`);
-    const body = normalizeCapturedBody(event.body);
-    const chunk = normalizeCapturedBody(event.chunk);
-    const sessionEvent = { ...event, body, chunk };
-    const actualSessionId = extractActualTraeSessionId(sessionEvent) || "";
-    const captureSessionId = extractTraeCaptureSessionId(sessionEvent, actualSessionId) || "";
-    const captureFileId = safeCaptureId(captureSessionId || actualSessionId || pageSession);
-    const filePath = path.join(traeRecordingsDir, `${captureFileId}.jsonl`);
-    const domThreadId = cleanTraeSessionId(event.domThreadId || event.dom_thread_id || "");
-    if (actualSessionId && domThreadId) {
-        await migrateTraeCaptureAlias(traeRecordingsDir, domThreadId, captureFileId);
-    }
-    const record = {
-        schema: "trae-local-recorder-event.v1",
-        capturedAt: normalizeRecordedTimestamp(event.capturedAt) || new Date().toISOString(),
-        pageSession,
-        captureSessionId,
-        captureFileId,
-        domThreadId,
-        sequence: Number(event.sequence || 0),
-        kind: String(event.kind || "capture"),
-        source: String(event.source || ""),
-        requestId: event.requestId ? String(event.requestId) : "",
-        wsId: event.wsId ? String(event.wsId) : "",
-        eventSourceId: event.eventSourceId ? String(event.eventSourceId) : "",
-        method: event.method ? String(event.method) : "",
-        status: Number.isFinite(Number(event.status)) ? Number(event.status) : undefined,
-        statusText: event.statusText ? String(event.statusText) : "",
-        contentType: event.contentType ? String(event.contentType) : "",
-        url: sanitizeCaptureUrl(event.url),
-        responseUrl: sanitizeCaptureUrl(event.responseUrl),
-        pageUrl: sanitizeCaptureUrl(event.page?.href || event.pageUrl),
-        pageTitle: event.page?.title ? String(event.page.title) : event.pageTitle ? String(event.pageTitle) : "",
-        body,
-        chunk,
-        bodyEncoding: event.bodyEncoding ? String(event.bodyEncoding) : "",
-        actualSessionId,
-        sensitiveContextRecorded: Boolean(recordSensitiveContext),
-        headers: recordSensitiveContext ? normalizeCaptureHeaders(event.headers) : undefined,
-    };
-    await appendFile(filePath, `${JSON.stringify(record)}\n`, "utf8");
-    return {
-        ok: true,
-        file: filePath,
-        captureSessionId: record.captureSessionId,
-        actualSessionId: record.actualSessionId,
-        eventKind: record.kind,
-        sequence: record.sequence,
-    };
-}
-function normalizeCapturedBody(value) {
-    if (value == null) {
-        return "";
-    }
-    if (typeof value === "string") {
-        return value;
-    }
-    try {
-        return JSON.stringify(value);
-    }
-    catch {
-        return String(value);
-    }
-}
-function normalizeCaptureHeaders(headers) {
-    if (!headers || typeof headers !== "object") {
-        return undefined;
-    }
-    const normalized = {};
-    for (const [key, value] of Object.entries(headers)) {
-        normalized[String(key).toLowerCase()] = Array.isArray(value)
-            ? value.map((item) => String(item))
-            : String(value);
-    }
-    return normalized;
-}
-function sanitizeCaptureUrl(value) {
-    if (!value) {
-        return "";
-    }
-    try {
-        const url = new URL(String(value));
-        for (const key of [...url.searchParams.keys()]) {
-            url.searchParams.set(key, "<redacted>");
-        }
-        url.hash = "";
-        return url.toString();
-    }
-    catch {
-        return String(value).replace(/[?&]([^=&#]+)=([^&#]+)/g, (_match, key) => `?${key}=<redacted>`);
-    }
-}
-function safeCaptureId(value) {
-    const clean = String(value || "")
-        .trim()
-        .replace(/[^A-Za-z0-9._-]+/g, "-")
-        .replace(/^-+|-+$/g, "");
-    if (!clean) {
-        return `trae-${Date.now().toString(36)}`;
-    }
-    return clean.length > 96 ? `${clean.slice(0, 72)}-${stableHash(clean)}` : clean;
-}
-async function migrateTraeCaptureAlias(traeRecordingsDir, fromId, toId) {
-    const fromFileId = safeCaptureId(fromId);
-    const toFileId = safeCaptureId(toId);
-    if (!fromFileId || !toFileId || fromFileId === toFileId) {
-        return;
-    }
-    const fromPath = path.join(traeRecordingsDir, `${fromFileId}.jsonl`);
-    const toPath = path.join(traeRecordingsDir, `${toFileId}.jsonl`);
-    try {
-        const existing = await readFile(fromPath, "utf8");
-        if (existing.trim()) {
-            await appendFile(toPath, existing.endsWith("\n") ? existing : `${existing}\n`, "utf8");
-        }
-        await unlink(fromPath);
-    }
-    catch (error) {
-        if (error?.code !== "ENOENT") {
-            throw error;
-        }
-    }
-}
-const TRAE_ACTUAL_SESSION_KEYS = new Set([
-    "agentsessionid",
-    "chatsessionid",
-    "conversationid",
-    "conversationuuid",
-    "currentsessionid",
-    "sessionid",
-    "sessionuuid",
-    "threadid",
-    "taskid",
-    "chatid",
-]);
-const TRAE_CAPTURE_SESSION_KEYS = new Set([
-    ...TRAE_ACTUAL_SESSION_KEYS,
-    "capturesessionid",
-    "domthreadid",
-]);
-function normalizeTraeSessionKey(key) {
-    return String(key || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
-}
-function cleanTraeSessionId(value) {
-    const clean = String(value || "").trim();
-    if (!clean || clean.length < 8 || clean.length > 240) {
-        return "";
-    }
-    if (/^(<redacted>|undefined|null|true|false)$/i.test(clean)) {
-        return "";
-    }
-    if (/^(data:|blob:|https?:)/i.test(clean)) {
-        return "";
-    }
-    return clean;
-}
-function extractActualTraeSessionId(event) {
-    const values = [];
-    const explicit = cleanTraeSessionId(event.actualSessionId || event.actual_session_id);
-    if (explicit) {
-        return explicit;
-    }
-    collectTraeSessionValues(event, TRAE_ACTUAL_SESSION_KEYS, values, 0);
-    for (const payloadText of [event.body, event.chunk]) {
-        if (!payloadText || typeof payloadText !== "string") {
-            continue;
-        }
-        for (const payload of parseCapturePayloads(payloadText)) {
-            collectTraeSessionValues(payload, TRAE_ACTUAL_SESSION_KEYS, values, 0);
-        }
-    }
-    for (const value of values) {
-        const clean = cleanTraeSessionId(value);
-        if (clean) {
-            return clean;
-        }
-    }
-    for (const url of [event.url, event.responseUrl, event.page?.href, event.pageUrl]) {
-        const fromUrl = extractTraeSessionIdFromUrl(url);
-        if (fromUrl) {
-            return fromUrl;
-        }
-    }
-    return "";
-}
-function extractTraeCaptureSessionId(event, actualSessionId) {
-    if (actualSessionId) {
-        return actualSessionId;
-    }
-    const explicit = cleanTraeSessionId(event.captureSessionId || event.capture_session_id || event.page?.captureSessionId);
-    if (explicit) {
-        return explicit;
-    }
-    const values = [];
-    collectTraeSessionValues(event, TRAE_CAPTURE_SESSION_KEYS, values, 0);
-    for (const payloadText of [event.body, event.chunk]) {
-        if (!payloadText || typeof payloadText !== "string") {
-            continue;
-        }
-        for (const payload of parseCapturePayloads(payloadText)) {
-            collectTraeSessionValues(payload, TRAE_CAPTURE_SESSION_KEYS, values, 0);
-        }
-    }
-    for (const value of values) {
-        const clean = cleanTraeSessionId(value);
-        if (clean) {
-            return clean;
-        }
-    }
-    return "";
-}
-function collectTraeSessionValues(value, keys, results, depth) {
-    if (!value || depth > 8 || typeof value !== "object") {
-        return;
-    }
-    if (Array.isArray(value)) {
-        for (const item of value) {
-            collectTraeSessionValues(item, keys, results, depth + 1);
-        }
-        return;
-    }
-    for (const [key, child] of Object.entries(value)) {
-        if (typeof child === "string" && keys.has(normalizeTraeSessionKey(key))) {
-            results.push(child);
-        }
-        else if (child && typeof child === "object") {
-            collectTraeSessionValues(child, keys, results, depth + 1);
-        }
-    }
-}
-function extractTraeSessionIdFromUrl(value) {
-    if (!value) {
-        return "";
-    }
-    const raw = String(value);
-    try {
-        const url = new URL(raw);
-        for (const [key, child] of url.searchParams.entries()) {
-            if (TRAE_ACTUAL_SESSION_KEYS.has(normalizeTraeSessionKey(key))) {
-                const clean = cleanTraeSessionId(child);
-                if (clean) {
-                    return clean;
-                }
-            }
-        }
-        const pathMatch = url.pathname.match(/(?:session|conversation|chat|thread|task)[/_-]([A-Za-z0-9._:-]{8,})/i);
-        if (pathMatch) {
-            return cleanTraeSessionId(pathMatch[1]);
-        }
-    }
-    catch {
-        const match = raw.match(/[?&#](?:[^=]*?(?:session|conversation|chat|thread|task)[^=]*?id)=([^&#]+)/i)
-            || raw.match(/(?:session|conversation|chat|thread|task)[/_-]([A-Za-z0-9._:-]{8,})/i);
-        if (match) {
-            return cleanTraeSessionId(decodeURIComponent(match[1]));
-        }
-    }
-    return "";
-}
-function renderTraeRecorderHome({ host, port, traeRecordingsDir, recordSensitiveContext }) {
-    const scriptUrl = `http://${host}:${port}/trae-recorder.js`;
-    return `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Trae Local Recorder</title>
-  <style>
-    body { margin: 40px; max-width: 920px; background: #f5efe4; color: #15191f; font: 18px/1.55 ui-serif, Georgia, serif; }
-    h1 { font-size: 48px; line-height: 1; margin: 0 0 24px; }
-    code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-    pre { background: #15191f; color: #fff; padding: 18px; overflow: auto; }
-    .meta { color: #687386; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-  </style>
-</head>
-<body>
-  <h1>Trae Local Recorder</h1>
-  <p class="meta">status: running | recordings: ${escapeHtml(traeRecordingsDir)} | sensitive context: ${recordSensitiveContext ? "enabled" : "disabled"}</p>
-  <p>Open Trae DevTools for the Trae window you want to record, then run:</p>
-  <pre>import(${JSON.stringify(scriptUrl)})</pre>
-  <p>If dynamic import is blocked, run:</p>
-  <pre>fetch(${JSON.stringify(scriptUrl)}).then((r) => r.text()).then((code) => (0, eval)(code))</pre>
-</body>
-</html>`;
-}
-function renderTraeRecorderScript({ endpoint, wsEndpoint, recordSensitiveContext }) {
-    return `(() => {
-  const ENDPOINT = ${JSON.stringify(endpoint)};
-  const WS_ENDPOINT = ${JSON.stringify(wsEndpoint)};
-  const RECORD_SENSITIVE_CONTEXT = ${recordSensitiveContext ? "true" : "false"};
-  const nativeFetch = window.fetch;
-  const nativeFetchBound = nativeFetch.bind(window);
-  const nativeWebSocket = window.WebSocket;
-  if (window.__codexTraeRecorder && window.__codexTraeRecorder.installed) {
-    console.info("[agent-snapshot] Trae recorder already installed", window.__codexTraeRecorder);
-    return;
-  }
-  const recorder = {
-    installed: true,
-    endpoint: ENDPOINT,
-    pageSession: "trae-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2),
-    actualSessionId: "",
-    actualSessionUpdatedAt: 0,
-    actualSessionSource: "",
-    captureSessionId: "",
-    pageStateSessionId: "",
-    domThreadId: "",
-    domThreadSignature: "",
-    sequence: 0,
-  };
-  const transport = { socket: null, queue: [], opening: false, failed: false };
-  window.__codexTraeRecorder = recorder;
-
-  function nextId(prefix) {
-    return prefix + "-" + Date.now().toString(36) + "-" + (++recorder.sequence).toString(36);
-  }
-
-  function sanitizeUrl(value) {
-    if (!value) return "";
-    try {
-      const url = new URL(String(value), location.href);
-      for (const key of Array.from(url.searchParams.keys())) {
-        url.searchParams.set(key, "<redacted>");
-      }
-      url.hash = "";
-      return url.toString();
-    } catch {
-      return String(value);
-    }
-  }
-
-  const TRAE_SESSION_ID_KEYS = new Set([
-    "agentsessionid",
-    "chatsessionid",
-    "conversationid",
-    "conversationuuid",
-    "currentsessionid",
-    "sessionid",
-    "sessionuuid",
-    "threadid",
-    "taskid",
-    "chatid",
-  ]);
-
-  function normalizeSessionKey(key) {
-    return String(key || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
-  }
-
-  function isSessionIdKey(key) {
-    const normalized = normalizeSessionKey(key);
-    return TRAE_SESSION_ID_KEYS.has(normalized)
-      || (normalized.startsWith("data") && TRAE_SESSION_ID_KEYS.has(normalized.slice(4)));
-  }
-
-  function cleanSessionId(value) {
-    const clean = String(value || "").trim();
-    if (!clean || clean.length < 8 || clean.length > 240) return "";
-    if (/^(<redacted>|undefined|null|true|false)$/i.test(clean)) return "";
-    if (/^(data:|blob:|https?:)/i.test(clean)) return "";
-    if (clean.includes("\\n")) return "";
-    return clean;
-  }
-
-  function rememberActualSessionId(value, source) {
-    const clean = cleanSessionId(value);
-    if (!clean) return "";
-    recorder.actualSessionId = clean;
-    recorder.actualSessionUpdatedAt = Date.now();
-    recorder.actualSessionSource = source || "network";
-    if (recorder.actualSessionSource !== "page-state") {
-      recorder.captureSessionId = clean;
-    }
-    return clean;
-  }
-
-  function rememberCaptureSessionId(value) {
-    const clean = cleanSessionId(value);
-    if (!clean) return "";
-    if (!recorder.actualSessionId) recorder.captureSessionId = clean;
-    return clean;
-  }
-
-  function currentCaptureSessionId() {
-    return (recorder.actualSessionSource !== "page-state" ? recorder.actualSessionId : "")
-      || recorder.captureSessionId
-      || recorder.domThreadId
-      || "";
-  }
-
-  function collectSessionIds(value, out, depth) {
-    if (value == null || depth > 8) return;
-    if (typeof value === "string") {
-      const text = value.trim();
-      if (!text || text.length > 300000) return;
-      if (text[0] === "{" || text[0] === "[") {
-        try {
-          collectSessionIds(JSON.parse(text), out, depth + 1);
-          return;
-        } catch {}
-      }
-      for (const line of text.split(/\\r?\\n/)) {
-        const item = line.trim();
-        if (!item.startsWith("data:")) continue;
-        const data = item.slice(5).trim();
-        if (!data || data === "[DONE]") continue;
-        try {
-          collectSessionIds(JSON.parse(data), out, depth + 1);
-        } catch {}
-      }
-      return;
-    }
-    if (Array.isArray(value)) {
-      for (const item of value) collectSessionIds(item, out, depth + 1);
-      return;
-    }
-    if (typeof value !== "object") return;
-    for (const [key, child] of Object.entries(value)) {
-      if (isSessionIdKey(key)) {
-        const clean = cleanSessionId(child);
-        if (clean) out.push(clean);
-      }
-      if (child && (typeof child === "object" || typeof child === "string")) {
-        collectSessionIds(child, out, depth + 1);
-      }
-    }
-  }
-
-  function rememberSessionIdsFromText(text) {
-    const values = [];
-    collectSessionIds(text, values, 0);
-    return values.length ? rememberActualSessionId(values[0], "network-body") : "";
-  }
-
-  function rememberSessionIdsFromUrl(value) {
-    if (!value) return "";
-    try {
-      const url = new URL(String(value), location.href);
-      for (const [key, child] of url.searchParams.entries()) {
-        if (isSessionIdKey(key)) {
-          const remembered = rememberActualSessionId(child, "network-url");
-          if (remembered) return remembered;
-        }
-      }
-      const pathMatch = url.pathname.match(/(?:session|conversation|chat|thread|task)[/_-]([A-Za-z0-9._:-]{8,})/i);
-      if (pathMatch) return rememberActualSessionId(pathMatch[1], "network-url");
-    } catch {}
-    return "";
-  }
-
-  function rememberSessionIdsFromCapture(url, text) {
-    return rememberSessionIdsFromUrl(url) || rememberSessionIdsFromText(text);
-  }
-
-  function rememberSessionIdsFromPageState() {
-    rememberSessionIdsFromUrl(location.href);
-    const values = [];
-    try {
-      collectSessionIds(history.state, values, 0);
-    } catch {}
-    try {
-      for (const storage of [localStorage, sessionStorage]) {
-        for (let index = 0; index < storage.length; index += 1) {
-          const key = storage.key(index);
-          const value = key ? storage.getItem(key) : "";
-          if (isSessionIdKey(key)) {
-            const clean = cleanSessionId(value);
-            if (clean) values.push(clean);
-          }
-          collectSessionIds(value, values, 0);
-        }
-      }
-    } catch {}
-    try {
-      const selectors = [
-        "[data-session-id]",
-        "[data-conversation-id]",
-        "[data-chat-id]",
-        "[data-thread-id]",
-        "[data-task-id]",
-        "[aria-current='true']",
-        ".active",
-        ".selected",
-        ".current",
-      ].join(",");
-      const elements = Array.from(document.querySelectorAll(selectors)).slice(0, 80);
-      for (const element of elements) {
-        for (const attr of Array.from(element.attributes || [])) {
-          if (isSessionIdKey(attr.name)) {
-            const clean = cleanSessionId(attr.value);
-            if (clean) values.push(clean);
-          }
-        }
-      }
-    } catch {}
-    if (values.length) {
-      recorder.pageStateSessionId = cleanSessionId(values[0]);
-    }
-    return values[0] || "";
-  }
-
-  function headersToObject(headers) {
-    if (!RECORD_SENSITIVE_CONTEXT || !headers) return undefined;
-    try {
-      const out = {};
-      new Headers(headers).forEach((value, key) => { out[key] = value; });
-      return out;
-    } catch {
-      return undefined;
-    }
-  }
-
-  async function readBody(value) {
-    if (value == null) return "";
-    if (typeof value === "string") return value;
-    if (value instanceof URLSearchParams) return value.toString();
-    if (typeof FormData !== "undefined" && value instanceof FormData) {
-      const out = {};
-      for (const [key, item] of value.entries()) {
-        out[key] = typeof item === "string" ? item : "[File " + (item.name || "blob") + " " + (item.type || "application/octet-stream") + "]";
-      }
-      return JSON.stringify(out);
-    }
-    if (typeof Blob !== "undefined" && value instanceof Blob) {
-      if (value.type && !/^text\\/|json|javascript|xml|x-www-form-urlencoded/i.test(value.type)) {
-        return "[Blob " + value.type + " " + value.size + " bytes]";
-      }
-      return await value.text();
-    }
-    if (value instanceof ArrayBuffer) {
-      return new TextDecoder().decode(value);
-    }
-    if (ArrayBuffer.isView(value)) {
-      return new TextDecoder().decode(value);
-    }
-    if (typeof ReadableStream !== "undefined" && value instanceof ReadableStream) {
-      return "[ReadableStream request body]";
-    }
-    try {
-      return JSON.stringify(value);
-    } catch {
-      return String(value);
-    }
-  }
-
-  async function readFetchRequestBody(input, init) {
-    if (init && Object.prototype.hasOwnProperty.call(init, "body")) {
-      return readBody(init.body);
-    }
-    if (typeof Request !== "undefined" && input instanceof Request) {
-      try {
-        return await input.clone().text();
-      } catch {
-        return "";
-      }
-    }
-    return "";
-  }
-
-  function requestHeaders(input, init) {
-    if (init && init.headers) return headersToObject(init.headers);
-    if (typeof Request !== "undefined" && input instanceof Request) return headersToObject(input.headers);
-    return undefined;
-  }
-
-  async function post(kind, payload) {
-    rememberSessionIdsFromPageState();
-    if (payload && payload.actualSessionId) rememberActualSessionId(payload.actualSessionId);
-    if (payload && payload.captureSessionId) rememberCaptureSessionId(payload.captureSessionId);
-    const event = {
-      schema: "trae-browser-recorder.v1",
-      kind,
-      capturedAt: new Date().toISOString(),
-      page: { href: sanitizeUrl(location.href), title: document.title },
-      pageSession: recorder.pageSession,
-      sequence: ++recorder.sequence,
-      ...payload,
-      actualSessionId: recorder.actualSessionSource === "page-state" ? "" : recorder.actualSessionId || "",
-      actualSessionIdSource: recorder.actualSessionSource || "",
-      pageStateSessionId: recorder.pageStateSessionId || "",
-      captureSessionId: currentCaptureSessionId(),
-      domThreadId: recorder.domThreadId || "",
-    };
-    const body = JSON.stringify(event);
-    if (sendViaWebSocket(body)) {
-      return;
-    }
-    try {
-      await nativeFetchBound(ENDPOINT, {
-        method: "POST",
-        mode: "cors",
-        keepalive: body.length < 60000,
-        headers: { "content-type": "application/json" },
-        body,
-      });
-    } catch (error) {
-      console.debug("[agent-snapshot] recorder post failed", error);
-    }
-  }
-
-  function sendViaWebSocket(body) {
-    if (transport.failed || !nativeWebSocket || !WS_ENDPOINT) return false;
-    if (transport.socket && transport.socket.readyState === nativeWebSocket.OPEN) {
-      transport.socket.send(body);
-      return true;
-    }
-    transport.queue.push(body);
-    if (!transport.opening) {
-      transport.opening = true;
-      try {
-        transport.socket = new nativeWebSocket(WS_ENDPOINT);
-        transport.socket.addEventListener("open", () => {
-          transport.opening = false;
-          const pending = transport.queue.splice(0);
-          for (const item of pending) transport.socket.send(item);
-        });
-        transport.socket.addEventListener("close", () => {
-          transport.opening = false;
-          transport.socket = null;
-        });
-        transport.socket.addEventListener("error", () => {
-          transport.opening = false;
-          transport.failed = true;
-          transport.socket = null;
-        });
-      } catch {
-        transport.opening = false;
-        transport.failed = true;
-        return false;
-      }
-    }
-    return true;
-  }
-
-  async function captureResponseStream(response, meta) {
-    try {
-      if (response.body && response.body.getReader) {
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        for (;;) {
-          const result = await reader.read();
-          if (result.done) break;
-          const chunk = decoder.decode(result.value, { stream: true });
-          if (chunk) {
-            rememberSessionIdsFromText(chunk);
-            await post("fetch-response-chunk", { ...meta, chunk });
-          }
-        }
-        const tail = decoder.decode();
-        if (tail) {
-          rememberSessionIdsFromText(tail);
-          await post("fetch-response-chunk", { ...meta, chunk: tail });
-        }
-        await post("fetch-response-end", meta);
-        return;
-      }
-      const body = await response.text();
-      rememberSessionIdsFromText(body);
-      await post("fetch-response", { ...meta, body });
-    } catch (error) {
-      await post("capture-error", { ...meta, message: String(error && error.message || error) });
-    }
-  }
-
-  window.fetch = async function recordedFetch(input, init) {
-    const method = String((init && init.method) || (typeof Request !== "undefined" && input instanceof Request && input.method) || "GET").toUpperCase();
-    const rawRequestUrl = typeof input === "string" || input instanceof URL ? input : input && input.url;
-    const requestUrl = sanitizeUrl(rawRequestUrl);
-    const requestId = nextId("fetch");
-    rememberSessionIdsFromUrl(rawRequestUrl);
-    readFetchRequestBody(input, init).then((body) => {
-      rememberSessionIdsFromCapture(rawRequestUrl, body);
-      return post("fetch-request", {
-        requestId,
-        source: "fetch",
-        url: requestUrl,
-        method,
-        headers: requestHeaders(input, init),
-        body,
-      });
-    }).then(() => {}, () => {});
-    const response = await nativeFetch.apply(this, arguments);
-    rememberSessionIdsFromUrl(response.url);
-    const meta = {
-      requestId,
-      source: "fetch",
-      url: requestUrl,
-      responseUrl: sanitizeUrl(response.url),
-      method,
-      status: response.status,
-      statusText: response.statusText,
-      contentType: response.headers.get("content-type") || "",
-      headers: headersToObject(response.headers),
-    };
-    if (meta.contentType && !/json|text|event-stream|javascript|xml|x-www-form-urlencoded/i.test(meta.contentType)) {
-      post("fetch-response-skip", meta);
-      return response;
-    }
-    captureResponseStream(response.clone(), meta);
-    return response;
-  };
-
-  if (nativeWebSocket) {
-    const NativeWebSocket = nativeWebSocket;
-    window.WebSocket = new Proxy(NativeWebSocket, {
-      construct(target, args) {
-        const socket = new target(...args);
-        const wsId = nextId("ws");
-        const rawUrl = args[0];
-        const url = sanitizeUrl(rawUrl);
-        rememberSessionIdsFromUrl(rawUrl);
-        post("ws-open", { wsId, source: "websocket", url });
-        const nativeSend = socket.send;
-        socket.send = function recordedSend(data) {
-          readBody(data).then((body) => {
-            rememberSessionIdsFromCapture(rawUrl, body);
-            return post("ws-send", { wsId, source: "websocket", url, body });
-          }).then(() => {}, () => {});
-          return nativeSend.apply(this, arguments);
-        };
-        socket.addEventListener("message", (event) => {
-          readBody(event.data).then((body) => {
-            rememberSessionIdsFromCapture(rawUrl, body);
-            return post("ws-message", { wsId, source: "websocket", url, body });
-          }).then(() => {}, () => {});
-        });
-        socket.addEventListener("close", (event) => post("ws-close", { wsId, source: "websocket", url, code: event.code, reason: event.reason }));
-        socket.addEventListener("error", () => post("ws-error", { wsId, source: "websocket", url }));
-        return socket;
-      },
-    });
-  }
-
-  if (window.EventSource) {
-    const NativeEventSource = window.EventSource;
-    window.EventSource = new Proxy(NativeEventSource, {
-      construct(target, args) {
-        const eventSource = new target(...args);
-        const eventSourceId = nextId("sse");
-        const rawUrl = args[0];
-        const url = sanitizeUrl(rawUrl);
-        rememberSessionIdsFromUrl(rawUrl);
-        post("eventsource-open", { eventSourceId, source: "eventsource", url });
-        eventSource.addEventListener("message", (event) => {
-          rememberSessionIdsFromCapture(rawUrl, event.data);
-          post("eventsource-message", {
-            eventSourceId,
-            source: "eventsource",
-            url,
-            body: event.data,
-          });
-        });
-        eventSource.addEventListener("error", () => post("eventsource-error", { eventSourceId, source: "eventsource", url }));
-        return eventSource;
-      },
-    });
-  }
-
-  const domRecorder = {
-    ids: new WeakMap(),
-    sent: new Map(),
-    nextId: 0,
-    observer: null,
-    timer: null,
-  };
-
-  function queryFirst(root, selectors) {
-    for (const selector of selectors) {
-      const found = root.querySelector(selector);
-      if (found) return found;
-    }
-    return null;
-  }
-
-  function normalizeDomMessageText(value) {
-    return String(value || "")
-      .replace(/\\u0000/g, "")
-      .replace(/\\u00a0/g, " ")
-      .replace(/\\r\\n/g, "\\n")
-      .split("\\n")
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .join("\\n")
-      .trim();
-  }
-
-  function normalizeDomCodeLanguage(value) {
-    const lower = String(value || "").trim().toLowerCase();
-    if (lower === "typescript" || lower === "ts") return "ts";
-    if (lower === "javascript" || lower === "js") return "js";
-    if (lower === "plaintext" || lower === "plain text" || lower === "text") return "text";
-    if (/^(tsx|jsx|json|html|css|bash|yaml|yml|xml)$/.test(lower)) return lower === "yml" ? "yaml" : lower;
-    return "";
-  }
-
-  function inferDomCodeLanguage(element) {
-    const values = [];
-    let current = element;
-    while (current && current.nodeType === 1 && values.length < 4) {
-      values.push(current.getAttribute("data-language") || "");
-      values.push(current.getAttribute("lang") || "");
-      values.push(String(current.className || ""));
-      current = current.parentElement;
-    }
-    const joined = values.join(" ");
-    const classMatch = joined.match(/language-([a-z0-9+#.-]+)/i) || joined.match(/\\b(tsx|ts|typescript|jsx|js|javascript|json|html|css|bash|plaintext|text|yaml|yml|xml)\\b/i);
-    return normalizeDomCodeLanguage(classMatch && classMatch[1]);
-  }
-
-  function isDomCodeLineNumber(line) {
-    return /^\\d{1,4}$/.test(String(line || "").trim());
-  }
-
-  function normalizeDomCodeBlockText(value, language) {
-    const lines = String(value || "")
-      .replace(/\\u0000/g, "")
-      .replace(/\\u00a0/g, " ")
-      .replace(/\\r\\n/g, "\\n")
-      .split("\\n")
-      .map((line) => line.replace(/\\s+$/g, ""));
-    while (lines.length && !lines[0].trim()) lines.shift();
-    while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
-    const leadingLanguage = normalizeDomCodeLanguage(lines[0]);
-    if (leadingLanguage) {
-      language = language || leadingLanguage;
-      lines.shift();
-    }
-    while (lines.length && isDomCodeLineNumber(lines[0])) {
-      lines.shift();
-    }
-    return {
-      language: language || "text",
-      code: lines.join("\\n").trimEnd(),
-    };
-  }
-
-  function extractDomMessageText(element) {
-    if (!element) return "";
-    const clone = element.cloneNode(true);
-    const codeBlocks = Array.from(clone.querySelectorAll("pre, .shiki, .code-block, .codeBlock, [class*='code-block'], [class*='codeBlock'], code[class*='language-']"));
-    for (const block of codeBlocks) {
-      if (!block.isConnected) continue;
-      const raw = block.textContent || block.innerText || "";
-      if (!raw.trim()) continue;
-      if (block.tagName && block.tagName.toLowerCase() === "code" && !raw.includes("\\n")) continue;
-      const normalized = normalizeDomCodeBlockText(raw, inferDomCodeLanguage(block));
-      if (!normalized.code) continue;
-      block.replaceWith(document.createTextNode("\\n\\n\`\`\`" + normalized.language + "\\n" + normalized.code + "\\n\`\`\`\\n\\n"));
-    }
-    return clone.innerText || clone.textContent || "";
-  }
-
-  function isVisibleElement(element) {
-    if (!element || !element.getBoundingClientRect) return false;
-    const rect = element.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) return false;
-    const style = getComputedStyle(element);
-    return style.visibility !== "hidden" && style.display !== "none" && Number(style.opacity || 1) !== 0;
-  }
-
-  function getDomMessageId(section, role) {
-    const existing = domRecorder.ids.get(section);
-    if (existing) return existing;
-    const id = "dom-" + role + "-" + Date.now().toString(36) + "-" + (++domRecorder.nextId).toString(36);
-    domRecorder.ids.set(section, id);
-    return id;
-  }
-
-  function extractDomTurn(section, order) {
-    if (!section || !isVisibleElement(section)) return null;
-    const role = section.classList.contains("user")
-      ? "user"
-      : section.classList.contains("assistant")
-        ? "assistant"
-        : "";
-    if (!role) return null;
-    const content = role === "user"
-      ? queryFirst(section, [
-        ".user-chat-bubble-request__content-wrapper",
-        ".user-chat-bubble-request",
-        ".user-chat-line",
-        ".user-chat-bubble",
-        ".icube-value",
-        ".value",
-      ])
-      : queryFirst(section, [
-        ".assistant-chat-turn-content .chat-markdown",
-        ".assistant-chat-turn-content",
-        ".assistant-chat-turn-content-inner-agent-wrapper",
-        ".chat-markdown",
-      ]);
-    const text = normalizeDomMessageText(content ? extractDomMessageText(content) : section.innerText || section.textContent);
-    if (!text) return null;
-    if (role === "assistant" && /^(Builder|思考过程|任务完成)$/i.test(text)) return null;
-    return {
-      role,
-      text,
-      messageId: getDomMessageId(section, role),
-      order,
-      className: String(section.className || ""),
-    };
-  }
-
-  function updateDomThreadId(turns) {
-    const firstUser = turns.find((turn) => turn.role === "user");
-    if (!firstUser) return;
-    const signature = firstUser.text.slice(0, 240);
-    if (!signature || signature === recorder.domThreadSignature) return;
-    recorder.domThreadSignature = signature;
-    recorder.domThreadId = "dom-thread-" + firstUser.messageId;
-    const hasFreshNetworkSession = recorder.actualSessionId && Date.now() - recorder.actualSessionUpdatedAt < 5000;
-    if (!hasFreshNetworkSession) {
-      recorder.actualSessionId = "";
-      recorder.actualSessionUpdatedAt = 0;
-      recorder.actualSessionSource = "";
-      recorder.captureSessionId = recorder.domThreadId;
-    } else {
-      recorder.captureSessionId = recorder.actualSessionId;
-    }
-  }
-
-  function findDomCaptureRoot() {
-    return document.querySelector("#agent-chat-view")
-      || document.querySelector(".icube-chat-view-container")
-      || document.querySelector(".chat-list-wrapper")
-      || document.body;
-  }
-
-  function captureDomTurns(reason) {
-    if (!document.body) return;
-    const root = findDomCaptureRoot();
-    if (!root) return;
-    const sections = Array.from(root.querySelectorAll("section.chat-turn.user, section.chat-turn.assistant"));
-    const turns = sections.map((section, index) => extractDomTurn(section, index + 1)).filter(Boolean);
-    updateDomThreadId(turns);
-    turns.forEach((turn) => {
-      const sentKey = turn.messageId;
-      const signature = turn.role + "\\u0000" + turn.text;
-      if (domRecorder.sent.get(sentKey) === signature) return;
-      domRecorder.sent.set(sentKey, signature);
-      post("dom-message", {
-        source: "dom",
-        body: {
-          role: turn.role,
-          text: turn.text,
-          messageId: turn.messageId,
-          order: turn.order,
-          reason,
-          className: turn.className,
-          timestamp: new Date().toISOString(),
-        },
-      });
-    });
-  }
-
-  function scheduleDomCapture(reason) {
-    clearTimeout(domRecorder.captureTimer);
-    domRecorder.captureTimer = setTimeout(() => captureDomTurns(reason), 300);
-  }
-
-  function installDomCapture() {
-    if (!document.body || !window.MutationObserver) {
-      return;
-    }
-    captureDomTurns("install");
-    domRecorder.observer = new MutationObserver(() => scheduleDomCapture("mutation"));
-    domRecorder.observer.observe(document.body, {
-      childList: true,
-      characterData: true,
-      subtree: true,
-    });
-    domRecorder.timer = setInterval(() => captureDomTurns("poll"), 2000);
-  }
-
-  installDomCapture();
-
-  console.info("[agent-snapshot] Trae recorder installed. Capturing to", ENDPOINT, "pageSession=", recorder.pageSession);
-})();`;
 }
 const SNAPSHOT_TRANSCRIPT_OPTIONS = {
     emptyHtml: "<div class='meta'>没有找到可分享的用户或助手消息。</div>",
@@ -3388,16 +2103,11 @@ Usage:
   agent-snapshot doctor [--json]
   agent-snapshot serve [--host 127.0.0.1] [--port 4321]
   agent-snapshot daemon install|status|logs|uninstall [--host 127.0.0.1] [--port 4321]
-  agent-snapshot record-trae [--host 127.0.0.1] [--port 4732]
 
 Options:
   --codex-home DIR         Use a custom Codex home. Defaults to $CODEX_HOME or ~/.codex
   --claude-home DIR        Use a custom Claude Code home. Defaults to $CLAUDE_HOME or ~/.claude
-  --trae-home DIR          Use a custom Trae home. Defaults to $TRAE_HOME or ~/.trae-cn
-  --trae-app-home DIR      Use a custom Trae app data home. Defaults to $TRAE_APP_HOME or ~/Library/Application Support/Trae CN
-  --trae-recordings-dir DIR
-                           Use a custom Trae recorder output dir. Defaults to $TRAE_RECORDINGS_DIR or ~/.agent-snapshot/trae-recordings
-  --source codex|claude|trae|all
+  --source codex|claude|all
                            Choose which local agent history to list or search. Serve shows all configured sources in the UI.
   --scan-limit N           For search only: number of recent sessions to scan. Defaults to 600
   --weeks N                For digest only: number of complete previous weeks to include. Defaults to 1
@@ -3417,8 +2127,6 @@ Options:
   --expires-in-days N      For publish only: ask the server to expire the share after N days
   --label LABEL            For daemon only: LaunchAgent label. Defaults to ${DEFAULT_DAEMON_LABEL}
   --live-only              Ignore archived_sessions when listing
-  --record-sensitive-context
-                           For record-trae only: persist captured request/response headers as local recorder context
   -h, --help               Show this help
 
 Examples:
@@ -3430,8 +2138,7 @@ Examples:
   agent-snapshot digest --weeks 2
   agent-snapshot doctor
   agent-snapshot serve --port 4321
-  agent-snapshot daemon install
-  agent-snapshot record-trae --port 4732`);
+  agent-snapshot daemon install`);
 }
 function printDigestHelp() {
     console.log(`agent-snapshot digest

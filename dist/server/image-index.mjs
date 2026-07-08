@@ -49,12 +49,12 @@ async function getDb() {
     })();
     return dbPromise;
 }
-export async function listImageEntries({ codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir, listSessions, loadSnapshot, source = "all", limit = DEFAULT_IMAGE_LIMIT, offset = 0, }) {
+export async function listImageEntries({ codexHome, claudeHome, listSessions, loadSnapshot, source = "all", limit = DEFAULT_IMAGE_LIMIT, offset = 0, }) {
     const pageLimit = clampPositive(limit, DEFAULT_IMAGE_LIMIT, MAX_IMAGE_LIMIT);
     const pageOffset = Math.max(0, Number(offset) || 0);
     const targetCount = pageOffset + pageLimit;
     const imageSource = normalizeSource(source);
-    const pageCacheKey = imagePageCacheKey({ codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir, source: imageSource, limit: pageLimit, offset: pageOffset });
+    const pageCacheKey = imagePageCacheKey({ codexHome, claudeHome, source: imageSource, limit: pageLimit, offset: pageOffset });
     const cachedPage = imagePageCache.get(pageCacheKey);
     if (cachedPage && Date.now() - cachedPage.time < PAGE_CACHE_MS) {
         return cachedPage.result;
@@ -62,9 +62,6 @@ export async function listImageEntries({ codexHome, claudeHome, traeHome, traeAp
     const sessions = await listSessions({
         codexHome,
         claudeHome,
-        traeHome,
-        traeAppHome,
-        traeRecordingsDir,
         limit: MAX_SCAN_SESSIONS,
         cwd: "",
         includeArchived: true,
@@ -81,9 +78,6 @@ export async function listImageEntries({ codexHome, claudeHome, traeHome, traeAp
             const sessionResult = await readSessionImages(session, {
                 codexHome,
                 claudeHome,
-                traeHome,
-                traeAppHome,
-                traeRecordingsDir,
                 loadSnapshot,
             });
             entries.push(...sessionResult.entries);
@@ -111,7 +105,7 @@ export async function listImageEntries({ codexHome, claudeHome, traeHome, traeAp
     imagePageCache.set(pageCacheKey, { time: Date.now(), result });
     return result;
 }
-export async function readImageBytes({ ref, codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir, loadSnapshot, }) {
+export async function readImageBytes({ ref, codexHome, claudeHome, loadSnapshot, }) {
     const target = decodeImageId(ref);
     if (!target) {
         return null;
@@ -121,9 +115,6 @@ export async function readImageBytes({ ref, codexHome, claudeHome, traeHome, tra
         snapshot = await loadSnapshot(target.sessionRef, {
             codexHome,
             claudeHome,
-            traeHome,
-            traeAppHome,
-            traeRecordingsDir,
             includeTools: false,
             includeToolOutput: false,
             redact: false,
@@ -155,9 +146,6 @@ async function readSessionImages(session, options) {
     const snapshot = await options.loadSnapshot(ref, {
         codexHome: options.codexHome,
         claudeHome: options.claudeHome,
-        traeHome: options.traeHome,
-        traeAppHome: options.traeAppHome,
-        traeRecordingsDir: options.traeRecordingsDir,
         includeTools: false,
         includeToolOutput: false,
         redact: false,
@@ -512,27 +500,22 @@ async function sweepMissingImageRows() {
 function normalizeFilePath(value) {
     return path.resolve(String(value || "")).replace(/\\/g, "/");
 }
-function imagePageCacheKey({ codexHome, claudeHome, traeHome, traeAppHome, traeRecordingsDir, source, limit, offset }) {
+function imagePageCacheKey({ codexHome, claudeHome, source, limit, offset }) {
     return [
         normalizeSource(source),
         String(limit),
         String(offset),
         codexHome || "",
         claudeHome || "",
-        traeHome || "",
-        traeAppHome || "",
-        traeRecordingsDir || "",
     ].join("\x1f");
 }
 function normalizeSource(value) {
     const key = String(value || "all").toLowerCase();
-    return key === "claude" || key === "trae" || key === "codex" ? key : "all";
+    return key === "claude" || key === "codex" ? key : "all";
 }
 function engineLabelFor(engine) {
     if (engine === "claude")
         return "Claude Code";
-    if (engine === "trae")
-        return "Trae";
     return "Codex";
 }
 function positiveNumber(value) {

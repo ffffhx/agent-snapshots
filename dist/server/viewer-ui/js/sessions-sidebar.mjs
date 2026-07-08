@@ -331,7 +331,7 @@ function sessionRef(session) {
 
 function sessionEngineKey(item) {
   const value = String(item?.engine || "").toLowerCase();
-  return value === "claude" || value === "trae" ? value : "codex";
+  return value === "claude" ? value : "codex";
 }
 
 function normalizedSessionPath(item) {
@@ -349,9 +349,6 @@ function isCompleteSessionItem(item) {
     return false;
   }
   const engine = sessionEngineKey(item);
-  if (engine === "trae") {
-    return true;
-  }
   if (engine === "codex") {
     const filePath = normalizedSessionPath(item);
     if (filePath.includes("/archived_sessions/")) {
@@ -379,9 +376,6 @@ function isLiveSessionItem(item) {
     return false;
   }
   const engine = sessionEngineKey(item);
-  if (engine === "trae") {
-    return false;
-  }
   if (engine === "codex") {
     if (item.complete === false) {
       return true;
