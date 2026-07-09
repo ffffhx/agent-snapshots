@@ -20,6 +20,7 @@ import {
   powerSaveBlocker,
 } from "electron";
 import { spawn } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { createRequire } from "node:module";
 import net from "node:net";
 import http from "node:http";
@@ -53,6 +54,13 @@ const GLOBAL_SHORTCUT_PRESETS = [
   { label: "F19", accelerator: "F19" },
   { label: "禁用", accelerator: null },
 ];
+// Minted once per app run and handed to every server child: watchdog restarts
+// reuse the port so already-loaded windows keep working, which also requires
+// the mutation CSRF token those pages hold to stay valid across restarts.
+const MUTATION_CSRF_TOKEN = randomBytes(32).toString("base64url");
+// Start with the launcher window hidden (tray/shortcut still summon it):
+// lets scripts and agents boot or debug the app without stealing focus.
+const START_HIDDEN = process.env.AGENT_SNAPSHOT_START_HIDDEN === "1" || process.argv.includes("--hidden");
 const POLL_INTERVAL_MS = 5000;
 const TRAY_RECENT_REFRESH_MS = 30000;
 const DEFAULT_SETTINGS = {
@@ -222,7 +230,12 @@ async function startServer() {
     // libuv threadpool under bursty fs load (idle workers stop picking up
     // queued fs requests). A larger pool reduces the burst pressure; the
     // health watchdog below recovers the process when it wedges anyway.
-    env: { ...process.env, ELECTRON_RUN_AS_NODE: "1", UV_THREADPOOL_SIZE: process.env.UV_THREADPOOL_SIZE || "16" },
+    env: {
+      ...process.env,
+      ELECTRON_RUN_AS_NODE: "1",
+      UV_THREADPOOL_SIZE: process.env.UV_THREADPOOL_SIZE || "16",
+      AGENT_SNAPSHOT_MUTATION_CSRF_TOKEN: MUTATION_CSRF_TOKEN,
+    },
     stdio: ["ignore", "pipe", "pipe"],
   });
 
@@ -694,6 +707,7 @@ function launcherWindowOptions() {
   const bounds = sanitizeBounds(setting("launcherBounds"));
   return {
     ...(bounds || { width: 800, height: 560, center: true }),
+    show: !START_HIDDEN,
     minWidth: 560,
     minHeight: 380,
     resizable: true,

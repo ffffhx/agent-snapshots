@@ -10,8 +10,8 @@ import { createGitHubGist, isGitHubGistPublishError } from "./gist-publish.mjs";
 import { redactText } from "../core/privacy.js";
 import {
   allowMutationRequest,
-  createMutationCsrfToken,
   isAllowedSnapshotServerRequest,
+  resolveMutationCsrfToken,
   setSnapshotServerCorsHeaders,
 } from "./local-security.js";
 import { renderServerApp } from "./local-viewer-app.mjs";
@@ -61,7 +61,7 @@ export async function serveLocalViewer({
   readNonNegativeInteger,
   safeFileName,
 }) {
-  const csrfToken = createMutationCsrfToken();
+  const csrfToken = resolveMutationCsrfToken();
   const sessionHeadCache = new Map();
   const server = http.createServer(async (request, response) => {
     try {

@@ -7,7 +7,7 @@ import { promisify } from "node:util";
 import { send, sendJson } from "./http.js";
 import { createGitHubGist, isGitHubGistPublishError } from "./gist-publish.mjs";
 import { redactText } from "../core/privacy.js";
-import { allowMutationRequest, createMutationCsrfToken, isAllowedSnapshotServerRequest, setSnapshotServerCorsHeaders, } from "./local-security.js";
+import { allowMutationRequest, isAllowedSnapshotServerRequest, resolveMutationCsrfToken, setSnapshotServerCorsHeaders, } from "./local-security.js";
 import { renderServerApp } from "./local-viewer-app.mjs";
 import { renderLauncherApp } from "./launcher-app.mjs";
 import { prewarmSemanticIndex, semanticSearchSessions } from "./semantic-index.mjs";
@@ -24,7 +24,7 @@ import { launcherPrefsApiResponse, readLauncherPrefs, readLauncherSessionNote, r
 import { discoverCodexHomes, resolveCodexHomeForRef } from "../sources/codex-homes.mjs";
 const execFileAsync = promisify(execFile);
 export async function serveLocalViewer({ codexHome, claudeHome, host, port, defaultServerLimit, snapshotLogoSvg, shareConfig, listSessions, loadSnapshot, searchSessions, applySafetyChecksOption, snapshotApiResponse, publishAllSnapshots, publishSnapshot, createShareRequestPayload, stableSnapshotShareId, renderMarkdown, renderHtml, readPositiveInteger, readNonNegativeInteger, safeFileName, }) {
-    const csrfToken = createMutationCsrfToken();
+    const csrfToken = resolveMutationCsrfToken();
     const sessionHeadCache = new Map();
     const server = http.createServer(async (request, response) => {
         try {

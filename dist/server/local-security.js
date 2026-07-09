@@ -1,8 +1,19 @@
 import { randomBytes } from "node:crypto";
 import { sendJson } from "./http.js";
 export const MUTATION_CSRF_HEADER = "x-agent-snapshot-csrf";
+export const MUTATION_CSRF_TOKEN_ENV = "AGENT_SNAPSHOT_MUTATION_CSRF_TOKEN";
 export function createMutationCsrfToken() {
     return randomBytes(32).toString("base64url");
+}
+// The desktop app's watchdog restarts the server child on the same port so
+// already-loaded windows keep working; the token must survive those restarts
+// too, so the supervisor mints it once and hands it down via the environment.
+export function resolveMutationCsrfToken() {
+    const fromEnv = String(process.env[MUTATION_CSRF_TOKEN_ENV] || "").trim();
+    if (/^[A-Za-z0-9_-]{22,256}$/.test(fromEnv)) {
+        return fromEnv;
+    }
+    return createMutationCsrfToken();
 }
 export function setSnapshotServerCorsHeaders(request, response) {
     const origin = request.headers.origin || "";
