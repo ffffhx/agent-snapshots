@@ -17,7 +17,7 @@ export function renderLauncherApp(csrfToken) {
   <main id="launcher" class="launcher">
     <header class="bar" id="dragbar">
       <svg class="glass" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><line x1="16.5" y1="16.5" x2="21" y2="21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-      <input id="q" class="q" type="text" autocomplete="off" spellcheck="false" placeholder="搜索会话 — 点击在 Orca 继续">
+      <input id="q" class="q" type="text" autocomplete="off" spellcheck="false" placeholder="搜索会话 — 点击预览，回车在 Orca 继续">
       <div class="scopes" id="scopes">
         <button class="scope active" data-scope="all" type="button">全部</button>
         <button class="scope" data-scope="codex" type="button">Codex</button>
@@ -42,7 +42,8 @@ export function renderLauncherApp(csrfToken) {
     <div class="shortcuts-card" role="dialog" aria-modal="true" aria-labelledby="shortcutsTitle">
       <div id="shortcutsTitle" class="shortcuts-title">快捷键</div>
       <div class="shortcut-list">
-        <span>点击</span><b>在 Orca 继续</b>
+        <span>点击</span><b>预览会话</b>
+        <span>↵</span><b>在 Orca 继续</b>
         <span>⌘↵</span><b>完整视图</b>
         <span>→ / ⌘P</span><b>预览</b>
         <span>← / esc</span><b>关闭预览</b>
@@ -101,8 +102,10 @@ html,body{height:100%;background:transparent;color:var(--ink);font-family:var(--
 .rs mark{color:#ffd7a0;font-weight:700;background:rgba(217,79,57,0.26);border-radius:3px;padding:0 2px;box-decoration-break:clone;-webkit-box-decoration-break:clone}
 .racc{display:flex;align-items:center;justify-content:flex-end;gap:8px;min-width:0;color:var(--faint);font:600 11px/1 var(--mono);white-space:nowrap}
 .age{color:var(--faint)}
-.rowhint{max-width:118px;overflow:hidden;color:var(--seal);opacity:0;font-weight:700;text-overflow:ellipsis;transition:opacity .12s ease}
-.row.sel .rowhint,.row:hover .rowhint{opacity:1}
+.rowhint{max-width:130px;overflow:hidden;border:1px solid rgba(217,79,57,0.3);border-radius:7px;background:rgba(217,79,57,0.1);color:var(--seal);opacity:0;pointer-events:none;font:700 11px/1 var(--mono);padding:5px 8px;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;transition:opacity .12s ease,background-color .12s ease,border-color .12s ease}
+.row.sel .rowhint,.row:hover .rowhint{opacity:1;pointer-events:auto}
+.rowhint:hover{border-color:rgba(217,79,57,0.55);background:rgba(217,79,57,0.22)}
+.rowhint:focus-visible{outline:2px solid rgba(217,79,57,0.5);outline-offset:2px}
 .peekchev{position:absolute;right:10px;top:50%;color:#efcfb7;font:800 20px/1 var(--sans);opacity:0;transform:translateY(-50%) translateX(-2px);transition:opacity .12s ease,transform .12s ease}
 .row.sel .peekchev{opacity:.82;transform:translateY(-50%) translateX(0)}
 .live-chip{display:inline-flex;align-items:center;gap:5px;height:19px;padding:0 7px;border:1px solid rgba(124,207,136,0.24);border-radius:99px;background:var(--live-soft);color:#bfe6c4;font:800 10px/1 var(--mono)}
@@ -792,7 +795,6 @@ function row(it,i){
   const snip=it.snippet?highlight(it.snippet,it.terms):"";
   const sub=[proj,relTime(it.mtime)].filter(Boolean).join(" · ");
   const subLine=state.mode==="search"&&snip?snip:esc(sub);
-  const hint="点击 Orca 继续";
   const pinned=isPinnedItem(it);
   const key=sessionKey(it);
   const notePreview=key?String(state.notePreviews[key]||""):"";
@@ -806,7 +808,7 @@ function row(it,i){
   return "<div class='row"+(i===state.sel?" sel":"")+"' data-i='"+i+"' title='"+esc(rowTitle)+"'>"+
     "<span class='badge "+k+"'>"+badgeChar(k)+"</span>"+
     "<div class='rc'><div class='rt'>"+esc(title)+"</div><div class='rs'>"+subLine+"</div></div>"+
-    "<div class='racc'>"+noteMarker+pinMarker+freqMarker+live+"<span class='age'>"+esc(relTime(it.mtime))+"</span><span class='rowhint'>"+hint+"</span>"+actions+"</div>"+
+    "<div class='racc'>"+noteMarker+pinMarker+freqMarker+live+"<span class='age'>"+esc(relTime(it.mtime))+"</span><button class='rowhint' data-action='resume' type='button' title='在 Orca 继续该会话'>Orca 继续</button>"+actions+"</div>"+
     "<span class='peekchev' aria-hidden='true'>›</span>"+
   "</div>";
 }
@@ -1012,7 +1014,7 @@ function renderPeekTurn(turn){
 function updateHint(){
   const sep="<span class='sep'>·</span>";
   const status="<span class='stat'>"+esc(statusText())+"</span>";
-  const primary="<span class='act'>点击 在 Orca 继续</span>"+sep+"<kbd>⌘↵</kbd> 完整视图";
+  const primary="<span class='act'>点击 预览</span>"+sep+"<kbd>↵</kbd> 在 Orca 继续"+sep+"<kbd>⌘↵</kbd> 完整视图";
   const preview=state.previewOpen
     ? "<kbd>←</kbd> <span class='act'>关闭预览</span>"+sep+"<kbd>esc</kbd> 关闭预览"
     : "<kbd>→</kbd> 预览"+sep+"<kbd>⌘P</kbd> 预览";
@@ -1213,7 +1215,7 @@ $("q").addEventListener("keydown",(e)=>{
   if(e.key==="ArrowRight" && shouldOpenPreviewFromSearchInput(e.currentTarget)){ e.preventDefault(); openPreview(); return; }
   if(e.key==="ArrowDown"){ e.preventDefault(); move(1); }
   else if(e.key==="ArrowUp"){ e.preventDefault(); move(-1); }
-  else if(e.key==="Enter"){ e.preventDefault(); if(e.metaKey||e.ctrlKey) openFull(state.items[state.sel]); }
+  else if(e.key==="Enter"){ e.preventDefault(); if(e.metaKey||e.ctrlKey) openFull(state.items[state.sel]); else resumeOrOpen(state.items[state.sel]); }
   else if(e.key==="Escape"){ e.preventDefault(); if($("q").value){ $("q").value=""; schedule(); } }
 });
 $("list").addEventListener("click",(e)=>{
@@ -1230,14 +1232,15 @@ $("list").addEventListener("click",(e)=>{
     if(action.dataset.action==="pin") togglePin(it);
     else if(action.dataset.action==="copy") copyResumeCommand(it);
     else if(action.dataset.action==="open") openFull(it);
+    else if(action.dataset.action==="resume") resumeOrOpen(it);
     return;
   }
   const r=e.target.closest("[data-i]"); if(!r) return;
   state.sel=Number(r.dataset.i);
   for(const el of document.querySelectorAll(".row")){ el.classList.toggle("sel", el===r); }
   updateHint();
-  if(state.previewOpen) schedulePreviewLoad(0);
-  if(e.metaKey||e.ctrlKey) openFull(state.items[state.sel]); else resumeOrOpen(state.items[state.sel]);
+  if(e.metaKey||e.ctrlKey){ if(state.previewOpen) schedulePreviewLoad(0); openFull(state.items[state.sel]); }
+  else openPreview();
 });
 $("peek").addEventListener("click",(e)=>{
   const close=e.target.closest("[data-peek-close]");
