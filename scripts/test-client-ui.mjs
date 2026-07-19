@@ -144,7 +144,7 @@ async function launcherRuntime() {
       "quotaMeter",
       "isTypingTarget",
       "shouldOpenPreviewFromSearchInput",
-      "peekSnippetText",
+      "peekTurnText",
       "resumeCommand",
       "setScope",
     ],
@@ -167,7 +167,7 @@ function runCalls() { return runCallCount; }
       "quotaMeter",
       "isTypingTarget",
       "shouldOpenPreviewFromSearchInput",
-      "peekSnippetText",
+      "peekTurnText",
       "resumeCommand",
       "setScope",
     ],
@@ -263,9 +263,9 @@ test("launcher quota meter classes switch at green amber red thresholds", async 
   assert.match(quotaMeter("5h", { usedPercent: 85.1, resetsAt }, updatedAt), /quota-meter danger/);
 });
 
-test("launcher ArrowRight preview shortcut respects search input caret", async () => {
+test("launcher preview shortcut respects the caret and preserves complete text", async () => {
   await withDom(`<body><input id="q" value="abcdef"><button id="button"></button></body>`, async () => {
-    const { isTypingTarget, shouldOpenPreviewFromSearchInput, peekSnippetText } = await launcherRuntime();
+    const { isTypingTarget, shouldOpenPreviewFromSearchInput, peekTurnText } = await launcherRuntime();
     const input = document.getElementById("q");
     input.setSelectionRange(2, 2);
     assert.equal(shouldOpenPreviewFromSearchInput(input), false, "middle-caret ArrowRight should move the caret");
@@ -277,8 +277,8 @@ test("launcher ArrowRight preview shortcut respects search input caret", async (
     assert.equal(isTypingTarget(document.getElementById("button")), false, "document shortcut can run outside typing controls");
 
     const longEmoji = "\u{1F600}".repeat(405);
-    assert.equal(Array.from(peekSnippetText(longEmoji)).length, 400, "client preview truncates by code point");
-    assert.equal(peekSnippetText(longEmoji).includes("\uFFFD"), false, "client preview should not introduce replacement characters");
+    assert.equal(peekTurnText(longEmoji), longEmoji, "client preview should preserve messages longer than 400 characters");
+    assert.equal(peekTurnText(longEmoji).includes("\uFFFD"), false, "client preview should not introduce replacement characters");
   });
 });
 

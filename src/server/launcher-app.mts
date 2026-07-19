@@ -144,7 +144,7 @@ html,body{height:100%;background:transparent;color:var(--ink);font-family:var(--
 .peek-state{display:flex;align-items:center;justify-content:center;gap:8px;min-height:108px;color:var(--dim);font:700 12px/1.35 var(--mono);text-align:center}
 .peek-state .spin{width:12px;height:12px;margin-right:0;border-width:1.5px}
 .peek-state.err{color:#e9b0a4}
-.peek-turn{display:-webkit-box;overflow:hidden;flex:0 0 auto;-webkit-line-clamp:6;-webkit-box-orient:vertical;max-width:94%;border:1px solid rgba(233,220,196,0.1);border-radius:8px;background:rgba(233,220,196,0.045);color:#e6d9bd;font:500 12px/1.42 var(--sans);white-space:pre-wrap;word-break:break-word;padding:8px 10px}
+.peek-turn{display:block;flex:0 0 auto;max-width:94%;border:1px solid rgba(233,220,196,0.1);border-radius:8px;background:rgba(233,220,196,0.045);color:#e6d9bd;font:500 12px/1.42 var(--sans);white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;padding:8px 10px}
 .peek-turn.user{align-self:flex-end;border-right:3px solid var(--seal);background:rgba(217,79,57,0.12);border-top-right-radius:3px}
 .peek-turn.assistant{align-self:flex-start;border-left:3px solid rgba(233,220,196,0.34);border-top-left-radius:3px}
 .foot{display:flex;align-items:center;justify-content:space-between;gap:12px;height:42px;flex:0 0 auto;padding:0 14px;border-top:1px solid var(--line-2);background:linear-gradient(0deg,rgba(14,10,6,0.62),rgba(14,10,6,0.16));-webkit-app-region:drag}
@@ -964,13 +964,13 @@ function normalizePeekPayload(payload,it){
     mtime:String(payload&&payload.mtime||it&&it.mtime||""),
     turns:turns.map((turn)=>({
       role:String(turn&&turn.role||"assistant").toLowerCase()==="user"?"user":"assistant",
-      text:peekSnippetText(turn&&turn.text)
+      text:peekTurnText(turn&&turn.text)
     })).filter((turn)=>turn.text.trim()).slice(-6)
   };
 }
 
-function peekSnippetText(text){
-  return Array.from(String(text||"").replace(/\\r\\n/g,"\\n").replace(/\\r/g,"\\n")).slice(0,400).join("");
+function peekTurnText(text){
+  return String(text||"").replace(/\\r\\n/g,"\\n").replace(/\\r/g,"\\n");
 }
 
 function renderPreview(){
