@@ -4,13 +4,14 @@
 // developer's real ~/.claude / ~/.codex sessions.
 
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const { listSessions, loadSnapshot } = await import(path.join(ROOT_DIR, "dist/sources/local-history.mjs"));
+const { listSessions: listProductionSessions } = await import(path.join(ROOT_DIR, "dist/sources/index.mjs"));
 const { renderMarkdownHtml } = await import(path.join(ROOT_DIR, "dist/renderers/markdown.mjs"));
 const { buildTranscriptOutlineItems, renderTranscriptHtml } = await import(path.join(ROOT_DIR, "dist/renderers/transcript.js"));
 const { prewarmSemanticIndex, semanticSearchSessions } = await import(path.join(ROOT_DIR, "dist/server/semantic-index.mjs"));
@@ -59,6 +60,87 @@ function assistantRow(id, content) {
 async function makeClaudeHome() {
   return mkdtemp(path.join(os.tmpdir(), "cs-claude-test-"));
 }
+
+// --- Session recency -------------------------------------------------------
+
+test("production session recency uses the last visible message instead of file mtime", async () => {
+  const home = await makeClaudeHome();
+  try {
+    const id = "10101010-2020-4030-8040-505050505050";
+    const dir = await writeClaudeSession(home, "-tmp-recency", id, [
+      { ...userRow(id, "/tmp/recency", "first visible message"), timestamp: "2026-06-01T00:00:00.000Z" },
+      { ...assistantRow(id, "last visible message"), timestamp: "2026-06-01T00:01:00.000Z" },
+      {
+        sessionId: id,
+        type: "assistant",
+        timestamp: "2026-06-01T00:02:00.000Z",
+        message: {
+          role: "assistant",
+          content: [{ type: "tool_use", id: "tool-later", name: "Bash", input: { command: "true" } }],
+        },
+      },
+    ]);
+    const filePath = path.join(dir, `${id}.jsonl`);
+    await utimes(filePath, new Date("2026-06-01T00:10:00.000Z"), new Date("2026-06-01T00:10:00.000Z"));
+
+    const sessions = await listProductionSessions({ claudeHome: home, source: "claude", limit: Infinity });
+    const session = sessions.find((item) => item.id === id);
+    assert.ok(session, "fixture session should be listed");
+    assert.equal(session.mtime, "2026-06-01T00:01:00.000Z");
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
+test("production Codex recency ignores bookkeeping after the last visible message", async () => {
+  const home = await mkdtemp(path.join(os.tmpdir(), "cs-codex-recency-"));
+  try {
+    const id = "20202020-3030-4040-8050-606060606060";
+    const sessionDir = path.join(home, "sessions", "2026", "06", "01");
+    const filePath = path.join(sessionDir, `rollout-2026-06-01T00-00-00-${id}.jsonl`);
+    await mkdir(sessionDir, { recursive: true });
+    await writeFile(filePath, jsonl([
+      {
+        timestamp: "2026-06-01T00:00:00.000Z",
+        type: "session_meta",
+        payload: { id, cwd: "/tmp/codex-recency", model_provider: "openai" },
+      },
+      {
+        timestamp: "2026-06-01T00:00:10.000Z",
+        type: "response_item",
+        payload: { type: "message", role: "user", content: [{ type: "input_text", text: "first visible message" }] },
+      },
+      {
+        timestamp: "2026-06-01T00:01:00.000Z",
+        type: "response_item",
+        payload: { type: "message", role: "assistant", content: [{ type: "output_text", text: "last visible message" }] },
+      },
+      {
+        timestamp: "2026-06-01T00:02:00.000Z",
+        type: "response_item",
+        payload: { type: "function_call", name: "shell", arguments: "{}", call_id: "call-later" },
+      },
+      {
+        timestamp: "2026-06-01T00:03:00.000Z",
+        type: "event_msg",
+        payload: { type: "token_count", info: { last_token_usage: { input_tokens: 1, output_tokens: 1 } } },
+      },
+    ]), "utf8");
+    await utimes(filePath, new Date("2026-06-01T00:10:00.000Z"), new Date("2026-06-01T00:10:00.000Z"));
+
+    const sessions = await listProductionSessions({
+      codexHome: home,
+      claudeHome: path.join(home, "claude"),
+      source: "codex",
+      limit: Infinity,
+    });
+    const session = sessions.find((item) => item.id === id);
+    assert.ok(session, "fixture Codex session should be listed");
+    assert.equal(session.mtime, "2026-06-01T00:01:00.000Z");
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
+});
 
 // --- Markdown rendering -----------------------------------------------------
 

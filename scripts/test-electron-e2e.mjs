@@ -4,7 +4,7 @@
 // Playwright's Electron launcher needs a GUI-capable environment.
 
 import { _electron as electron } from "playwright";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -16,6 +16,10 @@ const HOST = "127.0.0.1";
 const LAUNCH_TIMEOUT_MS = 30_000;
 const PROCESS_EXIT_TIMEOUT_MS = 15_000;
 const PORT_CLOSE_TIMEOUT_MS = 7_500;
+const PREVIEW_END_MARKER = "END_OF_COMPLETE_PREVIEW_MESSAGE";
+const LONG_PREVIEW_TEXT = Array.from({ length: 36 }, (_, index) => (
+  `Preview line ${String(index + 1).padStart(2, "0")}: this text verifies that the launcher preview keeps every line visible.`
+)).join("\n") + `\n${PREVIEW_END_MARKER}`;
 
 process.chdir(ROOT_DIR);
 
@@ -59,6 +63,14 @@ try {
   await waitForLauncherContent(launcherPage);
   assertNoPageErrors();
   step("launcher content loaded without page errors");
+
+  await assertLauncherPreviewShowsCompleteMessage(launcherPage);
+  assertNoPageErrors();
+  step("launcher preview shows complete messages and scrolls at the panel level");
+
+  await assertLauncherResumeInteraction(launcherPage);
+  assertNoPageErrors();
+  step("launcher resume interaction handles loading, dedupe, success, and failure");
 
   const quota = await launcherPage.evaluate(async () => {
     const response = await fetch("/api/quota");
@@ -124,6 +136,7 @@ async function createCleanEnv(root) {
     cacheHome,
     configHome,
   ].map((dir) => mkdir(dir, { recursive: true })));
+  await writeClaudeFixture(claudeHome);
 
   const inheritedKeys = [
     "APPDATA",
@@ -177,6 +190,35 @@ async function createCleanEnv(root) {
   return env;
 }
 
+async function writeClaudeFixture(claudeHome) {
+  const sessionId = "11111111-2222-4333-8444-555555555555";
+  const cwd = "/tmp/agent-snapshots-electron-e2e";
+  const timestamp = new Date().toISOString();
+  const projectDir = path.join(claudeHome, "projects", "-tmp-agent-snapshots-electron-e2e");
+  const rows = [
+    {
+      sessionId,
+      cwd,
+      type: "user",
+      message: { role: "user", content: "Electron E2E resume fixture" },
+      timestamp,
+    },
+    {
+      sessionId,
+      cwd,
+      type: "assistant",
+      message: { role: "assistant", content: LONG_PREVIEW_TEXT },
+      timestamp: new Date(Date.now() + 1).toISOString(),
+    },
+  ];
+  await mkdir(projectDir, { recursive: true });
+  await writeFile(
+    path.join(projectDir, `${sessionId}.jsonl`),
+    `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`,
+    "utf8",
+  );
+}
+
 async function waitForLauncherPage(app) {
   const page = await withTimeout(app.firstWindow(), LAUNCH_TIMEOUT_MS, "launcher window to appear");
   wirePage(page);
@@ -201,6 +243,106 @@ async function waitForLauncherContent(page) {
     }
     return Boolean(list.querySelector(".row") || list.querySelector(".empty"));
   }, undefined, { timeout: LAUNCH_TIMEOUT_MS });
+}
+
+async function assertLauncherPreviewShowsCompleteMessage(page) {
+  const row = page.locator(".row", { hasText: "Electron E2E resume fixture" });
+  await row.waitFor({ state: "visible", timeout: LAUNCH_TIMEOUT_MS });
+  await row.click();
+
+  const panel = page.locator("#peek");
+  await panel.locator(".peek-turn.assistant").filter({ hasText: PREVIEW_END_MARKER }).waitFor({
+    state: "visible",
+    timeout: LAUNCH_TIMEOUT_MS,
+  });
+  const metrics = await panel.evaluate((element, endMarker) => {
+    const turn = [...element.querySelectorAll(".peek-turn.assistant")]
+      .find((candidate) => candidate.textContent?.includes(endMarker));
+    const body = element.querySelector(".peek-body");
+    if (!(turn instanceof HTMLElement) || !(body instanceof HTMLElement)) return null;
+    const style = getComputedStyle(turn);
+    return {
+      text: turn.textContent || "",
+      turnClientHeight: turn.clientHeight,
+      turnScrollHeight: turn.scrollHeight,
+      lineClamp: style.webkitLineClamp,
+      overflow: style.overflow,
+      bodyClientHeight: body.clientHeight,
+      bodyScrollHeight: body.scrollHeight,
+      bodyOverflowY: getComputedStyle(body).overflowY,
+    };
+  }, PREVIEW_END_MARKER);
+
+  assert(metrics, "preview should contain the long assistant message");
+  assert(metrics.text === LONG_PREVIEW_TEXT, "preview should preserve the complete assistant message");
+  assert(metrics.turnScrollHeight <= metrics.turnClientHeight + 1, `message card should not clip internally: ${JSON.stringify(metrics)}`);
+  assert(metrics.lineClamp === "none", `message card should not use line clamp: ${JSON.stringify(metrics)}`);
+  assert(metrics.overflow !== "hidden", `message card should not hide overflow: ${JSON.stringify(metrics)}`);
+  assert(metrics.bodyScrollHeight > metrics.bodyClientHeight, `long previews should scroll in the panel: ${JSON.stringify(metrics)}`);
+  assert(["auto", "scroll"].includes(metrics.bodyOverflowY), `preview body should own scrolling: ${JSON.stringify(metrics)}`);
+
+  await panel.locator(".peek-close").click();
+  await waitFor(async () => (await panel.getAttribute("aria-hidden")) === "true", {
+    timeoutMs: 5_000,
+    label: "preview panel to close",
+  });
+}
+
+async function assertLauncherResumeInteraction(page) {
+  let requestCount = 0;
+  let releaseFirstRequest = null;
+  const firstRequestGate = new Promise((resolve) => {
+    releaseFirstRequest = resolve;
+  });
+
+  await page.route("**/api/resume-in-orca?**", async (route) => {
+    requestCount += 1;
+    if (requestCount === 1) {
+      await firstRequestGate;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true, via: "orca" }),
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 400,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: false, error: "Orca E2E test failure" }),
+    });
+  });
+
+  const row = page.locator(".row", { hasText: "Electron E2E resume fixture" });
+  await row.waitFor({ state: "visible", timeout: LAUNCH_TIMEOUT_MS });
+  const resumeButton = row.locator('[data-action="resume"]');
+  assert(await resumeButton.isEnabled(), "resume button should start enabled");
+  assert((await resumeButton.textContent())?.includes("Orca 继续"), "resume button should show its idle label");
+
+  await resumeButton.evaluate((button) => {
+    button.click();
+    button.click();
+  });
+  await waitFor(() => requestCount === 1, { timeoutMs: 5_000, label: "first resume request" });
+  assert(!(await resumeButton.isEnabled()), "resume button should be disabled while the request is pending");
+  assert((await resumeButton.textContent())?.includes("唤起中"), "resume button should show its loading label");
+  assert(await resumeButton.locator(".spin").isVisible(), "resume button should show a loading spinner");
+  assert((await page.locator("#toast").textContent())?.includes("正在唤起 Orca"), "toast should describe the pending action");
+
+  await resumeButton.evaluate((button) => button.click());
+  await delay(100);
+  assert(requestCount === 1, `disabled resume button should dedupe requests, got ${requestCount}`);
+
+  releaseFirstRequest();
+  await page.locator("#toast").filter({ hasText: "已在 Orca 继续" }).waitFor({ state: "visible", timeout: 5_000 });
+  await waitFor(() => resumeButton.isEnabled(), { timeoutMs: 5_000, label: "resume button to reset after success" });
+  assert((await resumeButton.textContent())?.includes("Orca 继续"), "resume button should restore its idle label after success");
+
+  await resumeButton.click();
+  await waitFor(() => requestCount === 2, { timeoutMs: 5_000, label: "second resume request" });
+  await page.locator("#toast").filter({ hasText: "Orca E2E test failure" }).waitFor({ state: "visible", timeout: 5_000 });
+  await waitFor(() => resumeButton.isEnabled(), { timeoutMs: 5_000, label: "resume button to reset after failure" });
+  assert(await page.locator("#toast").evaluate((toast) => toast.classList.contains("err")), "failure toast should use the error state");
 }
 
 async function assertDeepLinkShowsLauncher(app, child) {

@@ -15,7 +15,8 @@ const execFileAsync = promisify(execFile);
 const ORCA_TIMEOUT_MS = 8000;
 
 // A Codex/Claude session id is a UUID; accept only hex + dashes so it can never
-// inject into the `codex resume <id>` command Orca runs in its terminal shell.
+// inject into the `codex resume --dangerously-bypass-approvals-and-sandbox <id>`
+// command Orca runs in its terminal shell.
 const SESSION_ID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
 // GUI-launched servers (Electron) get a minimal PATH, so resolve the orca
@@ -51,10 +52,11 @@ async function bringOrcaToFront() {
 }
 
 // The resume command per engine, run inside an Orca terminal in the session's
-// project. Codex threads resume with `codex resume`; Claude Code conversations
-// resume by session id with `claude --resume`.
+// project. Codex threads resume with full filesystem/process access because the
+// launcher is explicitly meant to restore a trusted local working session;
+// Claude Code conversations resume by session id with `claude --resume`.
 const RESUME_COMMAND = {
-  codex: (id, codexHome = "") => `${codexEnvPrefix(codexHome)}codex resume ${id}`,
+  codex: (id, codexHome = "") => `${codexEnvPrefix(codexHome)}codex resume --dangerously-bypass-approvals-and-sandbox ${id}`,
   claude: (id) => `claude --resume ${id}`,
 };
 

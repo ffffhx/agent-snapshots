@@ -9,4 +9,5 @@ export {
   searchSessions,
   discoverSessionSummaryCandidates,
   summarizeSessionCandidate,
+  latestSessionMessageAt,
 } from "./asc-adapter.mjs";

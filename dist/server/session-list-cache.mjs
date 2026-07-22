@@ -3,11 +3,12 @@ import path from "node:path";
 import os from "node:os";
 import { createHash } from "node:crypto";
 import { mkdir, stat } from "node:fs/promises";
-import { discoverSessionSummaryCandidates, summarizeSessionCandidate, } from "../sources/index.mjs";
+import { discoverSessionSummaryCandidates, latestSessionMessageAt, summarizeSessionCandidate, } from "../sources/index.mjs";
 import { codexHomeKeys, discoverCodexHomes } from "../sources/codex-homes.mjs";
 const RECENT_ACTIVE_MS = 10 * 60 * 1000;
 const CACHE_TABLE = "session_list_cache_v3";
 const META_TABLE = "session_list_meta_v3";
+const MESSAGE_TIME_SOURCE = "last-visible-message";
 let dbPromise = null;
 let reconciling = false;
 let lastBackgroundReconcileAt = 0;
@@ -354,9 +355,12 @@ async function refreshCandidateStats(candidate) {
     };
 }
 function updateRowStatOnly(db, row, candidate) {
+    const cachedSummary = rowSummary(row) || {};
+    const latestMessageAt = latestSessionMessageAt(candidate.filePath || candidate.path || row.file_path || "", engineKey(candidate.engine || row.engine));
     const summary = stampSummary({
-        ...(rowSummary(row) || {}),
-        mtime: candidate.mtime || isoTime(candidate.mtimeMs),
+        ...cachedSummary,
+        mtime: latestMessageAt || cachedSummary.mtime || candidate.mtime || isoTime(candidate.mtimeMs),
+        mtimeSource: latestMessageAt ? MESSAGE_TIME_SOURCE : cachedSummary.mtimeSource,
         size: Number(candidate.size || candidate.sizeBytes || row.size || 0),
         filePath: candidate.filePath || row.file_path || "",
     });
@@ -372,6 +376,24 @@ function updateRowStatOnly(db, row, candidate) {
     return rowId
         ? db.prepare(`SELECT rowid AS __rowid, * FROM ${CACHE_TABLE} WHERE rowid = ?`).get(rowId) || null
         : db.prepare(`SELECT rowid AS __rowid, * FROM ${CACHE_TABLE} WHERE cache_key = ?`).get(row.cache_key) || null;
+}
+function upgradeCachedMessageTime(db, row, summary) {
+    if (!summary || summary.mtimeSource === MESSAGE_TIME_SOURCE || summary.historyOnly === true || summary.sourceKind === "history") {
+        return summary;
+    }
+    const latestMessageAt = latestSessionMessageAt(summary.filePath || row.file_path || "", engineKey(summary.engine || row.engine));
+    if (!latestMessageAt) {
+        return summary;
+    }
+    const upgraded = stampSummary({
+        ...summary,
+        mtime: latestMessageAt,
+        mtimeSource: MESSAGE_TIME_SOURCE,
+    });
+    const rowId = Number(row.__rowid || 0);
+    const where = rowId ? "rowid = ?" : "cache_key = ?";
+    db.prepare(`UPDATE ${CACHE_TABLE} SET mtime = ?, mtime_ms = ?, summary_json = ?, updated_at = ? WHERE ${where}`).run(upgraded.mtime, numberTime(upgraded.mtime), JSON.stringify(upgraded), Date.now(), rowId || row.cache_key);
+    return upgraded;
 }
 async function refreshRowIfNeeded(db, row, homes, { parseChanged = true, parseIfListIncomplete = false } = {}) {
     const candidate = rowCandidate(row) || fallbackCandidate(rowSummary(row) || {});
@@ -524,7 +546,7 @@ async function readCachedSessions({ codexHome, claudeHome, source, cwd, complete
         if (!rawSummary) {
             continue;
         }
-        summary = stampSummary(rawSummary);
+        summary = upgradeCachedMessageTime(db, row, stampSummary(rawSummary));
         if (completeOnly && !listCompleteForSource(summary, source)) {
             continue;
         }

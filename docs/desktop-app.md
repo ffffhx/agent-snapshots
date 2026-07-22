@@ -60,7 +60,8 @@ Agent Snapshots 的桌面应用是一个 Electron 壳：它启动同一套本地
 会话操作：
 
 - 点击 Codex / Claude 会话：优先在 Orca 中继续。
-- 如果 Orca 不可用，macOS 下会回退到 iTerm2（若正在运行）或 Terminal，执行 `codex resume <id>` 或 `claude --resume <id>`。
+- Codex 会话默认以全权限模式恢复，执行 `codex resume --dangerously-bypass-approvals-and-sandbox <id>`；Claude 会话仍执行 `claude --resume <id>`。
+- 如果 Orca 不可用，macOS 下会回退到 iTerm2（若正在运行）或 Terminal，并使用相同的恢复命令。
 - 行内快捷操作包含：`⭐` 置顶/取消置顶、复制恢复命令、打开完整视图。
 - `⌘↵` 打开完整视图；`⌘/` 打开快捷键说明；`Esc` 清空搜索或关闭快捷键说明。
 

@@ -96,7 +96,7 @@ gh auth login
 
 - 托盘菜单可显示/隐藏启动器、打开最近会话、切换开机自启、完成提示音、有会话运行时防休眠、检查更新和退出。
 - 全局快捷键 `Alt+Space` 打开或隐藏启动器；启动器是常驻窗口，失焦不会自动隐藏，关闭窗口也不会退出应用。
-- 启动器支持 全部 / Codex / Claude 范围和 `⌘1` 到 `⌘3` 切换，点击 Codex / Claude 会话会优先在 Orca 继续，Orca 不可用时在 macOS Terminal / iTerm2 回退打开。
+- 启动器支持 全部 / Codex / Claude 范围和 `⌘1` 到 `⌘3` 切换，点击 Codex / Claude 会话会优先在 Orca 继续；Codex 默认以全权限模式恢复，Orca 不可用时在 macOS Terminal / iTerm2 使用相同命令回退打开。
 - 支持 `agent-snapshots://launcher` 和 `agent-snapshots://session/<ref>` 深链接。
 - 打包版本会通过 GitHub Releases 检查更新。
 

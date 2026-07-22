@@ -13,7 +13,7 @@
 // output shapes as `local-history.mjs`, so the CLI/server/site are unchanged.
 
 import { realpath, stat } from "node:fs/promises";
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { closeSync, openSync, readFileSync, readSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { discoverSessionFiles, parseSessionFile, toSnapshot } from "agent-session-core";
 import { addRisks, detectRisks, redactText, severityRank } from "../core/privacy.js";
@@ -47,6 +47,8 @@ const ENGINE_LABELS = { codex: "Codex", claude: "Claude Code" };
 // ~200 covers the title even after a preamble of injected/system messages;
 // beyond that gives no better title coverage (measured) and only costs time.
 const SUMMARY_MAX_LINES = 200;
+const REVERSE_SCAN_CHUNK_BYTES = 64 * 1024;
+const REVERSE_SCAN_MAX_LINE_BYTES = 512 * 1024;
 
 const DEFAULT_SEARCH_LIMIT = 20;
 const DEFAULT_SEARCH_SCAN_LIMIT = 600;
@@ -830,6 +832,191 @@ export async function summarizeSessionCandidate(candidate, { codexHome, claudeHo
   return [projectSummary(session, file)];
 }
 
+// `candidate.mtimeMs` is the transcript file's modification time. It is useful
+// as a cheap cache invalidation watermark, but it is not the user-facing
+// conversation time: tool results, token counters, and other bookkeeping rows
+// can all touch the file after the last visible message. Scan JSONL from the end
+// and stop at the latest real user/assistant message so launcher ages and recent
+// ordering have the semantics they claim to have.
+export function latestSessionMessageAt(filePath, engine) {
+  if (!filePath || !ASC_ENGINES.has(engine)) {
+    return "";
+  }
+
+  let descriptor;
+  try {
+    descriptor = openSync(filePath, "r");
+    let position = statSync(filePath).size;
+    let carry = Buffer.alloc(0);
+    let carryTruncated = false;
+
+    while (position > 0) {
+      const length = Math.min(REVERSE_SCAN_CHUNK_BYTES, position);
+      position -= length;
+      const chunk = Buffer.allocUnsafe(length);
+      readSync(descriptor, chunk, 0, length, position);
+      const data = carry.length ? Buffer.concat([chunk, carry]) : chunk;
+      const newlineIndexes = [];
+      for (let index = data.length - 1; index >= 0; index -= 1) {
+        if (data[index] === 10) {
+          newlineIndexes.push(index);
+        }
+      }
+
+      if (!newlineIndexes.length) {
+        carryTruncated = carryTruncated || data.length > REVERSE_SCAN_MAX_LINE_BYTES;
+        carry = data.length > REVERSE_SCAN_MAX_LINE_BYTES
+          ? data.subarray(0, REVERSE_SCAN_MAX_LINE_BYTES)
+          : data;
+        continue;
+      }
+
+      let lineEnd = data.length;
+      for (let index = 0; index < newlineIndexes.length; index += 1) {
+        const newline = newlineIndexes[index];
+        const line = data.subarray(newline + 1, lineEnd);
+        const timestamp = messageTimestampFromLine(line, engine, index === 0 && carryTruncated);
+        if (timestamp) {
+          return timestamp;
+        }
+        lineEnd = newline;
+      }
+      carry = data.subarray(0, newlineIndexes[newlineIndexes.length - 1]);
+      carryTruncated = false;
+    }
+
+    return messageTimestampFromLine(carry, engine, carryTruncated);
+  } catch {
+    return "";
+  } finally {
+    if (descriptor !== undefined) {
+      try {
+        closeSync(descriptor);
+      } catch {
+        // Ignore a close race; the caller can safely fall back to file mtime.
+      }
+    }
+  }
+}
+
+function messageTimestampFromLine(buffer, engine, truncated) {
+  if (!buffer?.length) {
+    return "";
+  }
+  const text = buffer.toString("utf8").replace(/\r$/, "").trim();
+  if (!text) {
+    return "";
+  }
+  if (truncated) {
+    return messageTimestampFromPrefix(text, engine);
+  }
+  try {
+    return messageTimestampFromRow(JSON.parse(text), engine);
+  } catch {
+    return "";
+  }
+}
+
+function messageTimestampFromRow(row, engine) {
+  const timestamp = normalizeMessageTimestamp(row?.timestamp);
+  if (!timestamp) {
+    return "";
+  }
+
+  if (engine === "codex") {
+    const payload = row?.type === "response_item" && row?.payload?.type === "message" ? row.payload : null;
+    const role = payload?.role;
+    if (!payload || (role !== "user" && role !== "assistant")) {
+      return "";
+    }
+    const content = visibleMessageContent(payload.content, "codex");
+    if (!content.visible || (role === "user" && isCodexBootstrapMessage(content.text))) {
+      return "";
+    }
+    return timestamp;
+  }
+
+  const role = row?.type;
+  if ((role !== "user" && role !== "assistant") || !row?.message) {
+    return "";
+  }
+  const content = visibleMessageContent(row.message.content, "claude");
+  if (!content.visible || (role === "user" && isClaudeInjectedMessage(content.text, row))) {
+    return "";
+  }
+  return timestamp;
+}
+
+function visibleMessageContent(rawContent, engine) {
+  if (typeof rawContent === "string") {
+    return { visible: Boolean(rawContent.trim()), text: rawContent.trim() };
+  }
+  if (!Array.isArray(rawContent)) {
+    return { visible: false, text: "" };
+  }
+  const text = [];
+  let hasImage = false;
+  for (const part of rawContent) {
+    if (typeof part === "string") {
+      if (part.trim()) text.push(part.trim());
+      continue;
+    }
+    if (!part || typeof part !== "object") {
+      continue;
+    }
+    if (typeof part.text === "string" && (engine === "codex" || !part.type || part.type === "text")) {
+      if (part.text.trim()) text.push(part.text.trim());
+    }
+    if (engine === "codex") {
+      hasImage ||= part.type === "input_image" || Boolean(part.image_url || part.imageUrl || part.url);
+    } else {
+      hasImage ||= part.type === "image";
+    }
+  }
+  return { visible: text.length > 0 || hasImage, text: text.join("\n\n") };
+}
+
+function isCodexBootstrapMessage(text) {
+  const value = String(text || "").trim();
+  return value.startsWith("# AGENTS.md instructions for ")
+    || value.includes("<environment_context>")
+    || /^<goal_context>\s*[\s\S]*<\/goal_context>\s*$/i.test(value);
+}
+
+function isClaudeInjectedMessage(text, row) {
+  const value = String(text || "").trim();
+  return row?.isMeta === true
+    || row?.isSidechain === true
+    || /^(<command-name>|<command-message>|<command-args>|<local-command-(caveat|stdout|stderr)>|<system-reminder>|<bash-(input|stdout|stderr)>|<task-notification>|<user-prompt-submit-hook>)/i.test(value)
+    || /^(<local-command-caveat>)?\s*Caveat: The messages below were generated/i.test(value)
+    || /^Base directory for this skill:/i.test(value);
+}
+
+function normalizeMessageTimestamp(value) {
+  const time = new Date(value || 0).getTime();
+  return Number.isFinite(time) && time > 0 ? new Date(time).toISOString() : "";
+}
+
+function messageTimestampFromPrefix(text, engine) {
+  const timestampMatch = text.match(/"timestamp"\s*:\s*"([^"]+)"/);
+  const timestamp = normalizeMessageTimestamp(timestampMatch?.[1]);
+  if (!timestamp) {
+    return "";
+  }
+  if (engine === "codex") {
+    return /"type"\s*:\s*"response_item"/.test(text)
+      && /"payload"\s*:\s*\{[\s\S]*?"type"\s*:\s*"message"/.test(text)
+      && /"role"\s*:\s*"(?:user|assistant)"/.test(text)
+      ? timestamp
+      : "";
+  }
+  return /"type"\s*:\s*"(?:user|assistant)"/.test(text)
+    && /"message"\s*:\s*\{/.test(text)
+    && /"content"\s*:/.test(text)
+    ? timestamp
+    : "";
+}
+
 // Project an ASC NormalizedSession into the legacy list-summary shape that the
 // CLI/server/site consume.
 function projectSummary(session, file, codexHomeInfo = null) {
@@ -866,6 +1053,7 @@ function projectSummary(session, file, codexHomeInfo = null) {
   // Redact the list title too (the snapshot title is already redacted), so a
   // path/secret in a first message doesn't leak into the sidebar.
   const title = redactText(stripCodexAppDirectives(session.title || "")) || session.id;
+  const latestMessageAt = latestSessionMessageAt(filePath, engine);
 
   const summary = {
     id: session.id,
@@ -873,7 +1061,9 @@ function projectSummary(session, file, codexHomeInfo = null) {
     cwd,
     filePath,
     size: session.sizeBytes ?? file.sizeBytes,
-    mtime: session.mtimeMs ? new Date(session.mtimeMs).toISOString() : new Date(file.mtimeMs).toISOString(),
+    mtime: latestMessageAt
+      || (session.mtimeMs ? new Date(session.mtimeMs).toISOString() : new Date(file.mtimeMs).toISOString()),
+    mtimeSource: latestMessageAt ? "last-visible-message" : "file-mtime",
     createdAt: session.startedAt || "",
     messageCount,
     toolCallCount,

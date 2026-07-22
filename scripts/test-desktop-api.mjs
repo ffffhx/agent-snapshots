@@ -401,7 +401,7 @@ async function assertSessionPeek(viewerUrl) {
   assert(payload.turns.length === 1, `turns=1 should return one turn, got ${payload.turns.length}`);
   assert(payload.turns[0].role === "assistant", "turns=1 should return the last assistant message from the fixture");
   assert(payload.turns[0].text === "The image fixture is available.", "session peek should return plain turn text");
-  assert(payload.turns.every((turn) => typeof turn.text === "string" && turn.text.length <= 400), "peek turn text should be capped at 400 chars");
+  assert(payload.turns.every((turn) => typeof turn.text === "string"), "peek turn text should remain plain strings");
 
   const allTurns = await fetchJson(`${viewerUrl}/api/session-peek?id=${encodeURIComponent(id)}&turns=3`);
   const redactedTurn = allTurns.turns.find((turn) => String(turn.text || "").includes("REDACTED"));
@@ -409,8 +409,8 @@ async function assertSessionPeek(viewerUrl) {
   assert(!JSON.stringify(allTurns).includes(PEEK_SECRET), "peek payload should not leak raw secrets");
   const emojiTurn = allTurns.turns.find((turn) => Array.from(String(turn.text || "")).every((char) => char === "\u{1F600}"));
   assert(emojiTurn, "peek should include the long emoji fixture turn");
-  assert(Array.from(emojiTurn.text).length === 400, `peek should truncate by code point, got ${Array.from(emojiTurn.text).length}`);
-  assert(!emojiTurn.text.includes("\uFFFD"), "peek truncation should not introduce replacement characters");
+  assert(Array.from(emojiTurn.text).length === Array.from(LONG_EMOJI_TEXT).length, `peek should preserve the complete message, got ${Array.from(emojiTurn.text).length}`);
+  assert(!emojiTurn.text.includes("\uFFFD"), "peek text should not introduce replacement characters");
 }
 
 async function assertLauncherPrefs(viewerUrl, origin, csrfToken) {
@@ -695,7 +695,23 @@ async function assertLegacyPrimaryCacheRow(cacheDir) {
     const codexHome = path.join(cacheDir, "codex");
     const filePath = path.join(codexHome, "sessions", "2026", "06", "02", "legacy-primary.jsonl");
     await mkdir(path.dirname(filePath), { recursive: true });
-    await writeFile(filePath, "{}\n", "utf8");
+    await writeFile(filePath, [
+      JSON.stringify({
+        timestamp: "2026-06-01T00:00:00.000Z",
+        type: "session_meta",
+        payload: { id: "legacy-primary", cwd: codexHome },
+      }),
+      JSON.stringify({
+        timestamp: "2026-06-01T00:01:00.000Z",
+        type: "response_item",
+        payload: { type: "message", role: "assistant", content: [{ type: "output_text", text: "cached message" }] },
+      }),
+      JSON.stringify({
+        timestamp: "2026-06-01T00:02:00.000Z",
+        type: "event_msg",
+        payload: { type: "token_count", info: {} },
+      }),
+    ].join("\n") + "\n", "utf8");
     const fileInfo = await stat(filePath);
     const moduleUrl = pathToFileURL(path.join(ROOT_DIR, "dist/server/session-list-cache.mjs")).href + `?legacy-primary=${Date.now()}`;
     const cache = await import(moduleUrl);
@@ -754,7 +770,9 @@ async function assertLegacyPrimaryCacheRow(cacheDir) {
       offset: 0,
       completeOnly: true,
     });
-    assert(rows.some((row) => row.ref === "codex:legacy-primary"), `legacy no-home cache row should resolve as primary: ${JSON.stringify(rows)}`);
+    const legacyRow = rows.find((row) => row.ref === "codex:legacy-primary");
+    assert(legacyRow, `legacy no-home cache row should resolve as primary: ${JSON.stringify(rows)}`);
+    assert(legacyRow.mtime === "2026-06-01T00:01:00.000Z", `legacy cached mtime should upgrade to its last message: ${JSON.stringify(legacyRow)}`);
   } finally {
     if (previousXdgCacheHome === undefined) {
       delete process.env.XDG_CACHE_HOME;

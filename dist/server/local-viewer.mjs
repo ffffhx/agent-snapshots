@@ -863,12 +863,11 @@ function sessionPeekTurns(turns, turnLimit) {
         .slice(-limit)
         .map((turn) => ({
         role: String(turn.role).toLowerCase() === "user" ? "user" : "assistant",
-        text: peekSnippetText(turn.text),
+        text: peekTurnText(turn.text),
     }));
 }
-function peekSnippetText(value) {
-    const text = redactText(String(value || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n"));
-    return Array.from(text).slice(0, 400).join("");
+function peekTurnText(value) {
+    return redactText(String(value || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n"));
 }
 function isSnapshotComplete(snapshot) {
     if (snapshot?.complete === true) {
