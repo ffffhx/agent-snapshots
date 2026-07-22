@@ -6,7 +6,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
 const RESUME_COMMAND = {
-    codex: (id, codexHome = "") => `${codexEnvPrefix(codexHome)}codex resume ${id}`,
+    codex: (id, codexHome = "") => `${codexEnvPrefix(codexHome)}codex resume --dangerously-bypass-approvals-and-sandbox ${id}`,
     claude: (id) => `claude --resume ${id}`,
 };
 const TERMINAL_TIMEOUT_MS = 8000;

@@ -110,6 +110,8 @@ html,body{height:100%;background:transparent;color:var(--ink);font-family:var(--
 .row.sel .rowhint,.row:hover .rowhint{opacity:1;pointer-events:auto}
 .rowhint:hover{border-color:rgba(217,79,57,0.55);background:rgba(217,79,57,0.22)}
 .rowhint:focus-visible{outline:2px solid rgba(217,79,57,0.5);outline-offset:2px}
+.row .rowhint.resuming{opacity:1;pointer-events:none;cursor:default}
+.rowhint .spin{width:10px;height:10px;margin-right:5px;border-width:1.5px;border-top-color:var(--seal);vertical-align:-1px}
 .peekchev{position:absolute;right:10px;top:50%;color:#efcfb7;font:800 20px/1 var(--sans);opacity:0;transform:translateY(-50%) translateX(-2px);transition:opacity .12s ease,transform .12s ease}
 .row.sel .peekchev{opacity:.82;transform:translateY(-50%) translateX(0)}
 .live-chip{display:inline-flex;align-items:center;gap:5px;height:19px;padding:0 7px;border:1px solid rgba(124,207,136,0.24);border-radius:99px;background:var(--live-soft);color:#bfe6c4;font:800 10px/1 var(--mono)}
@@ -169,6 +171,7 @@ html,body{height:100%;background:transparent;color:var(--ink);font-family:var(--
 .hint .act{color:var(--seal);font-weight:800}
 .hint kbd{display:inline-flex;align-items:center;justify-content:center;min-width:19px;height:20px;margin-right:6px;padding:0 6px;border:1px solid rgba(233,220,196,0.24);border-top-color:rgba(255,255,255,0.28);border-radius:6px;background:linear-gradient(180deg,rgba(233,220,196,0.16),rgba(233,220,196,0.08));color:#efe3c5;font:700 11px/1 var(--mono);box-shadow:inset 0 1px 0 rgba(255,255,255,0.12),0 1px 2px rgba(0,0,0,0.4);vertical-align:-4px}
 .toast{position:fixed;left:50%;bottom:52px;transform:translateX(-50%);z-index:9;max-width:86vw;border:1px solid var(--line-2);border-left:3px solid var(--seal);border-radius:9px;background:rgba(30,23,15,0.95);color:var(--ink);padding:10px 14px;font:600 12.5px/1.4 var(--sans);box-shadow:0 20px 50px -24px #000}
+.toast .spin{width:12px;height:12px;margin-right:8px;border-width:2px;vertical-align:-2px}
 .toast[hidden]{display:none}
 .toast.err{border-left-color:#e0563b}
 .shortcuts{position:fixed;inset:0;z-index:8;display:grid;place-items:center;background:rgba(5,4,3,0.18);backdrop-filter:blur(1.5px)}
@@ -199,7 +202,7 @@ const $=(id)=>document.getElementById(id);
 const esc=(v)=>String(v==null?"":v).replace(/[&<>"']/g,(c)=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const SCOPES=["all","codex","claude"];
 const SCOPE_LABELS={all:"全部",codex:"Codex",claude:"Claude"};
-const state={items:[],sel:0,scope:"all",query:"",mode:"recent",token:0,loading:false,searchMs:0,matched:0,searchFailed:false,pinnedPrefs:[],pinnedSet:new Set(),accessPrefs:{},projectPrefs:{},noteRefs:new Set(),notePreviews:{},pinnedCount:0,liveCount:0,recentCount:0,quota:null,ambientLiveCount:0,shortcutsOpen:false,previewOpen:false,previewLoading:false,previewError:false,previewKey:"",previewData:null,previewToken:0};
+const state={items:[],sel:0,scope:"all",query:"",mode:"recent",token:0,loading:false,searchMs:0,matched:0,searchFailed:false,pinnedPrefs:[],pinnedSet:new Set(),accessPrefs:{},projectPrefs:{},noteRefs:new Set(),notePreviews:{},pinnedCount:0,liveCount:0,recentCount:0,quota:null,ambientLiveCount:0,shortcutsOpen:false,previewOpen:false,previewLoading:false,previewError:false,previewKey:"",previewData:null,previewToken:0,resumingRef:""};
 let timer=0;
 let ambientTimer=0;
 let ambientToken=0;
@@ -259,9 +262,13 @@ function isLiveCandidate(it){
 }
 function isRunning(it){ return !!(it && (it._live===true || it.live===true || it.complete===false)); }
 
-function showToast(msg,err){
-  const el=$("toast"); el.textContent=msg; el.classList.toggle("err",!!err); el.hidden=false;
-  clearTimeout(showToast._t); showToast._t=setTimeout(()=>{el.hidden=true;},3600);
+function showToast(msg,err,loading){
+  const el=$("toast");
+  if(loading) el.innerHTML="<span class='spin'></span>"+esc(msg);
+  else el.textContent=msg;
+  el.classList.toggle("err",!!err); el.hidden=false;
+  clearTimeout(showToast._t);
+  if(!loading) showToast._t=setTimeout(()=>{el.hidden=true;},3600);
 }
 
 function schedule(){
@@ -813,9 +820,15 @@ function row(it,i){
   return "<div class='row"+(i===state.sel?" sel":"")+"' data-i='"+i+"' title='"+esc(rowTitle)+"'>"+
     "<span class='badge "+k+"'>"+badgeChar(k)+"</span>"+
     "<div class='rc'><div class='rt'>"+esc(title)+"</div><div class='rs'>"+subLine+"</div></div>"+
-    "<div class='racc'>"+noteMarker+pinMarker+freqMarker+live+"<span class='age'>"+esc(relTime(it.mtime))+"</span><button class='rowhint' data-action='resume' type='button' title='在 Orca 继续该会话'>Orca 继续</button>"+actions+"</div>"+
+    "<div class='racc'>"+noteMarker+pinMarker+freqMarker+live+"<span class='age'>"+esc(relTime(it.mtime))+"</span>"+resumeButton(it,key)+actions+"</div>"+
     "<span class='peekchev' aria-hidden='true'>›</span>"+
   "</div>";
+}
+
+function resumeButton(it,key){
+  const resuming=!!state.resumingRef&&!!key&&state.resumingRef===key;
+  return "<button class='rowhint"+(resuming?" resuming":"")+"' data-action='resume' type='button'"+(resuming?" disabled":"")+" title='在 Orca 继续该会话'>"+
+    (resuming?"<span class='spin'></span>唤起中…":"Orca 继续")+"</button>";
 }
 
 function actionButton(action,title,icon,extraClass){
@@ -1077,7 +1090,7 @@ function resumeCommand(it){
   const k=engineKey(it);
   const id=bareSessionId(it);
   if(!id) return "";
-  return k==="claude"?"claude --resume "+id:"codex resume "+id;
+  return k==="claude"?"claude --resume "+id:"codex resume --dangerously-bypass-approvals-and-sandbox "+id;
 }
 
 async function copyResumeCommand(it){
@@ -1138,15 +1151,36 @@ async function copyText(text){
 }
 
 async function resumeOrOpen(it){
-  if(!it) return;
-  showToast("正在唤起 Orca…",false);
+  if(!it||state.resumingRef) return;
+  state.resumingRef=sessionKey(it)||"pending";
+  syncResumeButtons();
+  showToast("正在唤起 Orca…",false,true);
   try{
     const p=new URLSearchParams({id:it.ref||"",cwd:it.cwd||it.displayCwd||"",title:it.title||""});
-    const r=await fetch("/api/resume-in-orca?"+p.toString(),{method:"POST",headers:{"${MUTATION_CSRF_HEADER}":window.CSRF}});
+    // The server may open the Orca app and shell out to its CLI several times
+    // (each capped at 8s), so give the whole hop a generous ceiling.
+    const r=await fetch("/api/resume-in-orca?"+p.toString(),{method:"POST",headers:{"${MUTATION_CSRF_HEADER}":window.CSRF},signal:AbortSignal.timeout(30000)});
     const d=await r.json();
     if(r.ok&&d.ok) showToast(d.via==="terminal"?"Orca 不可用，已在 "+(d.app||"Terminal")+" 打开":"已在 Orca 继续",false);
     else showToast(d.error||"恢复失败",true);
-  }catch(e){ showToast(String(e&&e.message||e),true); }
+  }catch(e){
+    showToast(e&&e.name==="TimeoutError"?"唤起 Orca 超时，请重试":String(e&&e.message||e),true);
+  }finally{
+    state.resumingRef="";
+    syncResumeButtons();
+  }
+}
+
+function syncResumeButtons(){
+  for(const el of document.querySelectorAll(".row[data-i]")){
+    const it=state.items[Number(el.dataset.i)];
+    const btn=el.querySelector("[data-action='resume']");
+    if(!btn||!it) continue;
+    const resuming=!!state.resumingRef&&sessionKey(it)===state.resumingRef;
+    btn.classList.toggle("resuming",resuming);
+    btn.disabled=resuming;
+    btn.innerHTML=resuming?"<span class='spin'></span>唤起中…":"Orca 继续";
+  }
 }
 
 function setScope(scope){

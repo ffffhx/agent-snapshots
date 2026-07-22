@@ -226,7 +226,10 @@ test("launcher merges pinned, live, and recent rows with dedupe", async () => {
 
 test("launcher builds resume commands per engine", async () => {
   const { resumeCommand } = await launcherRuntime();
-  assert.equal(resumeCommand({ engine: "codex", id: "abc123" }), "codex resume abc123");
+  assert.equal(
+    resumeCommand({ engine: "codex", id: "abc123" }),
+    "codex resume --dangerously-bypass-approvals-and-sandbox abc123",
+  );
   assert.equal(resumeCommand({ engine: "claude", ref: "claude:ccc-111" }), "claude --resume ccc-111");
 });
 
