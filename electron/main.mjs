@@ -18,10 +18,12 @@ import {
   screen,
   Notification,
   powerSaveBlocker,
+  ipcMain,
 } from "electron";
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { createRequire } from "node:module";
+import { copyFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import net from "node:net";
 import http from "node:http";
 import path from "node:path";
@@ -29,6 +31,14 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { createQuickLookController } from "./quicklook.mjs";
 import { SettingsStore } from "./settings-store.mjs";
+import {
+  excludeLiveRecoverySessions,
+  mergeRecoverySessions,
+  normalizeRecoverySession,
+  readSessionRecoveryState,
+  storedSessionRecoveryState,
+} from "./session-recovery.mjs";
+import { listActiveOrcaSessionSummaries } from "./orca-live-sessions.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // The app root holds both electron/ and dist/ as siblings, in dev and when
@@ -45,6 +55,10 @@ const isWindows = process.platform === "win32";
 const supportsOpenAtLogin = isMac || isWindows;
 const supportsNotificationSilent = isMac || isWindows;
 const GLOBAL_SHORTCUT_SETTING_KEY = "globalShortcut";
+const SESSION_RECOVERY_SETTING_KEY = "sessionRecovery";
+const SESSION_RECOVERY_GET_CHANNEL = "session-recovery:get";
+const SESSION_RECOVERY_RESTORE_CHANNEL = "session-recovery:restore";
+const SESSION_RECOVERY_CHANGED_CHANNEL = "session-recovery:changed";
 const DEFAULT_GLOBAL_SHORTCUT = isMac ? "Alt+Space" : "Ctrl+Shift+Space";
 const GLOBAL_SHORTCUT_DISABLED_LABEL = "快捷键禁用";
 const GLOBAL_SHORTCUT_PRESETS = [
@@ -61,6 +75,7 @@ const MUTATION_CSRF_TOKEN = randomBytes(32).toString("base64url");
 // Start with the launcher window hidden (tray/shortcut still summon it):
 // lets scripts and agents boot or debug the app without stealing focus.
 const START_HIDDEN = process.env.AGENT_SNAPSHOT_START_HIDDEN === "1" || process.argv.includes("--hidden");
+const ENABLE_OPEN_AT_LOGIN = process.env.AGENT_SNAPSHOT_OPEN_AT_LOGIN === "1";
 const POLL_INTERVAL_MS = 5000;
 const TRAY_RECENT_REFRESH_MS = 30000;
 const DEFAULT_SETTINGS = {
@@ -69,11 +84,22 @@ const DEFAULT_SETTINGS = {
   completionSound: true,
   preventSleepWithLiveSessions: false,
   launcherBounds: null,
+  sessionRecovery: {
+    version: 1,
+    monitoring: false,
+    liveSessions: [],
+    recoverableSessions: [],
+  },
 };
 // The app logo, so the dev-mode window/dock shows our mark instead of the
 // default Electron atom (the packaged .app already embeds build/icon.icns).
 const APP_ICON = nativeImage.createFromPath(path.join(APP_ROOT, "build", "icon.png"));
 const require = createRequire(import.meta.url);
+
+// Development launches otherwise inherit Electron's generic app name and
+// userData directory. Use the product name in both dev and packaged builds so
+// settings (including login-item and recovery state) have one stable home.
+app.setName("Agent Snapshots");
 
 let serverProcess = null;
 let serverPort = 0;
@@ -96,9 +122,14 @@ let recentTrayRefreshInFlight = false;
 let hasPollBaseline = false;
 let liveSessionIds = new Set();
 let liveSessionById = new Map();
+let recoveryLiveSessionById = new Map();
 let recentTraySessions = [];
 let unseenCompletionCount = 0;
 let sleepBlockerId = null;
+let recoverableSessions = [];
+let recoveryInFlight = false;
+let recoveryIpcRegistered = false;
+let lastRecoveryStorageFingerprint = "";
 let selectedGlobalShortcut = DEFAULT_GLOBAL_SHORTCUT;
 let registeredGlobalShortcut = null;
 let globalShortcutIneffective = false;
@@ -338,6 +369,27 @@ function writeSetting(key, value) {
     settings?.set(key, value);
   } catch (error) {
     console.warn(`Failed to write setting ${key}:`, error);
+  }
+}
+
+function migrateLegacyDevelopmentSettings() {
+  if (!process.defaultApp) {
+    return;
+  }
+  const nextPath = path.join(app.getPath("userData"), "settings.json");
+  const legacyPath = path.join(app.getPath("appData"), "Electron", "settings.json");
+  if (existsSync(nextPath) || !existsSync(legacyPath)) {
+    return;
+  }
+  try {
+    const legacy = JSON.parse(readFileSync(legacyPath, "utf8"));
+    if (!legacy || typeof legacy !== "object" || Number(legacy.settingsVersion || 0) < 1) {
+      return;
+    }
+    mkdirSync(path.dirname(nextPath), { recursive: true });
+    copyFileSync(legacyPath, nextPath);
+  } catch (error) {
+    console.warn("Failed to migrate legacy Electron development settings:", error);
   }
 }
 
@@ -720,6 +772,7 @@ function launcherWindowOptions() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      preload: path.join(__dirname, "launcher-preload.cjs"),
     },
   };
 }
@@ -887,7 +940,7 @@ function setOpenAtLogin(enabled, { persist = true } = {}) {
     return;
   }
   try {
-    app.setLoginItemSettings({ openAtLogin });
+    app.setLoginItemSettings(loginItemSettings(openAtLogin));
   } catch (error) {
     console.warn("Failed to update login item setting:", error);
   }
@@ -895,6 +948,17 @@ function setOpenAtLogin(enabled, { persist = true } = {}) {
     writeSetting("openAtLogin", openAtLogin);
   }
   rebuildTrayMenu();
+}
+
+function loginItemSettings(openAtLogin) {
+  if (process.defaultApp) {
+    return {
+      openAtLogin,
+      path: process.execPath,
+      args: [path.join(APP_ROOT, "electron/main.mjs"), "--hidden"],
+    };
+  }
+  return { openAtLogin };
 }
 
 function releaseSleepBlocker() {
@@ -1034,6 +1098,17 @@ function rebuildTrayMenu() {
   }
   trayMenu = Menu.buildFromTemplate([
     { label: `显示/隐藏启动器 (${selectedGlobalShortcutLabel()})`, click: toggleLauncherWindow },
+    ...(recoverableSessions.length
+      ? [{
+        label: recoveryInFlight
+          ? `正在恢复中断的会话 (${recoverableSessions.length})…`
+          : `恢复上次中断的会话 (${recoverableSessions.length})`,
+        enabled: !recoveryInFlight,
+        click: () => {
+          void restoreInterruptedSessions({ showResultDialog: true });
+        },
+      }]
+      : []),
     { label: "打开完整视图", click: () => openViewerForSession() },
     { label: "在浏览器打开", click: () => startUrl && shell.openExternal(startUrl) },
     { label: "检查更新…", click: checkForUpdatesManually },
@@ -1177,6 +1252,177 @@ function sessionRef(session) {
   return normalizeSessionRef(rawRef);
 }
 
+function recoverySessionFromSummary(session) {
+  return normalizeRecoverySession({
+    ref: sessionRef(session),
+    cwd: session?.cwd || session?.displayCwd || "",
+    title: session?.title || "",
+    observedAt: session?.mtime || session?.updatedAt || new Date().toISOString(),
+  });
+}
+
+function recoveryLiveSessions(sessions = recoveryLiveSessionById.values()) {
+  const normalized = [];
+  for (const session of sessions) {
+    const recoverySession = recoverySessionFromSummary(session);
+    if (recoverySession) {
+      normalized.push(recoverySession);
+    }
+  }
+  return mergeRecoverySessions(normalized);
+}
+
+function persistSessionRecovery({ monitoring = true, liveSessions = recoveryLiveSessions() } = {}) {
+  const next = storedSessionRecoveryState({
+    monitoring,
+    liveSessions,
+    recoverableSessions,
+  });
+  const fingerprint = JSON.stringify({
+    monitoring: next.monitoring,
+    liveSessions: next.liveSessions,
+    recoverableSessions: next.recoverableSessions,
+  });
+  if (fingerprint === lastRecoveryStorageFingerprint) {
+    return;
+  }
+  lastRecoveryStorageFingerprint = fingerprint;
+  writeSetting(SESSION_RECOVERY_SETTING_KEY, next);
+}
+
+function sessionRecoveryPublicState() {
+  return {
+    count: recoverableSessions.length,
+    restoring: recoveryInFlight,
+  };
+}
+
+function broadcastSessionRecoveryState() {
+  const state = sessionRecoveryPublicState();
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(SESSION_RECOVERY_CHANGED_CHANNEL, state);
+  }
+  rebuildTrayMenu();
+}
+
+function initializeSessionRecovery() {
+  const previous = readSessionRecoveryState(setting(SESSION_RECOVERY_SETTING_KEY));
+  recoverableSessions = previous.recoverableSessions;
+  // Mark the monitor active before the first poll. The pending list is written
+  // separately so another crash during startup cannot discard the older run.
+  persistSessionRecovery({ monitoring: true, liveSessions: [] });
+}
+
+function markSessionRecoveryCleanShutdown() {
+  if (!settings) {
+    return;
+  }
+  // A deliberate Agent Snapshots quit is not evidence that Orca died. Pending
+  // recovery entries remain, but currently live sessions are not promoted on
+  // the next launch unless this process itself terminates unexpectedly.
+  persistSessionRecovery({ monitoring: false });
+}
+
+function isTrustedRecoveryIpc(event) {
+  if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) {
+    return false;
+  }
+  return isAppUrl(event.senderFrame?.url || event.sender.getURL());
+}
+
+function registerSessionRecoveryIpc() {
+  if (recoveryIpcRegistered) {
+    return;
+  }
+  recoveryIpcRegistered = true;
+  ipcMain.handle(SESSION_RECOVERY_GET_CHANNEL, (event) => {
+    if (!isTrustedRecoveryIpc(event)) {
+      throw new Error("untrusted session recovery request");
+    }
+    return sessionRecoveryPublicState();
+  });
+  ipcMain.handle(SESSION_RECOVERY_RESTORE_CHANNEL, async (event) => {
+    if (!isTrustedRecoveryIpc(event)) {
+      throw new Error("untrusted session recovery request");
+    }
+    return restoreInterruptedSessions();
+  });
+}
+
+async function resumeRecoverySession(session) {
+  const params = new URLSearchParams({
+    id: session.ref,
+    cwd: session.cwd,
+    title: session.title || "",
+  });
+  const result = await postLocalJson(`/api/resume-in-orca?${params.toString()}`);
+  if (!result.ok) {
+    throw new Error(result.error || "恢复失败");
+  }
+  return result;
+}
+
+async function restoreInterruptedSessions({ showResultDialog = false } = {}) {
+  if (recoveryInFlight) {
+    return {
+      ok: false,
+      restored: 0,
+      failed: 0,
+      remaining: recoverableSessions.length,
+      error: "正在恢复中",
+    };
+  }
+  const queue = [...recoverableSessions];
+  if (!queue.length) {
+    return { ok: true, restored: 0, failed: 0, remaining: 0 };
+  }
+
+  recoveryInFlight = true;
+  broadcastSessionRecoveryState();
+  let restored = 0;
+  const failures = [];
+  for (const session of queue) {
+    try {
+      await resumeRecoverySession(session);
+      recoverableSessions = recoverableSessions.filter((item) => item.ref !== session.ref);
+      restored += 1;
+      persistSessionRecovery();
+      broadcastSessionRecoveryState();
+    } catch (error) {
+      failures.push({
+        ref: session.ref,
+        error: compactErrorMessage(error),
+      });
+    }
+  }
+  recoveryInFlight = false;
+  persistSessionRecovery();
+  broadcastSessionRecoveryState();
+
+  const result = {
+    ok: failures.length === 0,
+    restored,
+    failed: failures.length,
+    remaining: recoverableSessions.length,
+    failures,
+  };
+  if (showResultDialog) {
+    const detail = failures.length
+      ? failures.map((failure) => `${failure.ref}\n${failure.error}`).join("\n\n")
+      : "";
+    await dialog.showMessageBox({
+      type: failures.length ? "warning" : "info",
+      title: "恢复中断的会话",
+      message: failures.length
+        ? `已恢复 ${restored} 个，${failures.length} 个失败`
+        : `已恢复 ${restored} 个会话`,
+      ...(detail ? { detail } : {}),
+      buttons: ["好"],
+    });
+  }
+  return result;
+}
+
 function isArchivedSessionSummary(session) {
   const filePath = String(session?.filePath || session?.displayFilePath || "");
   return /(^|[\\/])archived_sessions([\\/]|$)/.test(filePath);
@@ -1242,6 +1488,52 @@ function getJson(pathname) {
   });
 }
 
+function postLocalJson(pathname) {
+  return new Promise((resolve, reject) => {
+    const req = http.request(
+      {
+        host: HOST,
+        port: serverPort,
+        path: pathname,
+        method: "POST",
+        timeout: 30000,
+        headers: {
+          accept: "application/json",
+          origin: appOrigin(),
+          "x-agent-snapshot-csrf": MUTATION_CSRF_TOKEN,
+        },
+      },
+      (res) => {
+        let body = "";
+        res.setEncoding("utf8");
+        res.on("data", (chunk) => {
+          body += chunk;
+          if (body.length > 1_000_000) {
+            req.destroy(new Error("response too large"));
+          }
+        });
+        res.on("end", () => {
+          let payload;
+          try {
+            payload = JSON.parse(body);
+          } catch (error) {
+            reject(error);
+            return;
+          }
+          if (!res.statusCode || res.statusCode < 200 || res.statusCode >= 300) {
+            reject(new Error(payload?.error || `HTTP ${res.statusCode ?? "?"}`));
+            return;
+          }
+          resolve(payload);
+        });
+      },
+    );
+    req.on("error", reject);
+    req.on("timeout", () => req.destroy(new Error("恢复请求超时")));
+    req.end();
+  });
+}
+
 async function pollSessionCompletions() {
   if (!serverPort || pollInFlight) {
     return;
@@ -1250,7 +1542,7 @@ async function pollSessionCompletions() {
   try {
     const query = new URLSearchParams({
       liveOnly: "1",
-      limit: "100",
+      limit: "500",
       source: "all",
       completeOnly: "0",
     });
@@ -1268,10 +1560,25 @@ async function pollSessionCompletions() {
       nextIds.add(ref);
       nextById.set(ref, session);
     }
+    const activeOrcaSessions = await listActiveOrcaSessionSummaries(result);
+    const nextRecoveryById = new Map();
+    for (const session of activeOrcaSessions) {
+      const ref = sessionRef(session);
+      if (ref && !isArchivedSessionSummary(session)) {
+        nextRecoveryById.set(ref, session);
+      }
+    }
     if (!hasPollBaseline) {
       liveSessionIds = nextIds;
       liveSessionById = nextById;
+      recoveryLiveSessionById = nextRecoveryById;
       hasPollBaseline = true;
+      recoverableSessions = excludeLiveRecoverySessions(
+        recoverableSessions,
+        recoveryLiveSessions(nextRecoveryById.values()),
+      );
+      persistSessionRecovery();
+      broadcastSessionRecoveryState();
       syncSleepBlocker(nextIds.size > 0);
       return;
     }
@@ -1282,6 +1589,8 @@ async function pollSessionCompletions() {
     }
     liveSessionIds = nextIds;
     liveSessionById = nextById;
+    recoveryLiveSessionById = nextRecoveryById;
+    persistSessionRecovery();
     syncSleepBlocker(nextIds.size > 0);
   } catch {
     // The local server may restart while the app stays alive; try again later.
@@ -1418,10 +1727,13 @@ function buildMenu(getStartUrl) {
 }
 
 async function bootstrap() {
+  migrateLegacyDevelopmentSettings();
   settings = new SettingsStore(path.join(app.getPath("userData"), "settings.json"), DEFAULT_SETTINGS);
+  initializeSessionRecovery();
+  registerSessionRecoveryIpc();
   loadGlobalShortcutSetting();
-  if (supportsOpenAtLogin && setting("openAtLogin")) {
-    setOpenAtLogin(true, { persist: false });
+  if (supportsOpenAtLogin && (ENABLE_OPEN_AT_LOGIN || setting("openAtLogin"))) {
+    setOpenAtLogin(true, { persist: ENABLE_OPEN_AT_LOGIN });
   }
   // macOS shows the dock icon from the .app bundle; in dev there is none, so
   // set it explicitly (also covers `electron .` runs).
@@ -1488,6 +1800,7 @@ if (!app.requestSingleInstanceLock()) {
   app.on("before-quit", () => {
     quitting = true;
     saveLauncherBoundsNow();
+    markSessionRecoveryCleanShutdown();
     quickLook?.destroy();
     stopRecentTrayRefresh();
     stopCompletionPoller();

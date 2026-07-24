@@ -13,6 +13,7 @@ Agent Snapshots 的桌面应用是一个 Electron 壳：它启动同一套本地
 - `在浏览器打开`：用系统浏览器打开本地查看器地址。
 - `检查更新...`：打包版本通过 GitHub Releases 检查更新；开发模式会提示不支持。
 - `最近会话`：每 30 秒刷新最近 8 个会话，点击后打开完整视图。
+- `恢复上次中断的会话`：仅在检测到上次异常退出前仍有 live sessions 时出现，一次恢复全部会话。
 - `完成提示音`：控制会话完成通知是否静音。
 - `有会话运行时防止休眠`：有 live session 时启用 Electron `powerSaveBlocker`。
 - `开机自启`：通过系统 login item 设置。
@@ -35,6 +36,7 @@ Agent Snapshots 的桌面应用是一个 Electron 壳：它启动同一套本地
 
 - 桌面应用每 5 秒轮询进行中的会话。
 - 第一次轮询只建立基线；之后如果某个 live session 消失，就认为它完成。
+- 每次轮询还会把 Orca 中真实运行的 Codex / Claude 进程匹配到会话并原子写入 Electron 设置，避免把旧的未显式结束日志误判为 live；正常退出会标记监控已结束，异常退出时则把最后一次清单作为待恢复会话。
 - 如果没有 Agent Snapshots 窗口处于焦点，会发出系统通知并增加 macOS Dock badge。
 - 点击通知会打开对应会话；任意应用窗口重新获得焦点后会清空 Dock badge。
 
@@ -53,6 +55,7 @@ Agent Snapshots 的桌面应用是一个 Electron 壳：它启动同一套本地
 - 范围切换：`全部`、`Codex`、`Claude`，可用 `⌘1` 到 `⌘3` 切换。
 - 搜索：输入关键词会调用本地 `/api/search`，包含工具文本但不包含完整工具输出。
 - 空搜索状态会分组显示 `置顶`、`进行中`、`最近`。
+- 启动器顶部会显示“崩溃恢复已开启”；如果上次运行异常中断且留下 live sessions，会变为待恢复提示，点击“全部恢复”会逐个在 Orca 中继续，失败的条目会保留供重试。
 - 置顶会话最多保留 20 个，偏好写在 `~/.agent-snapshot/launcher-prefs.json`；可用 `AGENT_SNAPSHOT_PREFS_DIR` 改目录。
 - 进行中的会话会被提到最近列表前面，并显示绿色 `进行中` dot。
 - 底部会显示 Codex 配额仪表（5 小时窗口、周配额）和进行中会话计数；点击进行中计数会切到 live sessions。
