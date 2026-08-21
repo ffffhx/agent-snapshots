@@ -24,6 +24,14 @@ export function renderLauncherApp(csrfToken) {
         <button class="scope" data-scope="claude" type="button">Claude</button>
       </div>
     </header>
+    <section id="recovery" class="recovery" hidden aria-live="polite">
+      <span class="recovery-icon" aria-hidden="true">↻</span>
+      <div class="recovery-copy">
+        <b id="recoveryTitle">发现异常中断的会话</b>
+        <span id="recoverySubtitle">恢复电脑重启前仍在运行的 Session</span>
+      </div>
+      <button id="recoveryRestore" class="recovery-restore" type="button">全部恢复</button>
+    </section>
     <section id="workspace" class="workspace">
       <div id="list" class="list" role="listbox" aria-label="会话"></div>
       <aside id="peek" class="peek" aria-label="会话预览" aria-hidden="true"></aside>
@@ -82,6 +90,19 @@ html,body{height:100%;background:transparent;color:var(--ink);font-family:var(--
 .scope{border:0;border-radius:6px;background:transparent;color:var(--dim);padding:5px 9px;font:700 10.5px/1 var(--mono);letter-spacing:0.04em;cursor:pointer;transition:background-color .12s ease,color .12s ease}
 .scope:hover{color:var(--ink)}
 .scope.active{background:rgba(233,220,196,0.1);color:var(--ink)}
+.recovery{display:flex;align-items:center;gap:10px;min-height:52px;flex:0 0 auto;padding:8px 14px;border-bottom:1px solid rgba(217,79,57,0.2);background:linear-gradient(90deg,rgba(217,79,57,0.16),rgba(217,79,57,0.07));-webkit-app-region:no-drag}
+.recovery[hidden]{display:none}
+.recovery-icon{display:grid;place-items:center;width:28px;height:28px;flex:0 0 auto;border:1px solid rgba(217,79,57,0.3);border-radius:8px;background:rgba(217,79,57,0.13);color:#f09a86;font:800 19px/1 var(--sans)}
+.recovery-copy{display:flex;min-width:0;flex:1 1 auto;flex-direction:column;gap:3px}
+.recovery-copy b{overflow:hidden;color:#f0dfc5;font:700 12.5px/1.2 var(--sans);text-overflow:ellipsis;white-space:nowrap}
+.recovery-copy span{overflow:hidden;color:#b9aa8d;font:600 10.5px/1.2 var(--mono);text-overflow:ellipsis;white-space:nowrap}
+.recovery-restore{flex:0 0 auto;border:1px solid rgba(217,79,57,0.46);border-radius:7px;background:rgba(217,79,57,0.2);color:#ffb09d;padding:7px 10px;font:800 11px/1 var(--mono);cursor:pointer}
+.recovery-restore:hover{border-color:rgba(240,127,101,0.7);background:rgba(217,79,57,0.3);color:#ffd0c4}
+.recovery-restore:disabled{cursor:default;opacity:.68}
+.recovery-restore:focus-visible{outline:2px solid rgba(217,79,57,0.5);outline-offset:2px}
+.recovery.ready{border-bottom-color:rgba(124,207,136,0.14);background:linear-gradient(90deg,rgba(124,207,136,0.1),rgba(124,207,136,0.035))}
+.recovery.ready .recovery-icon{border-color:rgba(124,207,136,0.25);background:rgba(124,207,136,0.1);color:#a8dcb0}
+.recovery.ready .recovery-restore{border-color:rgba(124,207,136,0.18);background:rgba(124,207,136,0.07);color:#9fc5a4}
 .workspace{position:relative;display:flex;flex:1 1 auto;min-height:0;overflow:hidden}
 .list{flex:1 1 auto;min-width:0;max-width:100%;min-height:0;overflow-y:auto;padding:8px;scrollbar-width:thin;scrollbar-color:rgba(233,220,196,0.2) transparent;transition:flex-basis .18s ease,max-width .18s ease}
 .peek-open .list{flex:0 0 55%;max-width:55%}
@@ -111,8 +132,7 @@ html,body{height:100%;background:transparent;color:var(--ink);font-family:var(--
 .peekchev{position:absolute;right:10px;top:50%;color:#efcfb7;font:800 20px/1 var(--sans);opacity:0;transform:translateY(-50%) translateX(-2px);transition:opacity .12s ease,transform .12s ease}
 .row.sel .peekchev{opacity:.82;transform:translateY(-50%) translateX(0)}
 .live-chip{display:inline-flex;align-items:center;gap:5px;height:19px;padding:0 7px;border:1px solid rgba(124,207,136,0.24);border-radius:99px;background:var(--live-soft);color:#bfe6c4;font:800 10px/1 var(--mono)}
-.live-dot{width:6px;height:6px;border-radius:50%;background:var(--live);box-shadow:0 0 0 0 rgba(124,207,136,0.36);animation:livepulse 2.2s ease-out infinite}
-@keyframes livepulse{0%{box-shadow:0 0 0 0 rgba(124,207,136,0.32)}70%{box-shadow:0 0 0 6px rgba(124,207,136,0)}100%{box-shadow:0 0 0 0 rgba(124,207,136,0)}}
+.live-dot{width:6px;height:6px;border-radius:50%;background:var(--live);box-shadow:0 0 0 2px rgba(124,207,136,0.18)}
 .actions{display:inline-flex;align-items:center;gap:5px;opacity:0;pointer-events:none;transform:translateX(3px);transition:opacity .12s ease,transform .12s ease}
 .row.sel .actions,.row:hover .actions{opacity:1;pointer-events:auto;transform:translateX(0)}
 .qact{display:grid;place-items:center;width:24px;height:24px;border:1px solid rgba(233,220,196,0.12);border-radius:7px;background:rgba(233,220,196,0.06);color:#d7caa9;cursor:pointer}
@@ -204,8 +224,8 @@ let ambientToken=0;
 let previewTimer=0;
 let pruneQueue=Promise.resolve();
 const AMBIENT_REFRESH_MS=60000;
-const RECENT_WATERMARK_POLL_MS=8000;
-const RECENT_WATERMARK_JITTER_MS=2000;
+const RECENT_WATERMARK_POLL_MS=60000;
+const RECENT_WATERMARK_JITTER_MS=5000;
 const RECENT_WATERMARK_BACKOFF_MS=30000;
 const PEEK_CACHE_MAX=10;
 const peekCache=new Map();
@@ -264,6 +284,53 @@ function showToast(msg,err,loading){
   el.classList.toggle("err",!!err); el.hidden=false;
   clearTimeout(showToast._t);
   if(!loading) showToast._t=setTimeout(()=>{el.hidden=true;},3600);
+}
+
+function renderSessionRecovery(value){
+  const section=$("recovery");
+  const button=$("recoveryRestore");
+  const title=$("recoveryTitle");
+  const subtitle=$("recoverySubtitle");
+  const count=Math.max(0,Math.floor(Number(value&&value.count)||0));
+  const restoring=!!(value&&value.restoring);
+  section.hidden=false;
+  section.classList.toggle("ready",count===0);
+  title.textContent=count>0?"发现 "+count+" 个异常中断的会话":"崩溃恢复已开启";
+  subtitle.textContent=count>0?"恢复电脑重启前仍在运行的 Session":"异常重启后，可在这里一键恢复 Session";
+  button.disabled=restoring||count===0;
+  button.innerHTML=restoring?"<span class='spin'></span>恢复中…":"全部恢复";
+  if(count===0) button.textContent="暂无可恢复";
+}
+
+async function initializeSessionRecovery(){
+  const desktop=window.agentSnapshotsDesktop;
+  if(!desktop || typeof desktop.getSessionRecovery!=="function") return;
+  try{
+    renderSessionRecovery(await desktop.getSessionRecovery());
+    if(typeof desktop.onSessionRecoveryChanged==="function"){
+      desktop.onSessionRecoveryChanged(renderSessionRecovery);
+    }
+  }catch(e){
+    renderSessionRecovery(null);
+  }
+}
+
+async function restoreInterruptedSessions(){
+  const desktop=window.agentSnapshotsDesktop;
+  if(!desktop || typeof desktop.restoreInterruptedSessions!=="function") return;
+  showToast("正在恢复异常中断的 Session…",false,true);
+  try{
+    const result=await desktop.restoreInterruptedSessions();
+    renderSessionRecovery({count:result&&result.remaining,restoring:false});
+    const restored=Math.max(0,Number(result&&result.restored)||0);
+    const failed=Math.max(0,Number(result&&result.failed)||0);
+    if(failed>0) showToast("已恢复 "+restored+" 个，"+failed+" 个失败，可点击重试",true);
+    else showToast("已恢复 "+restored+" 个 Session",false);
+    setTimeout(()=>{run();refreshAmbientStatus();},800);
+  }catch(e){
+    showToast(String(e&&e.message||e||"恢复失败"),true);
+    initializeSessionRecovery();
+  }
 }
 
 function schedule(){
@@ -559,13 +626,19 @@ function mergeRecent(pinnedRows,liveRows,recentRows){
   const seen=new Set();
   const items=[];
   const recentCandidates=[];
+  const liveKeys=new Set();
   let pinnedCount=0;
   let liveCount=0;
   let recentCount=0;
+  for(const item of liveRows){
+    if(!isLiveCandidate(item)) continue;
+    const key=sessionKey(item);
+    if(key) liveKeys.add(key);
+  }
   for(const item of pinnedRows){
     const key=sessionKey(item); if(key && seen.has(key)) continue;
     if(key) seen.add(key);
-    items.push(Object.assign({},item,{_pinned:true}));
+    items.push(Object.assign({},item,{_pinned:true},key&&liveKeys.has(key)?{_live:true,live:true,complete:false}:{}));
     pinnedCount+=1;
   }
   for(const item of liveRows){
@@ -1288,6 +1361,7 @@ $("ambient").addEventListener("click",(e)=>{
   const b=e.target.closest("[data-ambient-action]"); if(!b) return;
   if(b.dataset.ambientAction==="live") showLiveSessions();
 });
+$("recoveryRestore").addEventListener("click",restoreInterruptedSessions);
 $("shortcuts").addEventListener("click",(e)=>{ if(e.target===$("shortcuts")) closeShortcuts(); });
 document.addEventListener("keydown",(e)=>{
   if(e.defaultPrevented) return;
@@ -1310,5 +1384,6 @@ run();
 startRecentWatermarkPolling();
 refreshAmbientStatus();
 scheduleAmbientRefresh(AMBIENT_REFRESH_MS);
+initializeSessionRecovery();
 `;
 }

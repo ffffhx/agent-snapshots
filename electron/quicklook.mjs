@@ -330,8 +330,7 @@ function renderQuickLookHtml(baseUrl) {
       flex: 0 0 auto;
       border-radius: 999px;
       background: var(--green);
-      box-shadow: 0 0 0 rgba(131, 199, 123, 0.28);
-      animation: pulse 1.35s ease-out infinite;
+      box-shadow: 0 0 0 2px rgba(131, 199, 123, 0.16);
     }
     .row-title {
       min-width: 0;
@@ -411,10 +410,6 @@ function renderQuickLookHtml(baseUrl) {
       outline: none;
       background: rgba(215, 162, 71, 0.16);
       border-color: rgba(215, 162, 71, 0.42);
-    }
-    @keyframes pulse {
-      0% { box-shadow: 0 0 0 0 rgba(131, 199, 123, 0.28); }
-      80%, 100% { box-shadow: 0 0 0 7px rgba(131, 199, 123, 0); }
     }
     @keyframes sweep {
       100% { transform: translateX(100%); }

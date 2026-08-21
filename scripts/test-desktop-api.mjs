@@ -83,7 +83,7 @@ try {
     ["reveal-in-file rejects unsafe requests without opening Finder", () => assertRevealInFile(viewerUrl, origin, csrfToken)],
     ["POST routes reject disallowed origins", () => assertBadOriginRejected(viewerUrl, csrfToken)],
     ["claude quota starts a new block at the exact 5h boundary", () => assertClaudeQuotaBlockBoundary(path.join(tempDir, "claude-block-home"))],
-    ["cold session cache applies liveOnly before returning fallback rows", () => assertColdSessionCacheLiveOnly(path.join(tempDir, "cache-cold-live"))],
+    ["cold session cache does not infer live state from transcript metadata", () => assertColdSessionCacheDoesNotInferLive(path.join(tempDir, "cache-cold-live"))],
   ];
 
   let failed = 0;
@@ -617,7 +617,7 @@ async function assertBadOriginRejected(viewerUrl, csrfToken) {
   assert(response.status === 403, `evil Origin POST should return 403, got ${response.status}`);
 }
 
-async function assertColdSessionCacheLiveOnly(cacheDir) {
+async function assertColdSessionCacheDoesNotInferLive(cacheDir) {
   const previousXdgCacheHome = process.env.XDG_CACHE_HOME;
   process.env.XDG_CACHE_HOME = cacheDir;
   try {
@@ -646,6 +646,15 @@ async function assertColdSessionCacheLiveOnly(cacheDir) {
           messageCount: 1,
           mtime: "2026-06-01T00:00:01.000Z",
         },
+        {
+          engine: "codex",
+          ref: "codex:active-path-is-not-runtime-state",
+          id: "active-path-is-not-runtime-state",
+          title: "Active path",
+          filePath: path.join(cacheDir, "codex", "sessions", "2026", "06", "01", "active.jsonl"),
+          messageCount: 1,
+          mtime: "2026-06-01T00:00:02.000Z",
+        },
       ],
       codexHome: path.join(cacheDir, "codex"),
       claudeHome: path.join(cacheDir, "claude"),
@@ -656,7 +665,7 @@ async function assertColdSessionCacheLiveOnly(cacheDir) {
       liveOnly: true,
     });
     const refs = rows.map((row) => row.ref);
-    assert(JSON.stringify(refs) === JSON.stringify(["claude:live-transcript"]), `cold liveOnly returned wrong rows: ${JSON.stringify(rows)}`);
+    assert(refs.length === 0, `cache should not infer live rows without process evidence: ${JSON.stringify(rows)}`);
   } finally {
     if (previousXdgCacheHome === undefined) {
       delete process.env.XDG_CACHE_HOME;

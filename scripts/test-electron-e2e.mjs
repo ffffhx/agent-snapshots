@@ -64,6 +64,10 @@ try {
   assertNoPageErrors();
   step("launcher content loaded without page errors");
 
+  await assertSessionRecoveryBridgeReady(launcherPage);
+  assertNoPageErrors();
+  step("session recovery bridge returned the clean startup state");
+
   await assertLauncherPreviewShowsCompleteMessage(launcherPage);
   assertNoPageErrors();
   step("launcher preview shows complete messages and scrolls at the panel level");
@@ -243,6 +247,25 @@ async function waitForLauncherContent(page) {
     }
     return Boolean(list.querySelector(".row") || list.querySelector(".empty"));
   }, undefined, { timeout: LAUNCH_TIMEOUT_MS });
+}
+
+async function assertSessionRecoveryBridgeReady(page) {
+  const recovery = await page.evaluate(async () => {
+    const desktop = window.agentSnapshotsDesktop;
+    if (!desktop || typeof desktop.getSessionRecovery !== "function") {
+      return null;
+    }
+    return desktop.getSessionRecovery();
+  });
+  assert(recovery, "launcher preload should expose the session recovery bridge");
+  assert(recovery.count === 0, `clean launch should have no interrupted sessions, got ${JSON.stringify(recovery)}`);
+  assert(recovery.restoring === false, `clean launch should not be restoring, got ${JSON.stringify(recovery)}`);
+  assert(await page.locator("#recovery").isVisible(), "recovery readiness banner should be visible in Electron");
+  assert(
+    (await page.locator("#recoveryTitle").textContent())?.includes("崩溃恢复已开启"),
+    "clean launch should explain that crash recovery is ready",
+  );
+  assert(!(await page.locator("#recoveryRestore").isEnabled()), "restore button should be disabled without interrupted sessions");
 }
 
 async function assertLauncherPreviewShowsCompleteMessage(page) {

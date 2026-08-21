@@ -94,9 +94,10 @@ gh auth login
 
 桌面应用复用同一个本地查看器，但外面包了一层 Electron：
 
-- 托盘菜单可显示/隐藏启动器、打开最近会话、切换开机自启、完成提示音、有会话运行时防休眠、检查更新和退出。
+- 托盘菜单可显示/隐藏启动器、一键恢复电脑异常重启前仍在运行的会话、打开最近会话、切换开机自启、完成提示音、有会话运行时防休眠、检查更新和退出。
 - 全局快捷键 `Alt+Space` 打开或隐藏启动器；启动器是常驻窗口，失焦不会自动隐藏，关闭窗口也不会退出应用。
 - 启动器支持 全部 / Codex / Claude 范围和 `⌘1` 到 `⌘3` 切换，点击 Codex / Claude 会话会优先在 Orca 继续；Codex 默认以全权限模式恢复，Orca 不可用时在 macOS Terminal / iTerm2 使用相同命令回退打开。
+- Agent Snapshots 会持续记录 Orca 当前真实运行的 Session；启动器顶部会显示恢复保护状态，异常退出或电脑崩溃后可点“全部恢复”，一次唤起上次中断的所有 Session。
 - 支持 `agent-snapshots://launcher` 和 `agent-snapshots://session/<ref>` 深链接。
 - 打包版本会通过 GitHub Releases 检查更新。
 

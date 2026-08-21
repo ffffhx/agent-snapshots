@@ -17,12 +17,20 @@ function test(name, fn) {
 }
 
 let launcherScriptCache = "";
+let launcherHtmlCache = "";
 let viewerScriptCache = "";
+
+async function launcherHtml() {
+  if (!launcherHtmlCache) {
+    const { renderLauncherApp } = await import(path.join(ROOT_DIR, "dist/server/launcher-app.mjs"));
+    launcherHtmlCache = renderLauncherApp("test-csrf");
+  }
+  return launcherHtmlCache;
+}
 
 async function launcherScript() {
   if (!launcherScriptCache) {
-    const { renderLauncherApp } = await import(path.join(ROOT_DIR, "dist/server/launcher-app.mjs"));
-    launcherScriptCache = largestInlineScript(renderLauncherApp("test-csrf"));
+    launcherScriptCache = largestInlineScript(await launcherHtml());
   }
   return launcherScriptCache;
 }
@@ -221,7 +229,15 @@ test("launcher merges pinned, live, and recent rows with dedupe", async () => {
     { pinnedCount: 1, liveCount: 1, recentCount: 1 },
   );
   assert.equal(merged.items[0]._pinned, true);
+  assert.equal(merged.items[0]._live, true, "a pinned running session should retain its live state");
   assert.equal(merged.items[1]._live, true);
+});
+
+test("launcher live indicators stay static while idle", async () => {
+  const html = await launcherHtml();
+  assert.ok(html.includes(".live-dot{"), "launcher should render live indicator styles");
+  assert.ok(!html.includes("@keyframes livepulse"), "launcher should not continuously animate live indicators");
+  assert.ok(!/\.live-dot\{[^}]*animation:(?!none)/u.test(html), "launcher live indicators should not schedule idle repaints");
 });
 
 test("launcher builds resume commands per engine", async () => {

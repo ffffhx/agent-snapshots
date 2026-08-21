@@ -285,7 +285,7 @@ button:disabled { cursor: wait; opacity: 0.55; transform: none; box-shadow: none
   height: 7px;
   border-radius: 50%;
   background: var(--live);
-  box-shadow: 0 0 0 0 rgba(63, 143, 98, 0.32);
+  box-shadow: 0 0 0 2px rgba(63, 143, 98, 0.16);
 }
 .session-badge {
   border: 1px solid rgba(177, 56, 42, 0.42);
@@ -305,18 +305,10 @@ button:disabled { cursor: wait; opacity: 0.55; transform: none; box-shadow: none
   letter-spacing: 0;
   text-transform: none;
 }
-@keyframes live-pulse {
-  0% { box-shadow: 0 0 0 0 rgba(63, 143, 98, 0.32); }
-  70% { box-shadow: 0 0 0 7px rgba(63, 143, 98, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(63, 143, 98, 0); }
-}
 @keyframes session-fresh-slide {
   0% { background: rgba(63, 143, 98, 0.18); box-shadow: inset 3px 0 0 var(--live); transform: translateX(-6px); }
   24% { background: rgba(63, 143, 98, 0.13); transform: translateX(0); }
   100% { background: transparent; box-shadow: inset 0 0 0 transparent; transform: translateX(0); }
-}
-@media (prefers-reduced-motion: no-preference) {
-  .session-live-dot { animation: live-pulse 2.4s ease-out infinite; }
 }
 @media (prefers-reduced-motion: reduce) {
   .session.fresh { animation: none; background: rgba(63, 143, 98, 0.12); }
