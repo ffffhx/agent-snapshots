@@ -52,10 +52,7 @@ export const viewerCss = `/* ---------- 阅读区 ---------- */
   height: 7px;
   border-radius: 50%;
   background: var(--live);
-  box-shadow: 0 0 0 0 rgba(63, 143, 98, 0.32);
-}
-@media (prefers-reduced-motion: no-preference) {
-  .live-indicator .live-dot { animation: live-pulse 2.4s ease-out infinite; }
+  box-shadow: 0 0 0 2px rgba(63, 143, 98, 0.16);
 }
 .switches { display: inline-flex; flex: 0 0 auto; gap: 2px; padding: 3px; border: 1px solid var(--line-2); border-radius: 9px; background: var(--panel); }
 .switches label {

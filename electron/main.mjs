@@ -79,7 +79,7 @@ const MUTATION_CSRF_TOKEN = randomBytes(32).toString("base64url");
 // lets scripts and agents boot or debug the app without stealing focus.
 const START_HIDDEN = process.env.AGENT_SNAPSHOT_START_HIDDEN === "1" || process.argv.includes("--hidden");
 const ENABLE_OPEN_AT_LOGIN = process.env.AGENT_SNAPSHOT_OPEN_AT_LOGIN === "1";
-const POLL_INTERVAL_MS = 5000;
+const POLL_INTERVAL_MS = 15000;
 const TRAY_RECENT_REFRESH_MS = 30000;
 const DEFAULT_SETTINGS = {
   settingsVersion: SETTINGS_VERSION,
@@ -767,7 +767,7 @@ function launcherWindowOptions() {
     minHeight: 380,
     resizable: true,
     ...(isMac
-      ? { backgroundColor: "#00000000", titleBarStyle: "hiddenInset", vibrancy: "under-window", visualEffectState: "active" }
+      ? { backgroundColor: "#00000000", titleBarStyle: "hiddenInset", vibrancy: "under-window", visualEffectState: "followWindow" }
       : { backgroundColor: "#1c150e" }),
     icon: APP_ICON,
     title: "Agent Snapshots",
@@ -1551,7 +1551,7 @@ async function pollSessionCompletions() {
   try {
     const query = new URLSearchParams({
       liveOnly: "1",
-      limit: "500",
+      limit: "100",
       source: "all",
       completeOnly: "0",
     });

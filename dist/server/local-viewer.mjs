@@ -142,12 +142,9 @@ export async function serveLocalViewer({ codexHome, claudeHome, host, port, defa
                 const includeToolOutput = url.searchParams.get("includeToolOutput") === "1";
                 const rowCount = await indexRowCount();
                 const coversAll = rowCount > 0 && await searchIndexCoversCodexHomes({ codexHome, source: "all" });
-                // Bootstrap the persistent index only while it does not cover the
-                // corpus yet. Once covered, interactive searches never trigger a sync
-                // pass: a pass re-parses every changed session and blocks the event
-                // loop for seconds, which is exactly what search-as-you-type cannot
-                // afford. Freshness comes from the periodic refresh timer started at
-                // server boot.
+                // Bootstrap only after the user actually searches. Automatic startup
+                // refreshes can spend minutes parsing a large corpus even while the
+                // desktop app is otherwise idle.
                 if (!coversAll) {
                     syncSearchIndexInBackground({
                         codexHome,
@@ -156,7 +153,7 @@ export async function serveLocalViewer({ codexHome, claudeHome, host, port, defa
                         includeArchived,
                         completeOnly,
                         scanLimit: 20000,
-                        updateLimit: 20000,
+                        updateLimit: 200,
                         includeTools: true,
                         includeToolOutput,
                     });
@@ -186,6 +183,22 @@ export async function serveLocalViewer({ codexHome, claudeHome, host, port, defa
                     });
                 }
                 sendJson(response, result);
+                if (coversAll && query.trim()) {
+                    const refreshTimer = setTimeout(() => {
+                        syncSearchIndexInBackground({
+                            codexHome,
+                            claudeHome,
+                            source: "all",
+                            includeArchived: true,
+                            completeOnly: false,
+                            scanLimit: 20000,
+                            updateLimit: 20,
+                            includeTools: true,
+                            includeToolOutput,
+                        });
+                    }, 1000);
+                    refreshTimer.unref?.();
+                }
                 return;
             }
             if (url.pathname === "/api/search-stats") {
@@ -756,30 +769,6 @@ export async function serveLocalViewer({ codexHome, claudeHome, host, port, defa
         server.once("error", reject);
         server.listen(port, host, resolve);
     });
-    // Warm the persistent search index at boot instead of on the first search:
-    // until one full pass completes and records its coverage meta, every query
-    // falls back to a live disk scan of the whole corpus (~15s+). After that,
-    // a periodic refresh keeps it fresh — deliberately NOT tied to interactive
-    // searches, because a sync pass re-parses every changed session and can
-    // stall the event loop for seconds while it runs.
-    const refreshSearchIndex = () => syncSearchIndexInBackground({
-        codexHome,
-        claudeHome,
-        source: "all",
-        scanLimit: 20000,
-        updateLimit: 20000,
-        includeTools: true,
-    });
-    // Delay the first pass: its session enumeration blocks the event loop in
-    // multi-second chunks, and running it immediately can starve the desktop
-    // app's startup probe (it polls with a 1.5s timeout and gives up after 20s,
-    // showing a "did not start in time" dialog). Ten seconds keeps startup and
-    // first paint responsive; previously-built coverage meta persists, so early
-    // searches still hit the index.
-    const searchIndexWarmupTimer = setTimeout(refreshSearchIndex, 10_000);
-    searchIndexWarmupTimer.unref?.();
-    const searchIndexRefreshTimer = setInterval(refreshSearchIndex, 5 * 60_000);
-    searchIndexRefreshTimer.unref?.();
     const url = `http://${host}:${port}`;
     console.log(`Codex Snapshot is running at ${url}`);
     console.log(`Codex home: ${codexHome}`);

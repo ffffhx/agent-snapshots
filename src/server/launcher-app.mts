@@ -136,8 +136,7 @@ html,body{height:100%;background:transparent;color:var(--ink);font-family:var(--
 .peekchev{position:absolute;right:10px;top:50%;color:#efcfb7;font:800 20px/1 var(--sans);opacity:0;transform:translateY(-50%) translateX(-2px);transition:opacity .12s ease,transform .12s ease}
 .row.sel .peekchev{opacity:.82;transform:translateY(-50%) translateX(0)}
 .live-chip{display:inline-flex;align-items:center;gap:5px;height:19px;padding:0 7px;border:1px solid rgba(124,207,136,0.24);border-radius:99px;background:var(--live-soft);color:#bfe6c4;font:800 10px/1 var(--mono)}
-.live-dot{width:6px;height:6px;border-radius:50%;background:var(--live);box-shadow:0 0 0 0 rgba(124,207,136,0.36);animation:livepulse 2.2s ease-out infinite}
-@keyframes livepulse{0%{box-shadow:0 0 0 0 rgba(124,207,136,0.32)}70%{box-shadow:0 0 0 6px rgba(124,207,136,0)}100%{box-shadow:0 0 0 0 rgba(124,207,136,0)}}
+.live-dot{width:6px;height:6px;border-radius:50%;background:var(--live);box-shadow:0 0 0 2px rgba(124,207,136,0.18)}
 .actions{display:inline-flex;align-items:center;gap:5px;opacity:0;pointer-events:none;transform:translateX(3px);transition:opacity .12s ease,transform .12s ease}
 .row.sel .actions,.row:hover .actions{opacity:1;pointer-events:auto;transform:translateX(0)}
 .qact{display:grid;place-items:center;width:24px;height:24px;border:1px solid rgba(233,220,196,0.12);border-radius:7px;background:rgba(233,220,196,0.06);color:#d7caa9;cursor:pointer}
@@ -230,8 +229,8 @@ let ambientToken=0;
 let previewTimer=0;
 let pruneQueue=Promise.resolve();
 const AMBIENT_REFRESH_MS=60000;
-const RECENT_WATERMARK_POLL_MS=8000;
-const RECENT_WATERMARK_JITTER_MS=2000;
+const RECENT_WATERMARK_POLL_MS=60000;
+const RECENT_WATERMARK_JITTER_MS=5000;
 const RECENT_WATERMARK_BACKOFF_MS=30000;
 const PEEK_CACHE_MAX=10;
 const peekCache=new Map();
