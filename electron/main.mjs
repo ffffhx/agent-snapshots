@@ -32,6 +32,10 @@ import { fileURLToPath } from "node:url";
 import { createQuickLookController } from "./quicklook.mjs";
 import { SettingsStore } from "./settings-store.mjs";
 import {
+  installDevLoginLaunchAgent,
+  uninstallDevLoginLaunchAgent,
+} from "./dev-login-launch-agent.mjs";
+import {
   excludeLiveRecoverySessions,
   mergeRecoverySessions,
   normalizeRecoverySession,
@@ -940,7 +944,16 @@ function setOpenAtLogin(enabled, { persist = true } = {}) {
     return;
   }
   try {
-    app.setLoginItemSettings(loginItemSettings(openAtLogin));
+    if (isMac && process.defaultApp) {
+      removeLegacyDevelopmentLoginItem();
+      if (openAtLogin) {
+        installDevLoginLaunchAgent({ appRoot: APP_ROOT });
+      } else {
+        uninstallDevLoginLaunchAgent();
+      }
+    } else {
+      app.setLoginItemSettings({ openAtLogin });
+    }
   } catch (error) {
     console.warn("Failed to update login item setting:", error);
   }
@@ -950,15 +963,12 @@ function setOpenAtLogin(enabled, { persist = true } = {}) {
   rebuildTrayMenu();
 }
 
-function loginItemSettings(openAtLogin) {
-  if (process.defaultApp) {
-    return {
-      openAtLogin,
-      path: process.execPath,
-      args: [path.join(APP_ROOT, "electron/main.mjs"), "--hidden"],
-    };
+function removeLegacyDevelopmentLoginItem() {
+  try {
+    app.setLoginItemSettings({ openAtLogin: false });
+  } catch (error) {
+    console.warn("Failed to remove legacy Electron login item:", error);
   }
-  return { openAtLogin };
 }
 
 function releaseSleepBlocker() {
@@ -1734,6 +1744,8 @@ async function bootstrap() {
   loadGlobalShortcutSetting();
   if (supportsOpenAtLogin && (ENABLE_OPEN_AT_LOGIN || setting("openAtLogin"))) {
     setOpenAtLogin(true, { persist: ENABLE_OPEN_AT_LOGIN });
+  } else if (isMac && process.defaultApp) {
+    setOpenAtLogin(false, { persist: false });
   }
   // macOS shows the dock icon from the .app bundle; in dev there is none, so
   // set it explicitly (also covers `electron .` runs).

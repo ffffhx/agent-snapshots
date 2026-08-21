@@ -16,7 +16,7 @@ Agent Snapshots 的桌面应用是一个 Electron 壳：它启动同一套本地
 - `恢复上次中断的会话`：仅在检测到上次异常退出前仍有 live sessions 时出现，一次恢复全部会话。
 - `完成提示音`：控制会话完成通知是否静音。
 - `有会话运行时防止休眠`：有 live session 时启用 Electron `powerSaveBlocker`。
-- `开机自启`：通过系统 login item 设置。
+- `开机自启`：打包版使用系统 login item；macOS 开发版使用独立 LaunchAgent，在项目目录执行 `pnpm app:dev`，避免只打开 Electron 默认模板。
 - `退出`：真正退出应用并停止本地 server。
 
 窗口行为：
