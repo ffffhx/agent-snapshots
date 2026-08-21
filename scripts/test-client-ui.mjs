@@ -221,6 +221,7 @@ test("launcher merges pinned, live, and recent rows with dedupe", async () => {
     { pinnedCount: 1, liveCount: 1, recentCount: 1 },
   );
   assert.equal(merged.items[0]._pinned, true);
+  assert.equal(merged.items[0]._live, true, "a pinned running session should retain its live state");
   assert.equal(merged.items[1]._live, true);
 });
 

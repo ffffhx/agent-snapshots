@@ -167,29 +167,10 @@ function isoTime(value) {
   return time ? new Date(time).toISOString() : "";
 }
 
-function normalizedPath(value) {
-  return String(value || "").replace(/\\/g, "/");
-}
-
-function isCodexActivePath(summary) {
-  const filePath = normalizedPath(summary.filePath || summary.displayFilePath || "");
-  return filePath.includes("/sessions/") && !filePath.includes("/archived_sessions/");
-}
-
 function deriveRuntimeState(summary) {
   const engine = engineKey(summary?.engine);
   if (engine === "claude" && (summary?.historyOnly === true || (summary?.sourceKind && summary.sourceKind !== "transcript"))) {
     return { live: false, complete: false };
-  }
-  if (summary?.live === true) {
-    return { live: true, complete: false };
-  }
-  if (summary?.complete === false) {
-    return { live: true, complete: false };
-  }
-  if (engine === "codex") {
-    const live = isCodexActivePath(summary);
-    return { live, complete: !live };
   }
   if (engine === "claude") {
     const complete = summary?.sourceKind ? summary.sourceKind === "transcript" && summary.historyOnly !== true : true;
@@ -588,7 +569,17 @@ function filterSummariesForRequest(summaries, { source, cwd, completeOnly, liveO
   return out;
 }
 
-async function readCachedSessions({ codexHome, claudeHome, source, cwd, completeOnly, liveOnly, limit, offset }) {
+async function readCachedSessions({
+  codexHome,
+  claudeHome,
+  source,
+  cwd,
+  completeOnly,
+  liveOnly,
+  limit,
+  offset,
+  refreshRows = true,
+}) {
   const db = await getDb();
   const codexHomes = await discoverCodexHomes(codexHome);
   const homes = { codexHome, claudeHome, codexHomes, activeCodexHomeKeys: codexHomeKeys(codexHomes) };
@@ -607,7 +598,7 @@ async function readCachedSessions({ codexHome, claudeHome, source, cwd, complete
     if (!matchesActiveHome(row, homes)) {
       continue;
     }
-    if (Number(row.candidate_mtime_ms || row.mtime_ms || 0) >= recentCutoff) {
+    if (refreshRows && Number(row.candidate_mtime_ms || row.mtime_ms || 0) >= recentCutoff) {
       row = await refreshRowIfNeeded(db, row, homes, { parseChanged: false, parseIfListIncomplete: completeOnly });
       if (!row) {
         continue;
@@ -627,15 +618,17 @@ async function readCachedSessions({ codexHome, claudeHome, source, cwd, complete
     if (liveOnly && summary.live !== true) {
       continue;
     }
-    row = await refreshRowIfNeeded(db, row, homes, { parseChanged: false, parseIfListIncomplete: completeOnly });
-    if (!row) {
-      continue;
+    if (refreshRows) {
+      row = await refreshRowIfNeeded(db, row, homes, { parseChanged: false, parseIfListIncomplete: completeOnly });
+      if (!row) {
+        continue;
+      }
+      rawSummary = rowSummary(row);
+      if (!rawSummary) {
+        continue;
+      }
+      summary = upgradeCachedMessageTime(db, row, stampSummary(rawSummary));
     }
-    rawSummary = rowSummary(row);
-    if (!rawSummary) {
-      continue;
-    }
-    summary = upgradeCachedMessageTime(db, row, stampSummary(rawSummary));
     if (completeOnly && !listCompleteForSource(summary, source)) {
       continue;
     }
@@ -700,8 +693,19 @@ export async function listSessionsWithCache(options) {
     activeCodexHomeKeys: codexHomeKeys(codexHomes),
   };
   if (rows > 0) {
-    const sessions = await readCachedSessions({ ...homes, source, cwd, completeOnly, liveOnly, limit, offset });
-    reconcileSessionListCacheInBackground({ ...homes });
+    const sessions = await readCachedSessions({
+      ...homes,
+      source,
+      cwd,
+      completeOnly,
+      liveOnly,
+      limit,
+      offset,
+      refreshRows: options.refreshRows !== false,
+    });
+    if (options.reconcile !== false) {
+      reconcileSessionListCacheInBackground({ ...homes });
+    }
     return sessions;
   }
 
@@ -715,7 +719,9 @@ export async function listSessionsWithCache(options) {
     completeOnly,
   });
   await upsertFallbackSummaries(sessions, homes);
-  reconcileSessionListCacheInBackground({ ...homes });
+  if (options.reconcile !== false) {
+    reconcileSessionListCacheInBackground({ ...homes });
+  }
   const filtered = filterSummariesForRequest(sessions, { source, cwd, completeOnly, liveOnly });
   return Number.isFinite(limit) ? filtered.slice(offset, offset + limit) : filtered.slice(offset);
 }
@@ -810,7 +816,7 @@ export function reconcileSessionListCacheInBackground(options) {
     return;
   }
   const now = Date.now();
-  if (lastBackgroundReconcileAt && now - lastBackgroundReconcileAt < 10_000) {
+  if (lastBackgroundReconcileAt && now - lastBackgroundReconcileAt < 60_000) {
     return;
   }
   lastBackgroundReconcileAt = now;

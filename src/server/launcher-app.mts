@@ -632,13 +632,19 @@ function mergeRecent(pinnedRows,liveRows,recentRows){
   const seen=new Set();
   const items=[];
   const recentCandidates=[];
+  const liveKeys=new Set();
   let pinnedCount=0;
   let liveCount=0;
   let recentCount=0;
+  for(const item of liveRows){
+    if(!isLiveCandidate(item)) continue;
+    const key=sessionKey(item);
+    if(key) liveKeys.add(key);
+  }
   for(const item of pinnedRows){
     const key=sessionKey(item); if(key && seen.has(key)) continue;
     if(key) seen.add(key);
-    items.push(Object.assign({},item,{_pinned:true}));
+    items.push(Object.assign({},item,{_pinned:true},key&&liveKeys.has(key)?{_live:true,live:true,complete:false}:{}));
     pinnedCount+=1;
   }
   for(const item of liveRows){

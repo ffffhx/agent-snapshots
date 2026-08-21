@@ -20,6 +20,7 @@ import { buildUsageAnalytics } from "./usage-analytics.mjs";
 import { buildWeeklyDigest } from "./weekly-digest.mjs";
 import { buildInsights } from "./insights.mjs";
 import { listImageEntries, readImageBytes } from "./image-index.mjs";
+import { listOrcaAgentProcesses, matchOrcaProcessesToSessions } from "./orca-live-sessions.mjs";
 import { launcherPrefsApiResponse, readLauncherPrefs, readLauncherSessionNote, recordLauncherAccess, setLauncherSessionNote, setLauncherSessionPinned, } from "./launcher-prefs.mjs";
 import { discoverCodexHomes, resolveCodexHomeForRef } from "../sources/codex-homes.mjs";
 const execFileAsync = promisify(execFile);
@@ -79,20 +80,51 @@ export async function serveLocalViewer({ codexHome, claudeHome, host, port, defa
                 return;
             }
             if (url.pathname === "/api/sessions") {
+                const liveOnly = url.searchParams.get("liveOnly") === "1";
                 const limit = url.searchParams.get("all") === "1"
                     ? Number.POSITIVE_INFINITY
                     : readPositiveInteger(url.searchParams.get("limit") || String(defaultServerLimit), "limit");
                 const offset = readNonNegativeInteger(url.searchParams.get("offset") || "0", "offset");
+                const source = url.searchParams.get("source") || "codex";
+                const cwd = url.searchParams.get("cwd") || "";
+                if (liveOnly) {
+                    const processes = await listOrcaAgentProcesses();
+                    if (!processes.length) {
+                        sendJson(response, []);
+                        return;
+                    }
+                    const candidates = await listSessionsWithCache({
+                        listSessions,
+                        codexHome,
+                        claudeHome,
+                        limit: Number.POSITIVE_INFINITY,
+                        offset: 0,
+                        cwd,
+                        includeArchived: false,
+                        liveOnly: false,
+                        source,
+                        completeOnly: false,
+                        refreshRows: false,
+                        reconcile: false,
+                    });
+                    const liveSessions = matchOrcaProcessesToSessions(processes, candidates)
+                        .map((session) => ({ ...session, live: true, complete: false }));
+                    const page = Number.isFinite(limit)
+                        ? liveSessions.slice(offset, offset + limit)
+                        : liveSessions.slice(offset);
+                    sendJson(response, page);
+                    return;
+                }
                 const sessions = await listSessionsWithCache({
                     listSessions,
                     codexHome,
                     claudeHome,
                     limit,
                     offset,
-                    cwd: url.searchParams.get("cwd") || "",
-                    includeArchived: url.searchParams.get("liveOnly") !== "1",
-                    liveOnly: url.searchParams.get("liveOnly") === "1",
-                    source: url.searchParams.get("source") || "codex",
+                    cwd,
+                    includeArchived: true,
+                    liveOnly: false,
+                    source,
                     completeOnly: url.searchParams.get("completeOnly") !== "0",
                 });
                 sendJson(response, sessions);

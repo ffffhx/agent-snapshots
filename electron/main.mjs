@@ -42,7 +42,6 @@ import {
   readSessionRecoveryState,
   storedSessionRecoveryState,
 } from "./session-recovery.mjs";
-import { listActiveOrcaSessionSummaries } from "./orca-live-sessions.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // The app root holds both electron/ and dist/ as siblings, in dev and when
@@ -1570,9 +1569,8 @@ async function pollSessionCompletions() {
       nextIds.add(ref);
       nextById.set(ref, session);
     }
-    const activeOrcaSessions = await listActiveOrcaSessionSummaries(result);
     const nextRecoveryById = new Map();
-    for (const session of activeOrcaSessions) {
+    for (const session of result) {
       const ref = sessionRef(session);
       if (ref && !isArchivedSessionSummary(session)) {
         nextRecoveryById.set(ref, session);
