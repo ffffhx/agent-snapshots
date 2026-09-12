@@ -7,10 +7,10 @@
 import assert from "node:assert/strict";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const { redactText, detectRisks } = await import(path.join(ROOT_DIR, "dist/core/privacy.js"));
+const { redactText, detectRisks } = await import(pathToFileURL(path.join(ROOT_DIR, "dist/core/privacy.js")).href);
 
 const tests = [];
 function test(name, fn) {

@@ -11,7 +11,7 @@ export function defaultCodexHome() {
 export function primaryCodexHome(value = "") {
     return path.resolve(expandHome(value || process.env.CODEX_HOME || defaultCodexHome()));
 }
-export async function discoverCodexHomes(primaryHome = "") {
+export async function discoverCodexHomes(primaryHome = "", { defaultHome = defaultCodexHome() } = {}) {
     const primary = primaryCodexHome(primaryHome);
     const disableAutoDetect = process.env.AGENT_SNAPSHOT_DISABLE_CODEX_HOME_AUTODETECT === "1";
     const homes = [];
@@ -32,7 +32,7 @@ export async function discoverCodexHomes(primaryHome = "") {
     };
     addHome(primary, { primary: true });
     if (!disableAutoDetect) {
-        await addDefaultCodexHomeIfPresent(primary, addHome);
+        await addDefaultCodexHomeIfPresent(primary, addHome, defaultHome);
     }
     for (const candidate of candidateExtraCodexHomes(primary, { disableAutoDetect })) {
         const sessionsDir = path.join(candidate.home, "sessions");
@@ -44,8 +44,7 @@ export async function discoverCodexHomes(primaryHome = "") {
     }
     return homes;
 }
-async function addDefaultCodexHomeIfPresent(primary, addHome) {
-    const defaultHome = defaultCodexHome();
+async function addDefaultCodexHomeIfPresent(primary, addHome, defaultHome) {
     if (normalizeHomePath(defaultHome) === normalizeHomePath(primary)) {
         return;
     }
@@ -109,7 +108,7 @@ function candidateExtraCodexHomes(primary, { disableAutoDetect = false } = {}) {
             label: "orca",
         });
     }
-    for (const item of String(process.env.AGENT_SNAPSHOT_EXTRA_CODEX_HOMES || "").split(":")) {
+    for (const item of String(process.env.AGENT_SNAPSHOT_EXTRA_CODEX_HOMES || "").split(path.delimiter)) {
         const home = item.trim();
         if (home) {
             out.push({ home, label: friendlyCodexHomeLabel(home) });

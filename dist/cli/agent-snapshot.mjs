@@ -695,7 +695,7 @@ async function buildDoctorReport({ codexHome, claudeHome }) {
             orca: orcaCli,
             gh: ghCli,
             terminalFallback: {
-                available: process.platform === "darwin",
+                available: process.platform === "darwin" || process.platform === "win32",
                 platform: process.platform,
             },
         },
@@ -768,7 +768,8 @@ function countBy(items, keyFn) {
 }
 async function commandOnPath(command) {
     try {
-        const { stdout } = await execFileAsync("which", [command], { timeout: 2000 });
+        const finder = process.platform === "win32" ? "where.exe" : "which";
+        const { stdout } = await execFileAsync(finder, [command], { timeout: 2000, windowsHide: true });
         const commandPath = stdout.trim().split(/\r?\n/)[0] || "";
         return { available: Boolean(commandPath), path: commandPath };
     }
@@ -804,7 +805,7 @@ function renderDoctorReport(report) {
     lines.push(checkLine(quota.found, "Codex quota", quotaDetail));
     lines.push(checkLine(report.tools.orca.available, "orca CLI on PATH", report.tools.orca.path || "not found"));
     lines.push(checkLine(report.tools.gh.available, "gh CLI on PATH", report.tools.gh.path || "not found"));
-    lines.push(checkLine(report.tools.terminalFallback.available ? true : null, "Terminal fallback", report.tools.terminalFallback.available ? "darwin 可用" : `${report.tools.terminalFallback.platform} 不适用`));
+    lines.push(checkLine(report.tools.terminalFallback.available ? true : null, "Terminal fallback", report.tools.terminalFallback.available ? `${report.tools.terminalFallback.platform} 可用` : `${report.tools.terminalFallback.platform} 不适用`));
     return lines.join("\n");
 }
 function checkLine(status, label, detail) {

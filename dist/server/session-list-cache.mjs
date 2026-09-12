@@ -9,9 +9,11 @@ const RECENT_ACTIVE_MS = 10 * 60 * 1000;
 const CACHE_TABLE = "session_list_cache_v3";
 const META_TABLE = "session_list_meta_v3";
 const MESSAGE_TIME_SOURCE = "last-visible-message";
-let dbPromise = null;
+const dbPromises = new Map();
 let reconciling = false;
 let lastBackgroundReconcileAt = 0;
+let backgroundReconcileTimer = null;
+let backgroundReconcilePromise = null;
 export function sessionListCachePath() {
     const cacheHome = process.env.XDG_CACHE_HOME || path.join(os.homedir(), ".cache");
     return path.join(cacheHome, "agent-snapshots", "search-index.v2.db");
@@ -20,14 +22,16 @@ function indexPath() {
     return sessionListCachePath();
 }
 async function getDb() {
-    if (dbPromise) {
-        return dbPromise;
+    const dbFile = path.resolve(indexPath());
+    const existing = dbPromises.get(dbFile);
+    if (existing) {
+        return existing;
     }
-    dbPromise = (async () => {
-        const dbFile = indexPath();
+    const dbPromise = (async () => {
         await mkdir(path.dirname(dbFile), { recursive: true });
         const { DatabaseSync } = await import("node:sqlite");
         const db = new DatabaseSync(dbFile);
+        db.exec("PRAGMA busy_timeout = 5000");
         db.exec("PRAGMA journal_mode = WAL");
         db.exec("PRAGMA synchronous = NORMAL");
         db.exec(`CREATE TABLE IF NOT EXISTS ${CACHE_TABLE} (
@@ -61,7 +65,34 @@ async function getDb() {
         db.exec(`CREATE TABLE IF NOT EXISTS ${META_TABLE} (key TEXT PRIMARY KEY, value TEXT)`);
         return db;
     })();
-    return dbPromise;
+    dbPromises.set(dbFile, dbPromise);
+    try {
+        return await dbPromise;
+    }
+    catch (error) {
+        if (dbPromises.get(dbFile) === dbPromise) {
+            dbPromises.delete(dbFile);
+        }
+        throw error;
+    }
+}
+export async function closeSessionListCacheDatabases() {
+    if (backgroundReconcileTimer) {
+        clearTimeout(backgroundReconcileTimer);
+        backgroundReconcileTimer = null;
+        reconciling = false;
+    }
+    await backgroundReconcilePromise?.catch(() => { });
+    backgroundReconcilePromise = null;
+    const pending = [...dbPromises.values()];
+    dbPromises.clear();
+    const settled = await Promise.allSettled(pending);
+    for (const result of settled) {
+        if (result.status === "fulfilled") {
+            result.value.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+            result.value.close();
+        }
+    }
 }
 function engineKey(engine) {
     const value = String(engine || "").toLowerCase();
@@ -711,14 +742,17 @@ export function reconcileSessionListCacheInBackground(options) {
     }
     lastBackgroundReconcileAt = now;
     reconciling = true;
-    setTimeout(() => {
-        Promise.resolve()
+    backgroundReconcileTimer = setTimeout(() => {
+        backgroundReconcileTimer = null;
+        backgroundReconcilePromise = Promise.resolve()
             .then(() => reconcileSessionListCache(options))
             .catch(() => { })
             .finally(() => {
             reconciling = false;
+            backgroundReconcilePromise = null;
         });
     }, 0);
+    backgroundReconcileTimer.unref?.();
 }
 export async function sessionListCacheStatus() {
     const db = await getDb();

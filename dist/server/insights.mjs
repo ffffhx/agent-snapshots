@@ -24,20 +24,22 @@ const COMMAND_OPTION_VALUE_FLAGS = new Set(["-c", "-C", "--config", "--cwd", "--
 const PROMPT_SEGMENTER = typeof Intl !== "undefined" && Intl.Segmenter
     ? new Intl.Segmenter("zh-CN", { granularity: "word" })
     : null;
-let dbPromise = null;
+const dbPromises = new Map();
 export function insightsCachePath() {
     const cacheHome = process.env.XDG_CACHE_HOME || path.join(os.homedir(), ".cache");
     return path.join(cacheHome, "agent-snapshots", "search-index.v2.db");
 }
 async function getDb() {
-    if (dbPromise) {
-        return dbPromise;
+    const dbFile = path.resolve(insightsCachePath());
+    const existing = dbPromises.get(dbFile);
+    if (existing) {
+        return existing;
     }
-    dbPromise = (async () => {
-        const dbFile = insightsCachePath();
+    const dbPromise = (async () => {
         await mkdir(path.dirname(dbFile), { recursive: true });
         const { DatabaseSync } = await import("node:sqlite");
         const db = new DatabaseSync(dbFile);
+        db.exec("PRAGMA busy_timeout = 5000");
         db.exec("PRAGMA journal_mode = WAL");
         db.exec("PRAGMA synchronous = NORMAL");
         db.exec(`CREATE TABLE IF NOT EXISTS ${INSIGHTS_TABLE} (
@@ -52,7 +54,31 @@ async function getDb() {
         db.exec(`CREATE INDEX IF NOT EXISTS insights_cache_v1_created ON ${INSIGHTS_TABLE}(created_at)`);
         return db;
     })();
-    return dbPromise;
+    dbPromises.set(dbFile, dbPromise);
+    try {
+        return await dbPromise;
+    }
+    catch (error) {
+        if (dbPromises.get(dbFile) === dbPromise) {
+            dbPromises.delete(dbFile);
+        }
+        throw error;
+    }
+}
+export async function closeInsightsDatabases() {
+    const pending = [...dbPromises.values()];
+    dbPromises.clear();
+    const settled = await Promise.allSettled(pending);
+    for (const result of settled) {
+        if (result.status === "fulfilled") {
+            try {
+                result.value.close();
+            }
+            catch {
+                // Already closed or failed during shutdown.
+            }
+        }
+    }
 }
 export async function buildInsights({ codexHome, claudeHome, listSessions, loadSnapshot, source = "all", limit = DEFAULT_SCAN_LIMIT, }) {
     const started = Date.now();

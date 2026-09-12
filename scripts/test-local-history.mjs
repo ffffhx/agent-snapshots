@@ -7,14 +7,15 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const { listSessions, loadSnapshot } = await import(path.join(ROOT_DIR, "dist/sources/local-history.mjs"));
-const { listSessions: listProductionSessions } = await import(path.join(ROOT_DIR, "dist/sources/index.mjs"));
-const { renderMarkdownHtml } = await import(path.join(ROOT_DIR, "dist/renderers/markdown.mjs"));
-const { buildTranscriptOutlineItems, renderTranscriptHtml } = await import(path.join(ROOT_DIR, "dist/renderers/transcript.js"));
-const { prewarmSemanticIndex, semanticSearchSessions } = await import(path.join(ROOT_DIR, "dist/server/semantic-index.mjs"));
+const moduleUrl = (relativePath) => pathToFileURL(path.join(ROOT_DIR, relativePath)).href;
+const { listSessions, loadSnapshot } = await import(moduleUrl("dist/sources/local-history.mjs"));
+const { listSessions: listProductionSessions } = await import(moduleUrl("dist/sources/index.mjs"));
+const { renderMarkdownHtml } = await import(moduleUrl("dist/renderers/markdown.mjs"));
+const { buildTranscriptOutlineItems, renderTranscriptHtml } = await import(moduleUrl("dist/renderers/transcript.js"));
+const { prewarmSemanticIndex, semanticSearchSessions } = await import(moduleUrl("dist/server/semantic-index.mjs"));
 
 const tests = [];
 function test(name, fn) {
@@ -599,7 +600,7 @@ test("Claude Edit tool calls render structured patches as redacted diff file cha
 test("ephemeral temp-dir agent runs collapse to one group per prefix", async () => {
   // Use the evaluated client script (renderServerApp output), not the raw module
   // source, so the template-literal escaping matches what the browser runs.
-  const { renderServerApp } = await import(path.join(ROOT_DIR, "dist/server/local-viewer-app.mjs"));
+  const { renderServerApp } = await import(moduleUrl("dist/server/local-viewer-app.mjs"));
   const html = renderServerApp("test-csrf", {});
   const scripts = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
   const src = scripts.sort((a, b) => b.length - a.length)[0] || "";

@@ -23,7 +23,7 @@ export function renderServerApp(csrfToken, shareConfig = {}) {
         <div class="toolbar">
           <button id="openSearch" class="search-entry" type="button" title="搜索会话正文">
             <span>搜索会话正文</span>
-            <kbd>⌘K</kbd>
+            <kbd>Ctrl/⌘K</kbd>
           </button>
           <button id="openStats" type="button" title="使用与 token 统计">统计</button>
           <button id="openGallery" type="button" title="浏览跨会话图片">图库</button>
@@ -114,7 +114,7 @@ export function renderServerApp(csrfToken, shareConfig = {}) {
             <button id="matchClose" class="appx" type="button" title="关闭匹配" aria-label="关闭匹配">×</button>
           </div>
           <div class="reading-tools" role="group" aria-label="阅读工具">
-            <button id="openShortcuts" class="appx" type="button" title="快捷键（⌘/）" aria-label="打开快捷键">⌘/</button>
+            <button id="openShortcuts" class="appx" type="button" title="快捷键（Ctrl/⌘/）" aria-label="打开快捷键">Ctrl/⌘/</button>
           </div>
           <div id="exports" class="exports"></div>
         </div>
@@ -155,6 +155,7 @@ export function renderServerApp(csrfToken, shareConfig = {}) {
       <div class="search-controls" role="group" aria-label="搜索范围">
         <button class="search-mode active" type="button" data-search-mode="keyword">关键词</button>
         <button class="search-mode" type="button" data-search-mode="semantic">语义</button>
+        <button class="search-mode" type="button" data-search-mode="rag">问历史</button>
         <button class="search-flag" type="button" data-search-flag="caseSensitive" aria-pressed="false" title="区分大小写" aria-label="区分大小写">Aa</button>
         <button class="search-flag" type="button" data-search-flag="wholeWord" aria-pressed="false" title="整词匹配" aria-label="整词匹配">词</button>
         <span id="searchScopeLabel" class="search-scope-label">全部历史</span>
@@ -162,6 +163,20 @@ export function renderServerApp(csrfToken, shareConfig = {}) {
         <span id="searchStatus" class="search-status"></span>
       </div>
       <div id="searchFacets" class="search-facets" aria-label="按来源和项目筛选"></div>
+      <section id="ragPanel" class="rag-panel" aria-label="历史会话问答" hidden>
+        <div class="rag-controls">
+          <label>检索范围 <select id="ragScope"><option value="all">全部项目</option><option value="project">当前项目</option></select></label>
+          <button id="ragAsk" class="search-mode" type="button">提问</button>
+          <button id="ragBuild" class="search-mode" type="button">建立索引</button>
+          <button id="ragCancel" class="search-mode" type="button" hidden>停止</button>
+        </div>
+        <p id="ragModels" class="search-result-meta"></p>
+        <p id="ragProgress" role="status" aria-live="polite"></p>
+        <p id="ragWarnings" class="search-result-meta"></p>
+        <div id="ragAnswer" class="rag-answer"></div>
+        <div id="ragSources" class="rag-sources"></div>
+        <p id="ragMetrics" class="search-result-meta"></p>
+      </section>
       <div id="searchResults" class="search-results" role="listbox" aria-label="搜索结果"></div>
       <div class="search-foot">
         <span class="search-hints"><kbd>↑</kbd><kbd>↓</kbd> 导航 · <kbd>↵</kbd> 打开 · <kbd>Tab</kbd> 切换焦点 · <kbd>esc</kbd> 关闭</span>
@@ -215,7 +230,7 @@ export function renderServerApp(csrfToken, shareConfig = {}) {
         <button id="closeShortcuts" class="search-close" type="button" title="关闭">关闭</button>
       </div>
       <div class="shortcut-list">
-        <div><kbd>⌘K</kbd><span>全局搜索</span></div>
+        <div><kbd>Ctrl/⌘K</kbd><span>全局搜索</span></div>
         <div><kbd>Ctrl+O</kbd><span>视图详略</span></div>
         <div><kbd>Ctrl+M</kbd><span>大纲</span></div>
         <div><kbd>j</kbd><kbd>k</kbd><span>上下个记录</span></div>
@@ -225,7 +240,7 @@ export function renderServerApp(csrfToken, shareConfig = {}) {
         <div><kbd>[</kbd><kbd>]</kbd><span>上下个用户回合</span></div>
         <div><kbd>/</kbd><span>会话内搜索</span></div>
         <div><kbd>s</kbd><span>收起侧栏</span></div>
-        <div><kbd>⌘/</kbd><span>快捷键</span></div>
+        <div><kbd>Ctrl/⌘/</kbd><span>快捷键</span></div>
         <div><kbd>Esc</kbd><span>关闭弹层</span></div>
       </div>
     </section>

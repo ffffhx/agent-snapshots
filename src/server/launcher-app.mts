@@ -55,12 +55,12 @@ export function renderLauncherApp(csrfToken) {
       <div class="shortcut-list">
         <span>点击</span><b>预览会话</b>
         <span>↵</span><b>在 Orca 继续</b>
-        <span>⌘↵</span><b>完整视图</b>
-        <span>→ / ⌘P</span><b>预览</b>
+        <span>Ctrl/⌘↵</span><b>完整视图</b>
+        <span>→ / Ctrl/⌘P</span><b>预览</b>
         <span>← / esc</span><b>关闭预览</b>
         <span>↑↓</span><b>选择</b>
-        <span>⌘1-3</span><b>切换范围</b>
-        <span>⌘/</span><b>快捷键</b>
+        <span>Ctrl/⌘1-3</span><b>切换范围</b>
+        <span>Ctrl/⌘/</span><b>快捷键</b>
         <span>esc</span><b>关闭</b>
       </div>
     </div>
@@ -185,9 +185,13 @@ html,body{height:100%;background:transparent;color:var(--ink);font-family:var(--
 .ambient-live{display:inline-flex;align-items:center;gap:5px;height:22px;border:1px solid rgba(124,207,136,0.2);border-radius:99px;background:rgba(124,207,136,0.1);color:#bfe6c4;padding:0 8px;font:800 10.5px/1 var(--mono);cursor:pointer;appearance:none;-webkit-appearance:none}
 .ambient-live:hover{border-color:rgba(124,207,136,0.32);background:rgba(124,207,136,0.15);color:#d5f0d8}
 .ambient-live:focus-visible{outline:2px solid rgba(124,207,136,0.46);outline-offset:2px}
-.hint{display:flex;align-items:center;justify-content:flex-end;flex:1 1 auto;min-width:0;overflow:hidden;color:#cdc0a1;font:600 11.5px/1 var(--mono);white-space:nowrap}
-.hint .stat{min-width:0;overflow:hidden;color:var(--dim);text-overflow:ellipsis}
-.hint .sep{color:rgba(233,220,196,0.26);margin:0 7px;font-style:normal}
+.hint{display:flex;align-items:center;justify-content:flex-end;gap:14px;flex:1 1 auto;min-width:0;container-type:inline-size;color:#cdc0a1;font:600 11.5px/1 var(--mono);white-space:nowrap}
+.hint .stat{flex:1 1 0;min-width:0;overflow:hidden;color:var(--dim);text-overflow:ellipsis;text-align:right}
+.hint .shortcut{display:inline-flex;align-items:center;gap:6px;flex:0 0 auto}
+.hint .shortcut kbd{flex:0 0 auto;margin-right:0}
+@container (max-width:720px){.hint .stat,.hint .hint-extra{display:none}}
+@container (max-width:540px){.hint .hint-secondary{display:none}}
+@container (max-width:400px){.hint .hint-preview{display:none}}
 .hint .act{color:var(--seal);font-weight:800}
 .hint kbd{display:inline-flex;align-items:center;justify-content:center;min-width:19px;height:20px;margin-right:6px;padding:0 6px;border:1px solid rgba(233,220,196,0.24);border-top-color:rgba(255,255,255,0.28);border-radius:6px;background:linear-gradient(180deg,rgba(233,220,196,0.16),rgba(233,220,196,0.08));color:#efe3c5;font:700 11px/1 var(--mono);box-shadow:inset 0 1px 0 rgba(255,255,255,0.12),0 1px 2px rgba(0,0,0,0.4);vertical-align:-4px}
 .toast{position:fixed;left:50%;bottom:52px;transform:translateX(-50%);z-index:9;max-width:86vw;border:1px solid var(--line-2);border-left:3px solid var(--seal);border-radius:9px;background:rgba(30,23,15,0.95);color:var(--ink);padding:10px 14px;font:600 12.5px/1.4 var(--sans);box-shadow:0 20px 50px -24px #000}
@@ -208,6 +212,9 @@ html,body{height:100%;background:transparent;color:var(--ink);font-family:var(--
 }
 @media (max-width:760px){
   .quota-meters{display:none}
+  .foot{flex-wrap:wrap;height:auto;min-height:42px;padding:8px 14px;gap:8px 12px}
+  .ambient{margin-left:auto}
+  .hint{flex-basis:100%;min-height:20px}
 }
 @media (prefers-reduced-motion:reduce){
   .spin,.live-dot{animation:none}
@@ -1103,14 +1110,15 @@ function renderPeekTurn(turn){
 }
 
 function updateHint(){
-  const sep="<span class='sep'>·</span>";
+  const modifier=/Mac|iPhone|iPad/.test(navigator.platform)?"⌘":"Ctrl";
+  const shortcut=(key,label,kind="")=>"<span class='shortcut "+kind+"'><kbd>"+key+"</kbd><span>"+label+"</span></span>";
   const status="<span class='stat'>"+esc(statusText())+"</span>";
-  const primary="<span class='act'>点击 预览</span>"+sep+"<kbd>↵</kbd> 在 Orca 继续"+sep+"<kbd>⌘↵</kbd> 完整视图";
+  const primary=shortcut("↵","在 Orca 继续")+shortcut(modifier+"↵","完整视图","hint-secondary");
   const preview=state.previewOpen
-    ? "<kbd>←</kbd> <span class='act'>关闭预览</span>"+sep+"<kbd>esc</kbd> 关闭预览"
-    : "<kbd>→</kbd> 预览"+sep+"<kbd>⌘P</kbd> 预览";
-  const escapeHint=state.previewOpen?"":sep+"<kbd>esc</kbd> 清除";
-  $("hint").innerHTML=status+sep+primary+sep+preview+sep+"<kbd>↑↓</kbd> 选择"+sep+"<kbd>⌘/</kbd> 快捷键"+escapeHint;
+    ? shortcut("esc","关闭预览","hint-preview")
+    : shortcut("→","预览","hint-preview");
+  const escapeHint=state.previewOpen?"":shortcut("esc","清除","hint-extra");
+  $("hint").innerHTML=status+primary+preview+shortcut("↑↓","选择","hint-extra")+shortcut(modifier+"/","快捷键")+escapeHint;
 }
 
 function statusText(){

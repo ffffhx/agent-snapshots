@@ -1,6 +1,14 @@
 // @ts-nocheck
 
 export const overlaysCss = `/* ---------- 搜索浮层 ---------- */
+.rag-panel { overflow-y: auto; min-height: 0; padding: 8px 20px 20px; flex: 1; }
+.rag-panel[hidden] { display: none; }
+.rag-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.rag-controls select { font: inherit; color: inherit; background: var(--panel, #fff); border: 1px solid var(--line, #ddd); border-radius: 6px; padding: 6px; }
+.rag-answer { line-height: 1.8; overflow-wrap: anywhere; }
+.rag-sources details { border-top: 1px solid var(--line, #ddd); padding: 12px 0; }
+.rag-sources summary { cursor: pointer; font-weight: 600; overflow-wrap: anywhere; }
+.rag-sources pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; line-height: 1.6; max-height: 320px; overflow: auto; }
 .search-overlay {
   position: fixed; inset: 0; z-index: 40;
   display: grid; justify-items: start; align-items: start;

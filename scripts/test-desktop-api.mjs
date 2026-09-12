@@ -105,7 +105,7 @@ try {
   }
 } finally {
   await stopChild(serverProcess);
-  await rm(tempDir, { recursive: true, force: true });
+  await rm(tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 }
 
 async function assertQuota(viewerUrl) {
@@ -280,7 +280,7 @@ async function assertCodexHomeDiscoveryIncludesDefault() {
     delete process.env.AGENT_SNAPSHOT_DISABLE_CODEX_HOME_AUTODETECT;
     delete process.env.AGENT_SNAPSHOT_EXTRA_CODEX_HOMES;
     const { discoverCodexHomes } = await import(pathToFileURL(path.join(ROOT_DIR, "dist/sources/codex-homes.mjs")).href);
-    const homes = await discoverCodexHomes();
+    const homes = await discoverCodexHomes("", { defaultHome });
     assert(homes.length >= 2, `expected explicit and default homes, got ${JSON.stringify(homes)}`);
     assert(homes[0].home === explicitHome, `explicit CODEX_HOME should be primary first: ${JSON.stringify(homes)}`);
     assert(homes[0].primary === true, `explicit CODEX_HOME should be marked primary: ${JSON.stringify(homes[0])}`);
@@ -619,11 +619,12 @@ async function assertBadOriginRejected(viewerUrl, csrfToken) {
 
 async function assertColdSessionCacheDoesNotInferLive(cacheDir) {
   const previousXdgCacheHome = process.env.XDG_CACHE_HOME;
+  let cache;
   process.env.XDG_CACHE_HOME = cacheDir;
   try {
     const moduleUrl = pathToFileURL(path.join(ROOT_DIR, "dist/server/session-list-cache.mjs")).href + `?cold-live=${Date.now()}`;
-    const { listSessionsWithCache } = await import(moduleUrl);
-    const rows = await listSessionsWithCache({
+    cache = await import(moduleUrl);
+    const rows = await cache.listSessionsWithCache({
       listSessions: async () => [
         {
           engine: "claude",
@@ -667,6 +668,7 @@ async function assertColdSessionCacheDoesNotInferLive(cacheDir) {
     const refs = rows.map((row) => row.ref);
     assert(refs.length === 0, `cache should not infer live rows without process evidence: ${JSON.stringify(rows)}`);
   } finally {
+    await cache?.closeSessionListCacheDatabases?.();
     if (previousXdgCacheHome === undefined) {
       delete process.env.XDG_CACHE_HOME;
     } else {
@@ -699,6 +701,7 @@ async function assertSessionCacheHomeScoping(cacheRoot) {
 
 async function assertLegacyPrimaryCacheRow(cacheDir) {
   const previousXdgCacheHome = process.env.XDG_CACHE_HOME;
+  let cache;
   process.env.XDG_CACHE_HOME = cacheDir;
   try {
     const codexHome = path.join(cacheDir, "codex");
@@ -723,7 +726,7 @@ async function assertLegacyPrimaryCacheRow(cacheDir) {
     ].join("\n") + "\n", "utf8");
     const fileInfo = await stat(filePath);
     const moduleUrl = pathToFileURL(path.join(ROOT_DIR, "dist/server/session-list-cache.mjs")).href + `?legacy-primary=${Date.now()}`;
-    const cache = await import(moduleUrl);
+    cache = await import(moduleUrl);
     await cache.sessionListCacheStatus();
     const { DatabaseSync } = await import("node:sqlite");
     const db = new DatabaseSync(cache.sessionListCachePath());
@@ -783,6 +786,7 @@ async function assertLegacyPrimaryCacheRow(cacheDir) {
     assert(legacyRow, `legacy no-home cache row should resolve as primary: ${JSON.stringify(rows)}`);
     assert(legacyRow.mtime === "2026-06-01T00:01:00.000Z", `legacy cached mtime should upgrade to its last message: ${JSON.stringify(legacyRow)}`);
   } finally {
+    await cache?.closeSessionListCacheDatabases?.();
     if (previousXdgCacheHome === undefined) {
       delete process.env.XDG_CACHE_HOME;
     } else {
@@ -793,13 +797,16 @@ async function assertLegacyPrimaryCacheRow(cacheDir) {
 
 async function assertScopedStaleCleanup(cacheDir) {
   const previousXdgCacheHome = process.env.XDG_CACHE_HOME;
+  let cache;
   process.env.XDG_CACHE_HOME = cacheDir;
   try {
     const codexHome = path.join(cacheDir, "codex");
     await mkdir(codexHome, { recursive: true });
     const cacheUrl = pathToFileURL(path.join(ROOT_DIR, "dist/server/session-list-cache.mjs")).href + `?scoped-stale=${Date.now()}`;
     const homesUrl = pathToFileURL(path.join(ROOT_DIR, "dist/sources/codex-homes.mjs")).href + `?scoped-stale=${Date.now()}`;
-    const [cache, homes] = await Promise.all([import(cacheUrl), import(homesUrl)]);
+    const modules = await Promise.all([import(cacheUrl), import(homesUrl)]);
+    [cache] = modules;
+    const homes = modules[1];
     await cache.sessionListCacheStatus();
     const activeHomeKey = homes.codexHomeKey(codexHome);
     const inactiveHomeKey = "home-ffffffffffff";
@@ -864,6 +871,7 @@ async function assertScopedStaleCleanup(cacheDir) {
       db.close?.();
     }
   } finally {
+    await cache?.closeSessionListCacheDatabases?.();
     if (previousXdgCacheHome === undefined) {
       delete process.env.XDG_CACHE_HOME;
     } else {

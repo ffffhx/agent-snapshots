@@ -141,6 +141,29 @@ let updaterConfigured = false;
 const pendingDeepLinks = [];
 const appTimeouts = new Set();
 const appIntervals = new Set();
+const failedOutputStreams = new WeakSet();
+
+function prepareOutputStream(stream) {
+  stream?.on?.("error", () => {
+    // Logging must never crash the tray app when its launching terminal or
+    // test harness closes the stdout/stderr pipe (EPIPE on Windows and Unix).
+    failedOutputStreams.add(stream);
+  });
+}
+
+function forwardServerOutput(stream, chunk) {
+  if (!stream?.writable || stream.destroyed || failedOutputStreams.has(stream)) {
+    return;
+  }
+  try {
+    stream.write(`[server] ${chunk}`);
+  } catch {
+    failedOutputStreams.add(stream);
+  }
+}
+
+prepareOutputStream(process.stdout);
+prepareOutputStream(process.stderr);
 
 /** Path to the built CLI entrypoint, resolved for both dev and packaged runs. */
 function cliEntry() {
@@ -273,8 +296,8 @@ async function startServer() {
     stdio: ["ignore", "pipe", "pipe"],
   });
 
-  serverProcess.stdout.on("data", (chunk) => process.stdout.write(`[server] ${chunk}`));
-  serverProcess.stderr.on("data", (chunk) => process.stderr.write(`[server] ${chunk}`));
+  serverProcess.stdout.on("data", (chunk) => forwardServerOutput(process.stdout, chunk));
+  serverProcess.stderr.on("data", (chunk) => forwardServerOutput(process.stderr, chunk));
   serverProcess.on("exit", (code, signal) => {
     serverProcess = null;
     if (quitting || serverRestarting) {
@@ -1177,6 +1200,21 @@ function registerGlobalShortcut() {
     globalShortcutIneffective = false;
     return;
   }
+  for (const preset of GLOBAL_SHORTCUT_PRESETS) {
+    const fallback = preset.accelerator;
+    if (fallback === null || fallback === selectedGlobalShortcut) {
+      continue;
+    }
+    if (tryRegisterGlobalShortcut(fallback)) {
+      console.warn(`Global shortcut ${selectedGlobalShortcut} is unavailable; using ${fallback}.`);
+      selectedGlobalShortcut = fallback;
+      registeredGlobalShortcut = fallback;
+      globalShortcutIneffective = false;
+      writeSetting(GLOBAL_SHORTCUT_SETTING_KEY, fallback);
+      refreshGlobalShortcutMenus();
+      return;
+    }
+  }
   registeredGlobalShortcut = null;
   globalShortcutIneffective = true;
   console.warn(`Failed to register global shortcut ${selectedGlobalShortcut}`);
@@ -1778,7 +1816,7 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   if (process.platform === "win32") {
-    app.setAppUserModelId("com.agent-snapshots.viewer");
+    app.setAppUserModelId("com.ffffhx.agent-snapshots");
   }
   registerDeepLinkProtocol();
   const initialDeepLink = findDeepLinkArg(process.argv);

@@ -131,6 +131,12 @@ $("closeSearch").addEventListener("click", () => closeSearchDialog(false));
 $("prewarmIndex").addEventListener("click", toggleSemanticPrewarm);
 $("globalSearch").addEventListener("input", () => scheduleSearch());
 $("globalSearch").addEventListener("keydown", async (event) => {
+  if (state.search.mode === "rag" && event.key === "Enter" && !event.isComposing) {
+    event.preventDefault();
+    await runRag();
+    return;
+  }
+  if (state.search.mode === "rag" && event.key !== "Escape") return;
   if (event.key === "ArrowDown") {
     event.preventDefault();
     moveSearchActive(1);
@@ -322,7 +328,7 @@ document.addEventListener("keydown", (event) => {
     openSearchDialog();
     return;
   }
-  if (event.metaKey && key === "/") {
+  if ((event.metaKey || event.ctrlKey) && key === "/") {
     event.preventDefault();
     openShortcuts();
     return;

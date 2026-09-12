@@ -52,7 +52,7 @@ Agent Snapshots 的桌面应用是一个 Electron 壳：它启动同一套本地
 
 主要能力：
 
-- 范围切换：`全部`、`Codex`、`Claude`，可用 `⌘1` 到 `⌘3` 切换。
+- 范围切换：`全部`、`Codex`、`Claude`，可用 `Ctrl/⌘1` 到 `Ctrl/⌘3` 切换。
 - 搜索：输入关键词会调用本地 `/api/search`，包含工具文本但不包含完整工具输出。
 - 空搜索状态会分组显示 `置顶`、`进行中`、`最近`。
 - 启动器顶部会显示“崩溃恢复已开启”；如果上次运行异常中断且留下 live sessions，会变为待恢复提示，点击“全部恢复”会逐个在 Orca 中继续，失败的条目会保留供重试。
@@ -64,9 +64,9 @@ Agent Snapshots 的桌面应用是一个 Electron 壳：它启动同一套本地
 
 - 点击 Codex / Claude 会话：优先在 Orca 中继续。
 - Codex 会话默认以全权限模式恢复，执行 `codex resume --dangerously-bypass-approvals-and-sandbox <id>`；Claude 会话仍执行 `claude --resume <id>`。
-- 如果 Orca 不可用，macOS 下会回退到 iTerm2（若正在运行）或 Terminal，并使用相同的恢复命令。
+- 如果 Orca 不可用，会回退到 macOS 的 iTerm2 / Terminal 或 Windows Terminal / PowerShell，并使用相同的恢复命令。
 - 行内快捷操作包含：`⭐` 置顶/取消置顶、复制恢复命令、打开完整视图。
-- `⌘↵` 打开完整视图；`⌘/` 打开快捷键说明；`Esc` 清空搜索或关闭快捷键说明。
+- `Ctrl/⌘↵` 打开完整视图；`Ctrl/⌘/` 打开快捷键说明；`Esc` 清空搜索或关闭快捷键说明。
 
 ## 完整查看器
 
@@ -78,7 +78,7 @@ Agent Snapshots 的桌面应用是一个 Electron 壳：它启动同一套本地
 - 大纲：`Ctrl+M` 打开/收起。大纲来自用户消息和会话期间的 git commit 卡片，点击可跳转；`[` / `]` 跳到上一个/下一个用户回合。
 - Live tail：进行中的 Codex / Claude 会话会轮询 `/api/session-head`，变化后追加新内容。滚动离开底部时会出现 `↓ 跟随最新` 按钮。
 - 大会话会先渲染最近一段，再后台渐进补齐更早记录，避免打开时卡住。
-- 绝对文件路径会变成可点击文本：点击复制路径，`⌘` + 点击在 Finder 中显示。
+- 绝对文件路径会变成可点击文本：点击复制路径，`Ctrl/⌘` + 点击在 Explorer / Finder 中显示。
 
 设置弹层：
 
@@ -90,7 +90,7 @@ Agent Snapshots 的桌面应用是一个 Electron 壳：它启动同一套本地
 
 搜索：
 
-- `⌘K` 打开全局搜索。
+- `Ctrl/⌘K` 打开全局搜索。
 - 支持关键词和语义两种模式，`Tab` 在搜索弹层内切换。
 - 关键词搜索支持 `source:`、`role:`、`project:`、`before:`、`after:` 和 `-排除词`，还有区分大小写和整词匹配。
 - 搜索结果可直接打开、会话内搜、在 Orca 继续、导出 HTML、复制项目路径。

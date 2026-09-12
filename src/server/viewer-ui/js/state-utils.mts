@@ -134,6 +134,7 @@ function setSearchContext(context = {}) {
   }
   if (scopeChanged) {
     resetSearchResultsState();
+    resetRag();
   }
 }
 
@@ -157,6 +158,7 @@ function openSearchDialog(context = {}) {
 }
 
 function closeSearchDialog(commit = false) {
+  cancelRag();
   state.search.open = false;
   $("searchOverlay").hidden = true;
   document.body.classList.remove("search-open");

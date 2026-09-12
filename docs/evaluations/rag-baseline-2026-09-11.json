@@ -1,0 +1,2365 @@
+{
+  "generatedAt": "2026-09-11T08:59:27.988Z",
+  "dataset": "authored-synthetic-regression-fixtures",
+  "limitations": [
+    "Synthetic fixtures are not production quality measurements.",
+    "Gold phrase coverage is an automatic proxy, not a factuality or citation-support score.",
+    "Recall@5/MRR@5 are measured over distinct sessions, not chunks.",
+    "No reranker evaluated. Generation is sampled; scores and latency are local single-run observations."
+  ],
+  "config": {
+    "baseUrl": "http://127.0.0.1:11434",
+    "embeddingModel": "qwen3-embedding:0.6b",
+    "chatModel": "qwen3:1.7b"
+  },
+  "lexicalBackend": "bm25-scan",
+  "sessions": 10,
+  "questions": 50,
+  "answerableQuestions": 40,
+  "buildMs": 5230.233,
+  "summary": {
+    "keyword": {
+      "recallAt5": 0.975,
+      "mrrAt5": 0.9458333333333332,
+      "parentGoldCoverage": 0.975,
+      "childGoldCoverage": 0.35,
+      "retrievalP95Ms": 2.203700000000026
+    },
+    "vector": {
+      "recallAt5": 1,
+      "mrrAt5": 0.975,
+      "parentGoldCoverage": 1,
+      "childGoldCoverage": 0.325,
+      "retrievalP95Ms": 86.09200000000055
+    },
+    "hybrid": {
+      "recallAt5": 1,
+      "mrrAt5": 0.96875,
+      "parentGoldCoverage": 1,
+      "childGoldCoverage": 0.35,
+      "retrievalP95Ms": 87.23349999999846
+    }
+  },
+  "generation": {
+    "count": 12,
+    "errors": 1,
+    "unanswerableCount": 4,
+    "correctAbstentions": 0,
+    "p95Ms": 2959.1231000000007
+  },
+  "results": [
+    {
+      "id": "electron-0",
+      "query": "Electron 白屏怎么修复",
+      "answerable": true,
+      "expectedRef": "claude:rag-fixture-electron",
+      "variants": {
+        "keyword": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": true,
+          "candidates": 15,
+          "retrievalMs": 4.675500000000284
+        },
+        "vector": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 40,
+          "retrievalMs": 80.79570000000058
+        },
+        "hybrid": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 42,
+          "retrievalMs": 82.71399999999994
+        }
+      },
+      "generation": {
+        "insufficient": false,
+        "reason": "",
+        "claims": [
+          {
+            "text": "最终修复：修正 preload 路径",
+            "citations": [
+              1
+            ]
+          },
+          {
+            "text": "最终修复：按模型和服务地址隔离缓存并校验维度",
+            "citations": [
+              6
+            ]
+          },
+          {
+            "text": "最终修复：运行期间持续持久化会话清单",
+            "citations": [
+              5
+            ]
+          }
+        ],
+        "model": "qwen3:1.7b",
+        "inputTokens": 1519,
+        "outputTokens": 209,
+        "generationMs": 2190.2634,
+        "expectedPhraseMatched": true,
+        "correctAbstention": null,
+        "citedEvidence": [
+          {
+            "id": 1,
+            "ref": "claude:rag-fixture-electron",
+            "text": "命中原文（第 1 条）：\nuser: 请排查：Electron 白屏\n\n第 1 条 user 2026-08-21T10:00:00Z:\n请排查：Electron 白屏\n\n第 2 条 assistant :\n先尝试关闭硬件加速。\n\n第 3 条 tool :\n白屏仍然存在\n\n第 4 条 user :\n这个尝试没有解决，继续检查。\n\n第 5 条 assistant :\n最终修复：修正 preload 路径。\n\n第 6 条 tool 2026-08-21T11:00:00Z:\n启动集成测试通过，页面内容正常渲染"
+          },
+          {
+            "id": 5,
+            "ref": "claude:rag-fixture-recovery",
+            "text": "命中原文（第 5 条）：\nassistant: 最终修复：运行期间持续持久化会话清单。\n\n第 4 条 user :\n这个尝试没有解决，继续检查。\n\n第 5 条 assistant :\n最终修复：运行期间持续持久化会话清单。\n\n第 6 条 tool 2026-08-21T11:00:00Z:\n模拟异常终止后恢复了测试会话"
+          },
+          {
+            "id": 6,
+            "ref": "claude:rag-fixture-vector",
+            "text": "命中原文（第 5 条）：\nassistant: 最终修复：按模型和服务地址隔离缓存并校验维度。\n\n第 4 条 user :\n这个尝试没有解决，继续检查。\n\n第 5 条 assistant :\n最终修复：按模型和服务地址隔离缓存并校验维度。\n\n第 6 条 tool 2026-08-21T11:00:00Z:\n不同维度的向量被明确拒绝"
+          }
+        ]
+      }
+    },
+    {
+      "id": "electron-1",
+      "query": "启动页面一片空白",
+      "answerable": true,
+      "expectedRef": "claude:rag-fixture-electron",
+      "variants": {
+        "keyword": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 4,
+          "retrievalMs": 1.461500000000342
+        },
+        "vector": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 40,
+          "retrievalMs": 69.41810000000078
+        },
+        "hybrid": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 40,
+          "retrievalMs": 70.15390000000025
+        }
+      },
+      "generation": {
+        "insufficient": false,
+        "reason": "",
+        "claims": [
+          {
+            "text": "Electron白屏问题通过关闭硬件加速解决",
+            "citations": [
+              1
+            ]
+          },
+          {
+            "text": "端口冲突问题通过更换随机端口解决",
+            "citations": [
+              2
+            ]
+          },
+          {
+            "text": "CSRF错误通过携带同源Origin和CSRF token解决",
+            "citations": [
+              3
+            ]
+          },
+          {
+            "text": "会话恢复丢失问题通过运行期间持续持久化会话清单解决",
+            "citations": [
+              6
+            ]
+          }
+        ],
+        "model": "qwen3:1.7b",
+        "inputTokens": 1729,
+        "outputTokens": 191,
+        "generationMs": 1676.4628000000002,
+        "expectedPhraseMatched": false,
+        "correctAbstention": null,
+        "citedEvidence": [
+          {
+            "id": 1,
+            "ref": "claude:rag-fixture-electron",
+            "text": "命中原文（第 6 条）：\ntool (test): 启动集成测试通过，页面内容正常渲染\n\n第 4 条 user :\n这个尝试没有解决，继续检查。\n\n第 5 条 assistant :\n最终修复：修正 preload 路径。\n\n第 6 条 tool 2026-08-21T11:00:00Z:\n启动集成测试通过，页面内容正常渲染"
+          },
+          {
+            "id": 2,
+            "ref": "claude:rag-fixture-port",
+            "text": "命中原文（第 3 条）：\ntool (test): 旧页面仍访问原端口，未解决\n\n第 1 条 user 2026-08-21T10:00:00Z:\n请排查：EADDRINUSE 4321\n\n第 2 条 assistant :\n先尝试自动换成随机端口。\n\n第 3 条 tool :\n旧页面仍访问原端口，未解决\n\n第 4 条 user :\n这个尝试没有解决，继续检查。\n\n第 5 条 assistant :\n最终修复：停止旧的 4321 服务再启动新应用。\n\n第 6 条 tool 2026-08-21T11:00:00Z:\n4321 健康检查返回新版本"
+          },
+          {
+            "id": 3,
+            "ref": "claude:rag-fixture-csrf",
+            "text": "命中原文（第 3 条）：\ntool (test): 该方案被否定，会允许外部页面发请求\n\n第 1 条 user 2026-08-21T10:00:00Z:\n请排查：发布接口 403\n\n第 2 条 assistant :\n先尝试关闭 Origin 校验。\n\n第 3 条 tool :\n该方案被否定，会允许外部页面发请求\n\n第 4 条 user :\n这个尝试没有解决，继续检查。\n\n第 5 条 assistant :\n最终修复：携带同源 Origin 和 CSRF token。\n\n第 6 条 tool 2026-08-21T11:00:00Z:\n合法请求返回 200，无 token 请求返回 403"
+          },
+          {
+            "id": 6,
+            "ref": "claude:rag-fixture-recovery",
+            "text": "命中原文（第 1 条）：\nuser: 请排查：重启后会话恢复丢失\n\n第 1 条 user 2026-08-21T10:00:00Z:\n请排查：重启后会话恢复丢失\n\n第 2 条 assistant :\n先尝试退出时才保存。\n\n第 3 条 tool :\n断电时保存钩子没有执行\n\n第 4 条 user :\n这个尝试没有解决，继续检查。\n\n第 5 条 assistant :\n最终修复：运行期间持续持久化会话清单。\n\n第 6 条 tool 2026-08-21T11:00:00Z:\n模拟异常终止后恢复了测试会话"
+          }
+        ]
+      }
+    },
+    {
+      "id": "electron-2",
+      "query": "preload 路径",
+      "answerable": true,
+      "expectedRef": "claude:rag-fixture-electron",
+      "variants": {
+        "keyword": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": true,
+          "candidates": 1,
+          "retrievalMs": 1.6144999999996799
+        },
+        "vector": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": true,
+          "candidates": 40,
+          "retrievalMs": 70.82920000000013
+        },
+        "hybrid": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": true,
+          "candidates": 40,
+          "retrievalMs": 72.0596999999998
+        }
+      },
+      "generation": {
+        "insufficient": false,
+        "reason": "",
+        "claims": [
+          {
+            "text": "preload 路径问题已修复，通过测试验证。",
+            "citations": [
+              1
+            ]
+          },
+          {
+            "text": "CSRF 验证问题已修复，通过测试验证。",
+            "citations": [
+              2
+            ]
+          },
+          {
+            "text": "端口冲突问题已修复，通过测试验证。",
+            "citations": [
+              3
+            ]
+          },
+          {
+            "text": "取消请求问题已修复，通过测试验证。",
+            "citations": [
+              4
+            ]
+          },
+          {
+            "text": "索引更新延迟问题已修复，通过测试验证。",
+            "citations": [
+              5
+            ]
+          },
+          {
+            "text": "文件监听失败问题已修复，通过测试验证。",
+            "citations": [
+              6
+            ]
+          }
+        ],
+        "model": "qwen3:1.7b",
+        "inputTokens": 1822,
+        "outputTokens": 264,
+        "generationMs": 2237.688399999999,
+        "expectedPhraseMatched": false,
+        "correctAbstention": null,
+        "citedEvidence": [
+          {
+            "id": 1,
+            "ref": "claude:rag-fixture-electron",
+            "text": "命中原文（第 5 条）：\nassistant: 最终修复：修正 preload 路径。\n\n第 4 条 user :\n这个尝试没有解决，继续检查。\n\n第 5 条 assistant :\n最终修复：修正 preload 路径。\n\n第 6 条 tool 2026-08-21T11:00:00Z:\n启动集成测试通过，页面内容正常渲染"
+          },
+          {
+            "id": 2,
+            "ref": "claude:rag-fixture-csrf",
+            "text": "命中原文（第 3 条）：\ntool (test): 该方案被否定，会允许外部页面发请求\n\n第 1 条 user 2026-08-21T10:00:00Z:\n请排查：发布接口 403\n\n第 2 条 assistant :\n先尝试关闭 Origin 校验。\n\n第 3 条 tool :\n该方案被否定，会允许外部页面发请求\n\n第 4 条 user :\n这个尝试没有解决，继续检查。\n\n第 5 条 assistant :\n最终修复：携带同源 Origin 和 CSRF token。\n\n第 6 条 tool 2026-08-21T11:00:00Z:\n合法请求返回 200，无 token 请求返回 403"
+          },
+          {
+            "id": 3,
+            "ref": "claude:rag-fixture-port",
+            "text": "命中原文（第 3 条）：\ntool (test): 旧页面仍访问原端口，未解决\n\n第 1 条 user 2026-08-21T10:00:00Z:\n请排查：EADDRINUSE 4321\n\n第 2 条 assistant :\n先尝试自动换成随机端口。\n\n第 3 条 tool :\n旧页面仍访问原端口，未解决\n\n第 4 条 user :\n这个尝试没有解决，继续检查。\n\n第 5 条 assistant :\n最终修复：停止旧的 4321 服务再启动新应用。\n\n第 6 条 tool 2026-08-21T11:00:00Z:\n4321 健康检查返回新版本"
+          },
+          {
+            "id": 4,
+            "ref": "claude:rag-fixture-cancel",
+            "text": "命中原文（第 3 条）：\ntool (test): 旧请求晚到后覆盖新答案\n\n第 1 条 user 2026-08-21T10:00:00Z:\n请排查：切换问题后显示旧答案\n\n第 2 条 assistant :\n先尝试仅清空输入框。\n\n第 3 条 tool :\n旧请求晚到后覆盖新答案\n\n第 4 条 user :\n这个尝试没有解决，继续检查。\n\n第 5 条 assistant :\n最终修复：AbortController 取消并校验请求序号。\n\n第 6 条 tool 2026-08-21T11:00:00Z:\n乱序响应测试没有覆盖当前答案"
+          },
+          {
+            "id": 5,
+            "ref": "claude:rag-fixture-index",
+            "text": "命中原文（第 1 条）：\nuser: 请排查：搜索索引更新延迟\n\n第 1 条 user 2026-08-21T10:00:00Z:\n请排查：搜索索引更新延迟\n\n第 2 条 assistant :\n先尝试每次查询全量扫描。\n\n第 3 条 tool :\n搜索仍卡顿，耗时 8 秒\n\n第 4 条 user :\n这个尝试没有解决，继续检查。\n\n第 5 条 assistant :\n最终修复：独立 Worker 监听目录并增量更新 SQLite。\n\n第 6 条 tool 2026-08-21T11:00:00Z:\n新增会话后索引更新测试通过"
+          },
+          {
+            "id": 6,
+            "ref": "claude:rag-fixture-watch",
+            "text": "命中原文（第 2 条）：\nassistant: 先尝试无限重试 watcher。\n\n第 1 条 user 2026-08-21T10:00:00Z:\n请排查：ENOSPC 文件监听失败\n\n第 2 条 assistant :\n先尝试无限重试 watcher。\n\n第 3 条 tool :\n监听仍然报错 ENOSPC\n\n第 4 条 user :\n这个尝试没有解决，继续检查。\n\n第 5 条 assistant :\n最终修复：增加周期扫描作为监听失效的补漏。\n\n第 6 条 tool 2026-08-21T11:00:00Z:\n禁用 watcher 后新增文件仍被周期扫描发现"
+          }
+        ]
+      }
+    },
+    {
+      "id": "electron-3",
+      "query": "硬件加速关闭后有用吗",
+      "answerable": true,
+      "expectedRef": "claude:rag-fixture-electron",
+      "variants": {
+        "keyword": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 16,
+          "retrievalMs": 2.203700000000026
+        },
+        "vector": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 40,
+          "retrievalMs": 71.48450000000048
+        },
+        "hybrid": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 44,
+          "retrievalMs": 72.48390000000109
+        }
+      },
+      "generation": {
+        "insufficient": false,
+        "reason": "",
+        "claims": [
+          {
+            "text": "关闭硬件加速可能对Electron白屏问题有效",
+            "citations": [
+              1
+            ]
+          },
+          {
+            "text": "关闭硬件加速可能对发布接口403问题有效",
+            "citations": [
+              2
+            ]
+          },
+          {
+            "text": "关闭硬件加速可能对会话恢复丢失问题有效",
+            "citations": [
+              3,
+              4
+            ]
+          },
+          {
+            "text": "关闭硬件加速可能对取消请求问题有效",
+            "citations": [
+              5
+            ]
+          },
+          {
+            "text": "关闭硬件加速可能对其他未提及问题有效",
+            "citations": [
+              6
+            ]
+          }
+        ],
+        "model": "qwen3:1.7b",
+        "inputTokens": 1554,
+        "outputTokens": 213,
+        "generationMs": 1690.4966999999997,
+        "expectedPhraseMatched": false,
+        "correctAbstention": null,
+        "citedEvidence": [
+          {
+            "id": 1,
+            "ref": "claude:rag-fixture-electron",
+            "text": "命中原文（第 2 条）：\nassistant: 先尝试关闭硬件加速。\n\n第 1 条 user 2026-08-21T10:00:00Z:\n请排查：Electron 白屏\n\n第 2 条 assistant :\n先尝试关闭硬件加速。\n\n第 3 条 tool :\n白屏仍然存在\n\n第 4 条 user :\n这个尝试没有解决，继续检查。\n\n第 5 条 assistant :\n最终修复：修正 preload 路径。\n\n第 6 条 tool 2026-08-21T11:00:00Z:\n启动集成测试通过，页面内容正常渲染"
+          },
+          {
+            "id": 2,
+            "ref": "claude:rag-fixture-csrf",
+            "text": "命中原文（第 2 条）：\nassistant: 先尝试关闭 Origin 校验。\n\n第 1 条 user 2026-08-21T10:00:00Z:\n请排查：发布接口 403\n\n第 2 条 assistant :\n先尝试关闭 Origin 校验。\n\n第 3 条 tool :\n该方案被否定，会允许外部页面发请求\n\n第 4 条 user :\n这个尝试没有解决，继续检查。\n\n第 5 条 assistant :\n最终修复：携带同源 Origin 和 CSRF token。\n\n第 6 条 tool 2026-08-21T11:00:00Z:\n合法请求返回 200，无 token 请求返回 403"
+          },
+          {
+            "id": 3,
+            "ref": "claude:rag-fixture-recovery",
+            "text": "命中原文（第 6 条）：\ntool (test): 模拟异常终止后恢复了测试会话\n\n第 4 条 user :\n这个尝试没有解决，继续检查。\n\n第 5 条 assistant :\n最终修复：运行期间持续持久化会话清单。\n\n第 6 条 tool 2026-08-21T11:00:00Z:\n模拟异常终止后恢复了测试会话"
+          },
+          {
+            "id": 4,
+            "ref": "claude:rag-fixture-recovery",
+            "text": "命中原文（第 2 条）：\nassistant: 先尝试退出时才保存。\n\n第 1 条 user 2026-08-21T10:00:00Z:\n请排查：重启后会话恢复丢失\n\n第 2 条 assistant :\n先尝试退出时才保存。\n\n第 3 条 tool :\n断电时保存钩子没有执行"
+          },
+          {
+            "id": 5,
+            "ref": "claude:rag-fixture-cancel",
+            "text": "命中原文（第 4 条）：\nuser: 这个尝试没有解决，继续检查。\n\n第 4 条 user :\n这个尝试没有解决，继续检查。\n\n第 5 条 assistant :\n最终修复：AbortController 取消并校验请求序号。\n\n第 6 条 tool 2026-08-21T11:00:00Z:\n乱序响应测试没有覆盖当前答案"
+          },
+          {
+            "id": 6,
+            "ref": "claude:rag-fixture-cancel",
+            "text": "命中原文（第 3 条）：\ntool (test): 旧请求晚到后覆盖新答案\n\n第 1 条 user 2026-08-21T10:00:00Z:\n请排查：切换问题后显示旧答案\n\n第 2 条 assistant :\n先尝试仅清空输入框。\n\n第 3 条 tool :\n旧请求晚到后覆盖新答案"
+          }
+        ]
+      }
+    },
+    {
+      "id": "index-0",
+      "query": "索引更新延迟",
+      "answerable": true,
+      "expectedRef": "claude:rag-fixture-index",
+      "variants": {
+        "keyword": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 7,
+          "retrievalMs": 0.9678000000003522
+        },
+        "vector": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 40,
+          "retrievalMs": 64.0635999999995
+        },
+        "hybrid": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 40,
+          "retrievalMs": 64.59350000000086
+        }
+      },
+      "generation": {
+        "insufficient": false,
+        "reason": "",
+        "claims": [
+          {
+            "text": "索引更新延迟问题通过独立 Worker 监听目录并增量更新 SQLite 的方式解决。",
+            "citations": [
+              1
+            ]
+          },
+          {
+            "text": "重复上报导致 Token 翻倍问题通过服务端唯一事件键配合 ON CONFLICT 去重解决。",
+            "citations": [
+              2
+            ]
+          },
+          {
+            "text": "切换问题后显示旧答案问题通过 AbortController 取消并校验请求序号解决。",
+            "citations": [
+              3
+            ]
+          },
+          {
+            "text": "embedding 维度不匹配问题通过按模型和服务地址隔离缓存并校验维度解决。",
+            "citations": [
+              4
+            ]
+          },
+          {
+            "text": "EADDRINUSE 4321 问题通过停止旧的 4321 服务再启动新应用解决。",
+            "citations": [
+              6
+            ]
+          }
+        ],
+        "model": "qwen3:1.7b",
+        "inputTokens": 1743,
+        "outputTokens": 255,
+        "generationMs": 2158.5859999999993,
+        "expectedPhraseMatched": true,
+        "correctAbstention": null,
+        "citedEvidence": [
+          {
+            "id": 1,
+            "ref": "claude:rag-fixture-index",
+            "text": "命中原文（第 1 条）：\nuser: 请排查：搜索索引更新延迟\n\n第 1 条 user 2026-08-21T10:00:00Z:\n请排查：搜索索引更新延迟\n\n第 2 条 assistant :\n先尝试每次查询全量扫描。\n\n第 3 条 tool :\n搜索仍卡顿，耗时 8 秒\n\n第 4 条 user :\n这个尝试没有解决，继续检查。\n\n第 5 条 assistant :\n最终修复：独立 Worker 监听目录并增量更新 SQLite。\n\n第 6 条 tool 2026-08-21T11:00:00Z:\n新增会话后索引更新测试通过"
+          },
+          {
+            "id": 2,
+            "ref": "claude:rag-fixture-duplicate",
+            "text": "命中原文（第 2 条）：\nassistant: 先尝试客户端延迟重试。\n\n第 1 条 user 2026-08-21T10:00:00Z:\n请排查：重复上报导致 Token 翻倍\n\n第 2 条 assistant :\n先尝试客户端延迟重试。\n\n第 3 条 tool :\n网络重试仍然重复累计\n\n第 4 条 user :\n这个尝试没有解决，继续检查。\n\n第 5 条 assistant :\n最终修复：服务端唯一事件键配合 ON CONFLICT 去重。\n\n第 6 条 tool 2026-08-21T11:00:00Z:\n同一批数据提交三次，累计值保持不变"
+          },
+          {
+            "id": 3,
+            "ref": "claude:rag-fixture-cancel",
+            "text": "命中原文（第 3 条）：\ntool (test): 旧请求晚到后覆盖新答案\n\n第 1 条 user 2026-08-21T10:00:00Z:\n请排查：切换问题后显示旧答案\n\n第 2 条 assistant :\n先尝试仅清空输入框。\n\n第 3 条 tool :\n旧请求晚到后覆盖新答案\n\n第 4 条 user :\n这个尝试没有解决，继续检查。\n\n第 5 条 assistant :\n最终修复：AbortController 取消并校验请求序号。\n\n第 6 条 tool 2026-08-21T11:00:00Z:\n乱序响应测试没有覆盖当前答案"
+          },
+          {
+            "id": 4,
+            "ref": "claude:rag-fixture-vector",
+            "text": "命中原文（第 5 条）：\nassistant: 最终修复：按模型和服务地址隔离缓存并校验维度。\n\n第 4 条 user :\n这个尝试没有解决，继续检查。\n\n第 5 条 assistant :\n最终修复：按模型和服务地址隔离缓存并校验维度。\n\n第 6 条 tool 2026-08-21T11:00:00Z:\n不同维度的向量被明确拒绝"
+          },
+          {
+            "id": 6,
+            "ref": "claude:rag-fixture-port",
+            "text": "命中原文（第 3 条）：\ntool (test): 旧页面仍访问原端口，未解决\n\n第 1 条 user 2026-08-21T10:00:00Z:\n请排查：EADDRINUSE 4321\n\n第 2 条 assistant :\n先尝试自动换成随机端口。\n\n第 3 条 tool :\n旧页面仍访问原端口，未解决\n\n第 4 条 user :\n这个尝试没有解决，继续检查。\n\n第 5 条 assistant :\n最终修复：停止旧的 4321 服务再启动新应用。\n\n第 6 条 tool 2026-08-21T11:00:00Z:\n4321 健康检查返回新版本"
+          }
+        ]
+      }
+    },
+    {
+      "id": "index-1",
+      "query": "历史记录新增后搜不到",
+      "answerable": true,
+      "expectedRef": "claude:rag-fixture-index",
+      "variants": {
+        "keyword": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 20,
+          "retrievalMs": 2.1809999999986758
+        },
+        "vector": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 40,
+          "retrievalMs": 74.44260000000031
+        },
+        "hybrid": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 46,
+          "retrievalMs": 75.22570000000087
+        }
+      },
+      "generation": {
+        "insufficient": false,
+        "reason": "",
+        "claims": [
+          {
+            "text": "索引更新延迟问题未解决",
+            "citations": [
+              1
+            ]
+          },
+          {
+            "text": "XSS漏洞未修复",
+            "citations": [
+              2
+            ]
+          },
+          {
+            "text": "会话恢复丢失问题未解决",
+            "citations": [
+              3
+            ]
+          },
+          {
+            "text": "文件监听失败问题未解决",
+            "citations": [
+              5
+            ]
+          },
+          {
+            "text": "索引更新延迟问题未解决",
+            "citations": [
+              6
+            ]
+          },
+          {
+            "text": "其他问题未明确解决",
+            "citations": [
+              4
+            ]
+          }
+        ],
+        "model": "qwen3:1.7b",
+        "inputTokens": 1639,
+        "outputTokens": 218,
+        "generationMs": 1897.0019999999986,
+        "expectedPhraseMatched": false,
+        "correctAbstention": null,
+        "citedEvidence": [
+          {
+            "id": 1,
+            "ref": "claude:rag-fixture-index",
+            "text": "命中原文（第 6 条）：\ntool (test): 新增会话后索引更新测试通过\n\n第 4 条 user :\n这个尝试没有解决，继续检查。\n\n第 5 条 assistant :\n最终修复：独立 Worker 监听目录并增量更新 SQLite。\n\n第 6 条 tool 2026-08-21T11:00:00Z:\n新增会话后索引更新测试通过"
+          },
+          {
+            "id": 2,
+            "ref": "claude:rag-fixture-xss",
+            "text": "命中原文（第 1 条）：\nuser: 请排查：历史 Markdown XSS\n\n第 1 条 user 2026-08-21T10:00:00Z:\n请排查：历史 Markdown XSS\n\n第 2 条 assistant :\n先尝试只移除 script 标签。\n\n第 3 条 tool :\n带事件属性的图片仍可注入\n\n第 4 条 user :\n这个尝试没有解决，继续检查。\n\n第 5 条 assistant :\n最终修复：使用 HTML 白名单清洗并过滤危险 URL。\n\n第 6 条 tool 2026-08-21T11:00:00Z:\n事件属性和 javascript URL 攻击测试通过"
+          },
+          {
+            "id": 3,
+            "ref": "claude:rag-fixture-cancel",
+            "text": "命中原文（第 1 条）：\nuser: 请排查：切换问题后显示旧答案\n\n第 1 条 user 2026-08-21T10:00:00Z:\n请排查：切换问题后显示旧答案\n\n第 2 条 assistant :\n先尝试仅清空输入框。\n\n第 3 条 tool :\n旧请求晚到后覆盖新答案\n\n第 4 条 user :\n这个尝试没有解决，继续检查。\n\n第 5 条 assistant :\n最终修复：AbortController 取消并校验请求序号。\n\n第 6 条 tool 2026-08-21T11:00:00Z:\n乱序响应测试没有覆盖当前答案"
+          },
+          {
+            "id": 4,
+            "ref": "claude:rag-fixture-recovery",
+            "text": "命中原文（第 1 条）：\nuser: 请排查：重启后会话恢复丢失\n\n第 1 条 user 2026-08-21T10:00:00Z:\n请排查：重启后会话恢复丢失\n\n第 2 条 assistant :\n先尝试退出时才保存。\n\n第 3 条 tool :\n断电时保存钩子没有执行\n\n第 4 条 user :\n这个尝试没有解决，继续检查。\n\n第 5 条 assistant :\n最终修复：运行期间持续持久化会话清单。\n\n第 6 条 tool 2026-08-21T11:00:00Z:\n模拟异常终止后恢复了测试会话"
+          },
+          {
+            "id": 5,
+            "ref": "claude:rag-fixture-watch",
+            "text": "命中原文（第 6 条）：\ntool (test): 禁用 watcher 后新增文件仍被周期扫描发现\n\n第 4 条 user :\n这个尝试没有解决，继续检查。\n\n第 5 条 assistant :\n最终修复：增加周期扫描作为监听失效的补漏。\n\n第 6 条 tool 2026-08-21T11:00:00Z:\n禁用 watcher 后新增文件仍被周期扫描发现"
+          },
+          {
+            "id": 6,
+            "ref": "claude:rag-fixture-index",
+            "text": "命中原文（第 1 条）：\nuser: 请排查：搜索索引更新延迟\n\n第 1 条 user 2026-08-21T10:00:00Z:\n请排查：搜索索引更新延迟\n\n第 2 条 assistant :\n先尝试每次查询全量扫描。\n\n第 3 条 tool :\n搜索仍卡顿，耗时 8 秒"
+          }
+        ]
+      }
+    },
+    {
+      "id": "index-2",
+      "query": "Worker SQLite",
+      "answerable": true,
+      "expectedRef": "claude:rag-fixture-index",
+      "variants": {
+        "keyword": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": true,
+          "candidates": 1,
+          "retrievalMs": 1.115300000001298
+        },
+        "vector": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": true,
+          "candidates": 40,
+          "retrievalMs": 64.36109999999826
+        },
+        "hybrid": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": true,
+          "candidates": 40,
+          "retrievalMs": 65.18920000000071
+        }
+      },
+      "generation": {
+        "insufficient": false,
+        "reason": "",
+        "claims": [
+          {
+            "text": "最终修复：独立 Worker 监听目录并增量更新 SQLite。",
+            "citations": [
+              1
+            ]
+          },
+          {
+            "text": "最终修复：服务端唯一事件键配合 ON CONFLICT 去重。",
+            "citations": [
+              2
+            ]
+          },
+          {
+            "text": "最终修复：AbortController 取消并校验请求序号。",
+            "citations": [
+              5
+            ]
+          },
+          {
+            "text": "最终修复：运行期间持续持久化会话清单。",
+            "citations": [
+              4
+            ]
+          },
+          {
+            "text": "最终修复：增加周期扫描作为监听失效的补漏。",
+            "citations": [
+              5
+            ]
+          }
+        ],
+        "model": "qwen3:1.7b",
+        "inputTokens": 1580,
+        "outputTokens": 352,
+        "generationMs": 2959.1231000000007,
+        "expectedPhraseMatched": true,
+        "correctAbstention": null,
+        "citedEvidence": [
+          {
+            "id": 1,
+            "ref": "claude:rag-fixture-index",
+            "text": "命中原文（第 5 条）：\nassistant: 最终修复：独立 Worker 监听目录并增量更新 SQLite。\n\n第 4 条 user :\n这个尝试没有解决，继续检查。\n\n第 5 条 assistant :\n最终修复：独立 Worker 监听目录并增量更新 SQLite。\n\n第 6 条 tool 2026-08-21T11:00:00Z:\n新增会话后索引更新测试通过"
+          },
+          {
+            "id": 2,
+            "ref": "claude:rag-fixture-duplicate",
+            "text": "命中原文（第 5 条）：\nassistant: 最终修复：服务端唯一事件键配合 ON CONFLICT 去重。\n\n第 4 条 user :\n这个尝试没有解决，继续检查。\n\n第 5 条 assistant :\n最终修复：服务端唯一事件键配合 ON CONFLICT 去重。\n\n第 6 条 tool 2026-08-21T11:00:00Z:\n同一批数据提交三次，累计值保持不变"
+          },
+          {
+            "id": 4,
+            "ref": "claude:rag-fixture-recovery",
+            "text": "命中原文（第 6 条）：\ntool (test): 模拟异常终止后恢复了测试会话\n\n第 4 条 user :\n这个尝试没有解决，继续检查。\n\n第 5 条 assistant :\n最终修复：运行期间持续持久化会话清单。\n\n第 6 条 tool 2026-08-21T11:00:00Z:\n模拟异常终止后恢复了测试会话"
+          },
+          {
+            "id": 5,
+            "ref": "claude:rag-fixture-watch",
+            "text": "命中原文（第 2 条）：\nassistant: 先尝试无限重试 watcher。\n\n第 1 条 user 2026-08-21T10:00:00Z:\n请排查：ENOSPC 文件监听失败\n\n第 2 条 assistant :\n先尝试无限重试 watcher。\n\n第 3 条 tool :\n监听仍然报错 ENOSPC\n\n第 4 条 user :\n这个尝试没有解决，继续检查。\n\n第 5 条 assistant :\n最终修复：增加周期扫描作为监听失效的补漏。\n\n第 6 条 tool 2026-08-21T11:00:00Z:\n禁用 watcher 后新增文件仍被周期扫描发现"
+          }
+        ]
+      }
+    },
+    {
+      "id": "index-3",
+      "query": "全量扫描最后采用了吗",
+      "answerable": true,
+      "expectedRef": "claude:rag-fixture-index",
+      "variants": {
+        "keyword": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 3,
+          "retrievalMs": 1.4057000000029802
+        },
+        "vector": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 40,
+          "retrievalMs": 78.54370000000563
+        },
+        "hybrid": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 40,
+          "retrievalMs": 79.46390000000247
+        }
+      },
+      "generation": {
+        "insufficient": false,
+        "reason": "",
+        "claims": [
+          {
+            "text": "全量扫描尝试被记录为最终修复方案",
+            "citations": [
+              1
+            ]
+          },
+          {
+            "text": "周期扫描补漏作为监听失效的补漏方案",
+            "citations": [
+              2
+            ]
+          },
+          {
+            "text": "维度校验作为向量匹配问题的修复方案",
+            "citations": [
+              3
+            ]
+          },
+          {
+            "text": "AbortController 取消请求作为切换问题的修复方案",
+            "citations": [
+              4
+            ]
+          },
+          {
+            "text": "修正 preload 路径作为 Electron 白屏的修复方案",
+            "citations": [
+              5
+            ]
+          },
+          {
+            "text": "携带同源 Origin 和 CSRF token 作为接口安全的修复方案",
+            "citations": [
+              6
+            ]
+          }
+        ],
+        "model": "qwen3:1.7b",
+        "inputTokens": 1805,
+        "outputTokens": 268,
+        "generationMs": 2261.2940000000017,
+        "expectedPhraseMatched": false,
+        "correctAbstention": null,
+        "citedEvidence": [
+          {
+            "id": 1,
+            "ref": "claude:rag-fixture-index",
+            "text": "命中原文（第 2 条）：\nassistant: 先尝试每次查询全量扫描。\n\n第 1 条 user 2026-08-21T10:00:00Z:\n请排查：搜索索引更新延迟\n\n第 2 条 assistant :\n先尝试每次查询全量扫描。\n\n第 3 条 tool :\n搜索仍卡顿，耗时 8 秒\n\n第 4 条 user :\n这个尝试没有解决，继续检查。\n\n第 5 条 assistant :\n最终修复：独立 Worker 监听目录并增量更新 SQLite。\n\n第 6 条 tool 2026-08-21T11:00:00Z:\n新增会话后索引更新测试通过"
+          },
+          {
+            "id": 2,
+            "ref": "claude:rag-fixture-watch",
+            "text": "命中原文（第 5 条）：\nassistant: 最终修复：增加周期扫描作为监听失效的补漏。\n\n第 4 条 user :\n这个尝试没有解决，继续检查。\n\n第 5 条 assistant :\n最终修复：增加周期扫描作为监听失效的补漏。\n\n第 6 条 tool 2026-08-21T11:00:00Z:\n禁用 watcher 后新增文件仍被周期扫描发现"
+          },
+          {
+            "id": 3,
+            "ref": "claude:rag-fixture-vector",
+            "text": "命中原文（第 3 条）：\ntool (test): 相似度失真，方案已撤销\n\n第 1 条 user 2026-08-21T10:00:00Z:\n请排查：embedding 维度不匹配\n\n第 2 条 assistant :\n先尝试截断向量到较小维度。\n\n第 3 条 tool :\n相似度失真，方案已撤销\n\n第 4 条 user :\n这个尝试没有解决，继续检查。\n\n第 5 条 assistant :\n最终修复：按模型和服务地址隔离缓存并校验维度。\n\n第 6 条 tool 2026-08-21T11:00:00Z:\n不同维度的向量被明确拒绝"
+          },
+          {
+            "id": 4,
+            "ref": "claude:rag-fixture-cancel",
+            "text": "命中原文（第 3 条）：\ntool (test): 旧请求晚到后覆盖新答案\n\n第 1 条 user 2026-08-21T10:00:00Z:\n请排查：切换问题后显示旧答案\n\n第 2 条 assistant :\n先尝试仅清空输入框。\n\n第 3 条 tool :\n旧请求晚到后覆盖新答案\n\n第 4 条 user :\n这个尝试没有解决，继续检查。\n\n第 5 条 assistant :\n最终修复：AbortController 取消并校验请求序号。\n\n第 6 条 tool 2026-08-21T11:00:00Z:\n乱序响应测试没有覆盖当前答案"
+          },
+          {
+            "id": 5,
+            "ref": "claude:rag-fixture-electron",
+            "text": "命中原文（第 3 条）：\ntool (test): 白屏仍然存在\n\n第 1 条 user 2026-08-21T10:00:00Z:\n请排查：Electron 白屏\n\n第 2 条 assistant :\n先尝试关闭硬件加速。\n\n第 3 条 tool :\n白屏仍然存在\n\n第 4 条 user :\n这个尝试没有解决，继续检查。\n\n第 5 条 assistant :\n最终修复：修正 preload 路径。\n\n第 6 条 tool 2026-08-21T11:00:00Z:\n启动集成测试通过，页面内容正常渲染"
+          },
+          {
+            "id": 6,
+            "ref": "claude:rag-fixture-csrf",
+            "text": "命中原文（第 3 条）：\ntool (test): 该方案被否定，会允许外部页面发请求\n\n第 1 条 user 2026-08-21T10:00:00Z:\n请排查：发布接口 403\n\n第 2 条 assistant :\n先尝试关闭 Origin 校验。\n\n第 3 条 tool :\n该方案被否定，会允许外部页面发请求\n\n第 4 条 user :\n这个尝试没有解决，继续检查。\n\n第 5 条 assistant :\n最终修复：携带同源 Origin 和 CSRF token。\n\n第 6 条 tool 2026-08-21T11:00:00Z:\n合法请求返回 200，无 token 请求返回 403"
+          }
+        ]
+      }
+    },
+    {
+      "id": "csrf-0",
+      "query": "发布接口 403",
+      "answerable": true,
+      "expectedRef": "claude:rag-fixture-csrf",
+      "variants": {
+        "keyword": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 6,
+          "retrievalMs": 1.407599999998638
+        },
+        "vector": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 40,
+          "retrievalMs": 68.75930000000153
+        },
+        "hybrid": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 40,
+          "retrievalMs": 69.85819999999876
+        }
+      }
+    },
+    {
+      "id": "csrf-1",
+      "query": "分享按钮请求被拒绝",
+      "answerable": true,
+      "expectedRef": "claude:rag-fixture-csrf",
+      "variants": {
+        "keyword": {
+          "recallAt5": 1,
+          "reciprocalRank": 0.5,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 5,
+          "retrievalMs": 1.5090999999993073
+        },
+        "vector": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 40,
+          "retrievalMs": 68.75740000000224
+        },
+        "hybrid": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 40,
+          "retrievalMs": 69.57470000000103
+        }
+      }
+    },
+    {
+      "id": "csrf-2",
+      "query": "CSRF token",
+      "answerable": true,
+      "expectedRef": "claude:rag-fixture-csrf",
+      "variants": {
+        "keyword": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": true,
+          "candidates": 8,
+          "retrievalMs": 1.3214000000007218
+        },
+        "vector": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": true,
+          "candidates": 40,
+          "retrievalMs": 69.02289999999994
+        },
+        "hybrid": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": true,
+          "candidates": 41,
+          "retrievalMs": 69.91779999999926
+        }
+      }
+    },
+    {
+      "id": "csrf-3",
+      "query": "Origin 校验可以关闭吗",
+      "answerable": true,
+      "expectedRef": "claude:rag-fixture-csrf",
+      "variants": {
+        "keyword": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": true,
+          "candidates": 5,
+          "retrievalMs": 1.556799999998475
+        },
+        "vector": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": true,
+          "candidates": 40,
+          "retrievalMs": 74.33709999999701
+        },
+        "hybrid": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": true,
+          "candidates": 40,
+          "retrievalMs": 75.08329999999842
+        }
+      }
+    },
+    {
+      "id": "recovery-0",
+      "query": "会话恢复丢失",
+      "answerable": true,
+      "expectedRef": "claude:rag-fixture-recovery",
+      "variants": {
+        "keyword": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 7,
+          "retrievalMs": 1.1837000000014086
+        },
+        "vector": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": true,
+          "candidates": 40,
+          "retrievalMs": 68.66530000000057
+        },
+        "hybrid": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 40,
+          "retrievalMs": 69.71189999999842
+        }
+      }
+    },
+    {
+      "id": "recovery-1",
+      "query": "电脑断电之后怎么找回对话",
+      "answerable": true,
+      "expectedRef": "claude:rag-fixture-recovery",
+      "variants": {
+        "keyword": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 1,
+          "retrievalMs": 1.219199999999546
+        },
+        "vector": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 40,
+          "retrievalMs": 76.39669999999751
+        },
+        "hybrid": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 40,
+          "retrievalMs": 77.54999999999927
+        }
+      }
+    },
+    {
+      "id": "recovery-2",
+      "query": "持久化会话清单",
+      "answerable": true,
+      "expectedRef": "claude:rag-fixture-recovery",
+      "variants": {
+        "keyword": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": true,
+          "candidates": 7,
+          "retrievalMs": 1.2662000000018452
+        },
+        "vector": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": true,
+          "candidates": 40,
+          "retrievalMs": 63.39390000000276
+        },
+        "hybrid": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": true,
+          "candidates": 40,
+          "retrievalMs": 64.19430000000284
+        }
+      }
+    },
+    {
+      "id": "recovery-3",
+      "query": "退出保存为什么失败",
+      "answerable": true,
+      "expectedRef": "claude:rag-fixture-recovery",
+      "variants": {
+        "keyword": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 8,
+          "retrievalMs": 1.1955000000016298
+        },
+        "vector": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 40,
+          "retrievalMs": 72.3130999999994
+        },
+        "hybrid": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 42,
+          "retrievalMs": 73.55000000000291
+        }
+      }
+    },
+    {
+      "id": "watch-0",
+      "query": "ENOSPC",
+      "answerable": true,
+      "expectedRef": "claude:rag-fixture-watch",
+      "variants": {
+        "keyword": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 6,
+          "retrievalMs": 0.9735000000000582
+        },
+        "vector": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 40,
+          "retrievalMs": 65.36880000000019
+        },
+        "hybrid": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 42,
+          "retrievalMs": 65.74370000000272
+        }
+      }
+    },
+    {
+      "id": "watch-1",
+      "query": "文件监控坏了如何同步",
+      "answerable": true,
+      "expectedRef": "claude:rag-fixture-watch",
+      "variants": {
+        "keyword": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 6,
+          "retrievalMs": 0.9236000000018976
+        },
+        "vector": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 40,
+          "retrievalMs": 72.07640000000174
+        },
+        "hybrid": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 40,
+          "retrievalMs": 72.5515000000014
+        }
+      }
+    },
+    {
+      "id": "watch-2",
+      "query": "watcher 周期扫描",
+      "answerable": true,
+      "expectedRef": "claude:rag-fixture-watch",
+      "variants": {
+        "keyword": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 4,
+          "retrievalMs": 1.2317000000002736
+        },
+        "vector": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 40,
+          "retrievalMs": 76.87379999999757
+        },
+        "hybrid": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 40,
+          "retrievalMs": 77.77790000000095
+        }
+      }
+    },
+    {
+      "id": "watch-3",
+      "query": "无限重试文件监听有效吗",
+      "answerable": true,
+      "expectedRef": "claude:rag-fixture-watch",
+      "variants": {
+        "keyword": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": true,
+          "candidates": 16,
+          "retrievalMs": 1.5525999999990745
+        },
+        "vector": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 40,
+          "retrievalMs": 77.1697000000022
+        },
+        "hybrid": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 42,
+          "retrievalMs": 78.01810000000114
+        }
+      }
+    },
+    {
+      "id": "vector-0",
+      "query": "embedding 维度不匹配",
+      "answerable": true,
+      "expectedRef": "claude:rag-fixture-vector",
+      "variants": {
+        "keyword": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 6,
+          "retrievalMs": 1.1173000000017055
+        },
+        "vector": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 40,
+          "retrievalMs": 78.41519999999946
+        },
+        "hybrid": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 40,
+          "retrievalMs": 78.6323999999986
+        }
+      }
+    },
+    {
+      "id": "vector-1",
+      "query": "更换向量模型后搜索异常",
+      "answerable": true,
+      "expectedRef": "claude:rag-fixture-vector",
+      "variants": {
+        "keyword": {
+          "recallAt5": 1,
+          "reciprocalRank": 0.3333333333333333,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 22,
+          "retrievalMs": 2.3922999999958847
+        },
+        "vector": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 40,
+          "retrievalMs": 79.69989999999962
+        },
+        "hybrid": {
+          "recallAt5": 1,
+          "reciprocalRank": 0.5,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 46,
+          "retrievalMs": 80.88589999999749
+        }
+      }
+    },
+    {
+      "id": "vector-2",
+      "query": "校验维度",
+      "answerable": true,
+      "expectedRef": "claude:rag-fixture-vector",
+      "variants": {
+        "keyword": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": true,
+          "candidates": 8,
+          "retrievalMs": 1.605599999998958
+        },
+        "vector": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 40,
+          "retrievalMs": 64.21750000000247
+        },
+        "hybrid": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": true,
+          "candidates": 40,
+          "retrievalMs": 65.1804000000011
+        }
+      }
+    },
+    {
+      "id": "vector-3",
+      "query": "截断向量方案为何撤销",
+      "answerable": true,
+      "expectedRef": "claude:rag-fixture-vector",
+      "variants": {
+        "keyword": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 4,
+          "retrievalMs": 1.5910000000003492
+        },
+        "vector": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 40,
+          "retrievalMs": 80.33039999999892
+        },
+        "hybrid": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 40,
+          "retrievalMs": 81.43840000000273
+        }
+      }
+    },
+    {
+      "id": "port-0",
+      "query": "EADDRINUSE",
+      "answerable": true,
+      "expectedRef": "claude:rag-fixture-port",
+      "variants": {
+        "keyword": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 6,
+          "retrievalMs": 1.3966999999975087
+        },
+        "vector": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 40,
+          "retrievalMs": 72.97590000000127
+        },
+        "hybrid": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 41,
+          "retrievalMs": 73.38740000000325
+        }
+      }
+    },
+    {
+      "id": "port-1",
+      "query": "启动时端口被旧程序占用",
+      "answerable": true,
+      "expectedRef": "claude:rag-fixture-port",
+      "variants": {
+        "keyword": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": true,
+          "candidates": 15,
+          "retrievalMs": 2.165100000001985
+        },
+        "vector": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": true,
+          "candidates": 40,
+          "retrievalMs": 85.26659999999902
+        },
+        "hybrid": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": true,
+          "candidates": 42,
+          "retrievalMs": 86.51800000000367
+        }
+      }
+    },
+    {
+      "id": "port-2",
+      "query": "4321 健康检查",
+      "answerable": true,
+      "expectedRef": "claude:rag-fixture-port",
+      "variants": {
+        "keyword": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 15,
+          "retrievalMs": 1.787899999995716
+        },
+        "vector": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 40,
+          "retrievalMs": 89.57010000000082
+        },
+        "hybrid": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 41,
+          "retrievalMs": 90.60869999999704
+        }
+      }
+    },
+    {
+      "id": "port-3",
+      "query": "随机端口解决了吗",
+      "answerable": true,
+      "expectedRef": "claude:rag-fixture-port",
+      "variants": {
+        "keyword": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 14,
+          "retrievalMs": 1.4837999999981548
+        },
+        "vector": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 40,
+          "retrievalMs": 69.91280000000188
+        },
+        "hybrid": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 41,
+          "retrievalMs": 70.50270000000091
+        }
+      }
+    },
+    {
+      "id": "xss-0",
+      "query": "Markdown XSS",
+      "answerable": true,
+      "expectedRef": "claude:rag-fixture-xss",
+      "variants": {
+        "keyword": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 6,
+          "retrievalMs": 1.2841000000007625
+        },
+        "vector": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": true,
+          "candidates": 40,
+          "retrievalMs": 67.73990000000049
+        },
+        "hybrid": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": true,
+          "candidates": 40,
+          "retrievalMs": 68.57200000000375
+        }
+      }
+    },
+    {
+      "id": "xss-1",
+      "query": "历史消息里的恶意图片如何处理",
+      "answerable": true,
+      "expectedRef": "claude:rag-fixture-xss",
+      "variants": {
+        "keyword": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 6,
+          "retrievalMs": 1.6453000000001339
+        },
+        "vector": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": true,
+          "candidates": 40,
+          "retrievalMs": 82.84249999999884
+        },
+        "hybrid": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": true,
+          "candidates": 40,
+          "retrievalMs": 83.93790000000081
+        }
+      }
+    },
+    {
+      "id": "xss-2",
+      "query": "危险 URL",
+      "answerable": true,
+      "expectedRef": "claude:rag-fixture-xss",
+      "variants": {
+        "keyword": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": true,
+          "candidates": 2,
+          "retrievalMs": 1.0761999999995169
+        },
+        "vector": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": true,
+          "candidates": 40,
+          "retrievalMs": 67.48999999999796
+        },
+        "hybrid": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": true,
+          "candidates": 40,
+          "retrievalMs": 68.1291999999994
+        }
+      }
+    },
+    {
+      "id": "xss-3",
+      "query": "只删除 script 标签安全吗",
+      "answerable": true,
+      "expectedRef": "claude:rag-fixture-xss",
+      "variants": {
+        "keyword": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 1,
+          "retrievalMs": 1.4486000000033528
+        },
+        "vector": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": true,
+          "candidates": 40,
+          "retrievalMs": 86.09200000000055
+        },
+        "hybrid": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": true,
+          "candidates": 40,
+          "retrievalMs": 87.23349999999846
+        }
+      }
+    },
+    {
+      "id": "cancel-0",
+      "query": "旧答案覆盖",
+      "answerable": true,
+      "expectedRef": "claude:rag-fixture-cancel",
+      "variants": {
+        "keyword": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 8,
+          "retrievalMs": 1.4085999999988417
+        },
+        "vector": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 40,
+          "retrievalMs": 65.65419999999722
+        },
+        "hybrid": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 41,
+          "retrievalMs": 66.43419999999605
+        }
+      }
+    },
+    {
+      "id": "cancel-1",
+      "query": "连续提问时结果串了",
+      "answerable": true,
+      "expectedRef": "claude:rag-fixture-cancel",
+      "variants": {
+        "keyword": {
+          "recallAt5": 0,
+          "reciprocalRank": 0,
+          "parentContainsGold": false,
+          "childContainsGold": false,
+          "candidates": 3,
+          "retrievalMs": 1.646599999996397
+        },
+        "vector": {
+          "recallAt5": 1,
+          "reciprocalRank": 0.5,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 40,
+          "retrievalMs": 78.05950000000303
+        },
+        "hybrid": {
+          "recallAt5": 1,
+          "reciprocalRank": 0.25,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 40,
+          "retrievalMs": 78.89400000000023
+        }
+      }
+    },
+    {
+      "id": "cancel-2",
+      "query": "AbortController 请求序号",
+      "answerable": true,
+      "expectedRef": "claude:rag-fixture-cancel",
+      "variants": {
+        "keyword": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": true,
+          "candidates": 5,
+          "retrievalMs": 1.5446999999985565
+        },
+        "vector": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": true,
+          "candidates": 40,
+          "retrievalMs": 72.94260000000213
+        },
+        "hybrid": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": true,
+          "candidates": 40,
+          "retrievalMs": 73.58970000000045
+        }
+      }
+    },
+    {
+      "id": "cancel-3",
+      "query": "清空输入框能避免竞态吗",
+      "answerable": true,
+      "expectedRef": "claude:rag-fixture-cancel",
+      "variants": {
+        "keyword": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 1,
+          "retrievalMs": 1.953800000002957
+        },
+        "vector": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 40,
+          "retrievalMs": 89.16389999999956
+        },
+        "hybrid": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 40,
+          "retrievalMs": 90.03640000000087
+        }
+      }
+    },
+    {
+      "id": "duplicate-0",
+      "query": "Token 翻倍",
+      "answerable": true,
+      "expectedRef": "claude:rag-fixture-duplicate",
+      "variants": {
+        "keyword": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 8,
+          "retrievalMs": 1.2530000000006112
+        },
+        "vector": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 40,
+          "retrievalMs": 71.39630000000034
+        },
+        "hybrid": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 40,
+          "retrievalMs": 72.36070000000109
+        }
+      }
+    },
+    {
+      "id": "duplicate-1",
+      "query": "网络重试之后用量重复计算",
+      "answerable": true,
+      "expectedRef": "claude:rag-fixture-duplicate",
+      "variants": {
+        "keyword": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": true,
+          "candidates": 13,
+          "retrievalMs": 1.5279999999984284
+        },
+        "vector": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 40,
+          "retrievalMs": 78.62380000000121
+        },
+        "hybrid": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 42,
+          "retrievalMs": 79.42870000000039
+        }
+      }
+    },
+    {
+      "id": "duplicate-2",
+      "query": "ON CONFLICT",
+      "answerable": true,
+      "expectedRef": "claude:rag-fixture-duplicate",
+      "variants": {
+        "keyword": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": true,
+          "candidates": 1,
+          "retrievalMs": 1.1464999999989232
+        },
+        "vector": {
+          "recallAt5": 1,
+          "reciprocalRank": 0.5,
+          "parentContainsGold": true,
+          "childContainsGold": true,
+          "candidates": 40,
+          "retrievalMs": 64.15600000000268
+        },
+        "hybrid": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": true,
+          "candidates": 40,
+          "retrievalMs": 64.94859999999971
+        }
+      }
+    },
+    {
+      "id": "duplicate-3",
+      "query": "客户端延迟重试能去重吗",
+      "answerable": true,
+      "expectedRef": "claude:rag-fixture-duplicate",
+      "variants": {
+        "keyword": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": true,
+          "candidates": 18,
+          "retrievalMs": 1.6500000000014552
+        },
+        "vector": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": false,
+          "candidates": 40,
+          "retrievalMs": 85.11680000000342
+        },
+        "hybrid": {
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "parentContainsGold": true,
+          "childContainsGold": true,
+          "candidates": 42,
+          "retrievalMs": 85.86830000000191
+        }
+      }
+    },
+    {
+      "id": "unknown-0",
+      "query": "火星基地氧气库存",
+      "answerable": false,
+      "expectedRef": null,
+      "variants": {
+        "keyword": {
+          "recallAt5": null,
+          "reciprocalRank": null,
+          "parentContainsGold": null,
+          "childContainsGold": null,
+          "candidates": 0,
+          "retrievalMs": 1.3868000000002212
+        },
+        "vector": {
+          "recallAt5": null,
+          "reciprocalRank": null,
+          "parentContainsGold": null,
+          "childContainsGold": null,
+          "candidates": 40,
+          "retrievalMs": 67.11239999999816
+        },
+        "hybrid": {
+          "recallAt5": null,
+          "reciprocalRank": null,
+          "parentContainsGold": null,
+          "childContainsGold": null,
+          "candidates": 40,
+          "retrievalMs": 68.34700000000157
+        }
+      },
+      "generation": {
+        "insufficient": false,
+        "reason": "",
+        "claims": [
+          {
+            "text": "火星基地氧气库存未被直接提及，无法确定具体数值。",
+            "citations": [
+              1
+            ]
+          },
+          {
+            "text": "火星基地氧气库存问题未被解决，需进一步技术验证。",
+            "citations": [
+              2
+            ]
+          },
+          {
+            "text": "火星基地氧气库存相关问题未被明确回答，需更多证据支持。",
+            "citations": [
+              3
+            ]
+          }
+        ],
+        "model": "qwen3:1.7b",
+        "inputTokens": 1560,
+        "outputTokens": 137,
+        "generationMs": 1398.5859999999993,
+        "expectedPhraseMatched": null,
+        "correctAbstention": false,
+        "citedEvidence": [
+          {
+            "id": 1,
+            "ref": "claude:rag-fixture-vector",
+            "text": "命中原文（第 3 条）：\ntool (test): 相似度失真，方案已撤销\n\n第 1 条 user 2026-08-21T10:00:00Z:\n请排查：embedding 维度不匹配\n\n第 2 条 assistant :\n先尝试截断向量到较小维度。\n\n第 3 条 tool :\n相似度失真，方案已撤销\n\n第 4 条 user :\n这个尝试没有解决，继续检查。\n\n第 5 条 assistant :\n最终修复：按模型和服务地址隔离缓存并校验维度。\n\n第 6 条 tool 2026-08-21T11:00:00Z:\n不同维度的向量被明确拒绝"
+          },
+          {
+            "id": 2,
+            "ref": "claude:rag-fixture-cancel",
+            "text": "命中原文（第 3 条）：\ntool (test): 旧请求晚到后覆盖新答案\n\n第 1 条 user 2026-08-21T10:00:00Z:\n请排查：切换问题后显示旧答案\n\n第 2 条 assistant :\n先尝试仅清空输入框。\n\n第 3 条 tool :\n旧请求晚到后覆盖新答案\n\n第 4 条 user :\n这个尝试没有解决，继续检查。\n\n第 5 条 assistant :\n最终修复：AbortController 取消并校验请求序号。\n\n第 6 条 tool 2026-08-21T11:00:00Z:\n乱序响应测试没有覆盖当前答案"
+          },
+          {
+            "id": 3,
+            "ref": "claude:rag-fixture-electron",
+            "text": "命中原文（第 4 条）：\nuser: 这个尝试没有解决，继续检查。\n\n第 4 条 user :\n这个尝试没有解决，继续检查。\n\n第 5 条 assistant :\n最终修复：修正 preload 路径。\n\n第 6 条 tool 2026-08-21T11:00:00Z:\n启动集成测试通过，页面内容正常渲染"
+          }
+        ]
+      }
+    },
+    {
+      "id": "unknown-1",
+      "query": "公司今年营业收入",
+      "answerable": false,
+      "expectedRef": null,
+      "variants": {
+        "keyword": {
+          "recallAt5": null,
+          "reciprocalRank": null,
+          "parentContainsGold": null,
+          "childContainsGold": null,
+          "candidates": 0,
+          "retrievalMs": 0.5011999999987893
+        },
+        "vector": {
+          "recallAt5": null,
+          "reciprocalRank": null,
+          "parentContainsGold": null,
+          "childContainsGold": null,
+          "candidates": 35,
+          "retrievalMs": 52.634399999999005
+        },
+        "hybrid": {
+          "recallAt5": null,
+          "reciprocalRank": null,
+          "parentContainsGold": null,
+          "childContainsGold": null,
+          "candidates": 35,
+          "retrievalMs": 53.05609999999797
+        }
+      },
+      "generation": {
+        "insufficient": false,
+        "reason": "",
+        "claims": [
+          {
+            "text": "证据中未直接提供关于公司今年营业收入的具体数据或结论，因此无法得出明确的结论。",
+            "citations": [
+              1
+            ]
+          },
+          {
+            "text": "根据证据中的描述，可以推断出一些可能的修复方向，如处理重复上报、网络重试、缓存隔离等，但这些信息不足以得出营业收入的具体数值或结论。",
+            "citations": [
+              5
+            ]
+          }
+        ],
+        "model": "qwen3:1.7b",
+        "inputTokens": 1580,
+        "outputTokens": 188,
+        "generationMs": 1702.8084000000017,
+        "expectedPhraseMatched": null,
+        "correctAbstention": false,
+        "citedEvidence": [
+          {
+            "id": 1,
+            "ref": "claude:rag-fixture-duplicate",
+            "text": "命中原文（第 6 条）：\ntool (test): 同一批数据提交三次，累计值保持不变\n\n第 4 条 user :\n这个尝试没有解决，继续检查。\n\n第 5 条 assistant :\n最终修复：服务端唯一事件键配合 ON CONFLICT 去重。\n\n第 6 条 tool 2026-08-21T11:00:00Z:\n同一批数据提交三次，累计值保持不变"
+          },
+          {
+            "id": 5,
+            "ref": "claude:rag-fixture-duplicate",
+            "text": "命中原文（第 3 条）：\ntool (test): 网络重试仍然重复累计\n\n第 1 条 user 2026-08-21T10:00:00Z:\n请排查：重复上报导致 Token 翻倍\n\n第 2 条 assistant :\n先尝试客户端延迟重试。\n\n第 3 条 tool :\n网络重试仍然重复累计"
+          }
+        ]
+      }
+    },
+    {
+      "id": "unknown-2",
+      "query": "我的银行卡余额",
+      "answerable": false,
+      "expectedRef": null,
+      "variants": {
+        "keyword": {
+          "recallAt5": null,
+          "reciprocalRank": null,
+          "parentContainsGold": null,
+          "childContainsGold": null,
+          "candidates": 1,
+          "retrievalMs": 0.9753999999993539
+        },
+        "vector": {
+          "recallAt5": null,
+          "reciprocalRank": null,
+          "parentContainsGold": null,
+          "childContainsGold": null,
+          "candidates": 40,
+          "retrievalMs": 55.67740000000049
+        },
+        "hybrid": {
+          "recallAt5": null,
+          "reciprocalRank": null,
+          "parentContainsGold": null,
+          "childContainsGold": null,
+          "candidates": 40,
+          "retrievalMs": 56.762299999998504
+        }
+      },
+      "generation": {
+        "insufficient": false,
+        "reason": "",
+        "claims": [
+          {
+            "text": "无法确定银行卡余额信息",
+            "citations": [
+              1
+            ]
+          },
+          {
+            "text": "系统性能优化措施已实施",
+            "citations": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6
+            ]
+          },
+          {
+            "text": "会话恢复问题已解决",
+            "citations": [
+              5
+            ]
+          },
+          {
+            "text": "文件监听失败问题已修复",
+            "citations": [
+              6
+            ]
+          }
+        ],
+        "model": "qwen3:1.7b",
+        "inputTokens": 1500,
+        "outputTokens": 195,
+        "generationMs": 1616.017399999997,
+        "expectedPhraseMatched": null,
+        "correctAbstention": false,
+        "citedEvidence": [
+          {
+            "id": 1,
+            "ref": "claude:rag-fixture-index",
+            "text": "命中原文（第 3 条）：\ntool (test): 搜索仍卡顿，耗时 8 秒\n\n第 1 条 user 2026-08-21T10:00:00Z:\n请排查：搜索索引更新延迟\n\n第 2 条 assistant :\n先尝试每次查询全量扫描。\n\n第 3 条 tool :\n搜索仍卡顿，耗时 8 秒\n\n第 4 条 user :\n这个尝试没有解决，继续检查。\n\n第 5 条 assistant :\n最终修复：独立 Worker 监听目录并增量更新 SQLite。\n\n第 6 条 tool 2026-08-21T11:00:00Z:\n新增会话后索引更新测试通过"
+          },
+          {
+            "id": 2,
+            "ref": "claude:rag-fixture-port",
+            "text": "命中原文（第 6 条）：\ntool (test): 4321 健康检查返回新版本\n\n第 4 条 user :\n这个尝试没有解决，继续检查。\n\n第 5 条 assistant :\n最终修复：停止旧的 4321 服务再启动新应用。\n\n第 6 条 tool 2026-08-21T11:00:00Z:\n4321 健康检查返回新版本"
+          },
+          {
+            "id": 3,
+            "ref": "claude:rag-fixture-electron",
+            "text": "命中原文（第 4 条）：\nuser: 这个尝试没有解决，继续检查。\n\n第 4 条 user :\n这个尝试没有解决，继续检查。\n\n第 5 条 assistant :\n最终修复：修正 preload 路径。\n\n第 6 条 tool 2026-08-21T11:00:00Z:\n启动集成测试通过，页面内容正常渲染"
+          },
+          {
+            "id": 4,
+            "ref": "claude:rag-fixture-csrf",
+            "text": "命中原文（第 4 条）：\nuser: 这个尝试没有解决，继续检查。\n\n第 4 条 user :\n这个尝试没有解决，继续检查。\n\n第 5 条 assistant :\n最终修复：携带同源 Origin 和 CSRF token。\n\n第 6 条 tool 2026-08-21T11:00:00Z:\n合法请求返回 200，无 token 请求返回 403"
+          },
+          {
+            "id": 5,
+            "ref": "claude:rag-fixture-recovery",
+            "text": "命中原文（第 4 条）：\nuser: 这个尝试没有解决，继续检查。\n\n第 4 条 user :\n这个尝试没有解决，继续检查。\n\n第 5 条 assistant :\n最终修复：运行期间持续持久化会话清单。\n\n第 6 条 tool 2026-08-21T11:00:00Z:\n模拟异常终止后恢复了测试会话"
+          },
+          {
+            "id": 6,
+            "ref": "claude:rag-fixture-watch",
+            "text": "命中原文（第 4 条）：\nuser: 这个尝试没有解决，继续检查。\n\n第 4 条 user :\n这个尝试没有解决，继续检查。\n\n第 5 条 assistant :\n最终修复：增加周期扫描作为监听失效的补漏。\n\n第 6 条 tool 2026-08-21T11:00:00Z:\n禁用 watcher 后新增文件仍被周期扫描发现"
+          }
+        ]
+      }
+    },
+    {
+      "id": "unknown-3",
+      "query": "哪个同事明天请假",
+      "answerable": false,
+      "expectedRef": null,
+      "variants": {
+        "keyword": {
+          "recallAt5": null,
+          "reciprocalRank": null,
+          "parentContainsGold": null,
+          "childContainsGold": null,
+          "candidates": 0,
+          "retrievalMs": 0.8886000000020431
+        },
+        "vector": {
+          "recallAt5": null,
+          "reciprocalRank": null,
+          "parentContainsGold": null,
+          "childContainsGold": null,
+          "candidates": 40,
+          "retrievalMs": 72.66070000000036
+        },
+        "hybrid": {
+          "recallAt5": null,
+          "reciprocalRank": null,
+          "parentContainsGold": null,
+          "childContainsGold": null,
+          "candidates": 40,
+          "retrievalMs": 73.51210000000356
+        }
+      },
+      "generation": {
+        "error": "模型未提供带证据的结论，请重试。",
+        "generationMs": 465.6225999999988
+      }
+    },
+    {
+      "id": "unknown-4",
+      "query": "最喜欢哪首钢琴曲",
+      "answerable": false,
+      "expectedRef": null,
+      "variants": {
+        "keyword": {
+          "recallAt5": null,
+          "reciprocalRank": null,
+          "parentContainsGold": null,
+          "childContainsGold": null,
+          "candidates": 0,
+          "retrievalMs": 1.0358000000014727
+        },
+        "vector": {
+          "recallAt5": null,
+          "reciprocalRank": null,
+          "parentContainsGold": null,
+          "childContainsGold": null,
+          "candidates": 33,
+          "retrievalMs": 69.55660000000353
+        },
+        "hybrid": {
+          "recallAt5": null,
+          "reciprocalRank": null,
+          "parentContainsGold": null,
+          "childContainsGold": null,
+          "candidates": 33,
+          "retrievalMs": 70.28009999999995
+        }
+      }
+    },
+    {
+      "id": "unknown-5",
+      "query": "服务器管理员的生日",
+      "answerable": false,
+      "expectedRef": null,
+      "variants": {
+        "keyword": {
+          "recallAt5": null,
+          "reciprocalRank": null,
+          "parentContainsGold": null,
+          "childContainsGold": null,
+          "candidates": 3,
+          "retrievalMs": 1.382499999999709
+        },
+        "vector": {
+          "recallAt5": null,
+          "reciprocalRank": null,
+          "parentContainsGold": null,
+          "childContainsGold": null,
+          "candidates": 40,
+          "retrievalMs": 72.70829999999842
+        },
+        "hybrid": {
+          "recallAt5": null,
+          "reciprocalRank": null,
+          "parentContainsGold": null,
+          "childContainsGold": null,
+          "candidates": 42,
+          "retrievalMs": 72.68329999999696
+        }
+      }
+    },
+    {
+      "id": "unknown-6",
+      "query": "昨天晚饭热量",
+      "answerable": false,
+      "expectedRef": null,
+      "variants": {
+        "keyword": {
+          "recallAt5": null,
+          "reciprocalRank": null,
+          "parentContainsGold": null,
+          "childContainsGold": null,
+          "candidates": 0,
+          "retrievalMs": 1.1319000000003143
+        },
+        "vector": {
+          "recallAt5": null,
+          "reciprocalRank": null,
+          "parentContainsGold": null,
+          "childContainsGold": null,
+          "candidates": 31,
+          "retrievalMs": 64.64580000000205
+        },
+        "hybrid": {
+          "recallAt5": null,
+          "reciprocalRank": null,
+          "parentContainsGold": null,
+          "childContainsGold": null,
+          "candidates": 31,
+          "retrievalMs": 65.4948000000004
+        }
+      }
+    },
+    {
+      "id": "unknown-7",
+      "query": "冰岛火山喷发日期",
+      "answerable": false,
+      "expectedRef": null,
+      "variants": {
+        "keyword": {
+          "recallAt5": null,
+          "reciprocalRank": null,
+          "parentContainsGold": null,
+          "childContainsGold": null,
+          "candidates": 0,
+          "retrievalMs": 0.8569000000024971
+        },
+        "vector": {
+          "recallAt5": null,
+          "reciprocalRank": null,
+          "parentContainsGold": null,
+          "childContainsGold": null,
+          "candidates": 11,
+          "retrievalMs": 79.39489999999932
+        },
+        "hybrid": {
+          "recallAt5": null,
+          "reciprocalRank": null,
+          "parentContainsGold": null,
+          "childContainsGold": null,
+          "candidates": 11,
+          "retrievalMs": 79.96130000000267
+        }
+      }
+    },
+    {
+      "id": "unknown-8",
+      "query": "宠物疫苗预约时间",
+      "answerable": false,
+      "expectedRef": null,
+      "variants": {
+        "keyword": {
+          "recallAt5": null,
+          "reciprocalRank": null,
+          "parentContainsGold": null,
+          "childContainsGold": null,
+          "candidates": 0,
+          "retrievalMs": 0.8748000000014144
+        },
+        "vector": {
+          "recallAt5": null,
+          "reciprocalRank": null,
+          "parentContainsGold": null,
+          "childContainsGold": null,
+          "candidates": 15,
+          "retrievalMs": 75.6807000000008
+        },
+        "hybrid": {
+          "recallAt5": null,
+          "reciprocalRank": null,
+          "parentContainsGold": null,
+          "childContainsGold": null,
+          "candidates": 15,
+          "retrievalMs": 76.36179999999877
+        }
+      }
+    },
+    {
+      "id": "unknown-9",
+      "query": "小区物业费账单",
+      "answerable": false,
+      "expectedRef": null,
+      "variants": {
+        "keyword": {
+          "recallAt5": null,
+          "reciprocalRank": null,
+          "parentContainsGold": null,
+          "childContainsGold": null,
+          "candidates": 0,
+          "retrievalMs": 0.8525999999983469
+        },
+        "vector": {
+          "recallAt5": null,
+          "reciprocalRank": null,
+          "parentContainsGold": null,
+          "childContainsGold": null,
+          "candidates": 40,
+          "retrievalMs": 73.48279999999795
+        },
+        "hybrid": {
+          "recallAt5": null,
+          "reciprocalRank": null,
+          "parentContainsGold": null,
+          "childContainsGold": null,
+          "candidates": 40,
+          "retrievalMs": 74.19830000000002
+        }
+      }
+    }
+  ]
+}

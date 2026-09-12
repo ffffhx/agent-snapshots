@@ -24,6 +24,7 @@ const homeDir = path.join(tempDir, "home");
 const binDir = path.join(tempDir, "pnpm-bin");
 const appRoot = path.join(tempDir, "Agent & Snapshots");
 const pnpmPath = path.join(binDir, "pnpm");
+const testEnvironmentPath = [binDir, "/usr/bin", "/bin"].join(path.delimiter);
 mkdirSync(binDir, { recursive: true });
 writeFileSync(pnpmPath, "#!/bin/sh\nexit 0\n", "utf8");
 chmodSync(pnpmPath, 0o755);
@@ -37,7 +38,7 @@ const unloadedLaunchctl = (args) => {
 const installed = installDevLoginLaunchAgent({
   appRoot,
   homeDir,
-  environmentPath: `${binDir}:/usr/bin:/bin`,
+  environmentPath: testEnvironmentPath,
   uid: 501,
   runLaunchctl: unloadedLaunchctl,
 });
@@ -57,13 +58,13 @@ assert.match(plist, /<key>RunAtLoad<\/key>\s*<true\/>/);
 assert.match(plist, /<key>SuccessfulExit<\/key>\s*<false\/>/);
 assert.match(plist, /<key>AGENT_SNAPSHOT_START_HIDDEN<\/key>\s*<string>1<\/string>/);
 assert(plist.includes("<string>" + appRoot.replace("&", "&amp;") + "</string>"));
-assert(plist.includes(`<string>${binDir}:/`));
+assert(plist.includes(`<string>${binDir}:`));
 
 const loadedCalls = [];
 const loaded = installDevLoginLaunchAgent({
   appRoot,
   homeDir,
-  environmentPath: `${binDir}:/usr/bin:/bin`,
+  environmentPath: testEnvironmentPath,
   uid: 501,
   runLaunchctl: (args) => {
     loadedCalls.push(args);

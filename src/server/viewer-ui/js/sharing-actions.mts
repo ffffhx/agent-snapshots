@@ -145,7 +145,7 @@ function handleFilePathAction(target, event) {
   if (!path) {
     return;
   }
-  if (event?.metaKey) {
+  if (event?.metaKey || event?.ctrlKey) {
     revealFilePath(path);
   } else {
     copyFilePath(path);

@@ -215,7 +215,12 @@ function resetSearchResultsState() {
 }
 
 function setSearchMode(mode) {
-  state.search.mode = mode === "semantic" ? "semantic" : "keyword";
+  cancelRag();
+  state.search.mode = ["semantic", "rag"].includes(mode) ? mode : "keyword";
+  if (mode === "rag") {
+    $("ragScope").value = searchScopeCwd() ? "project" : "all";
+    loadRagModelStatus();
+  }
   resetSearchResultsState();
   renderSearch();
   scheduleSearch(0);
@@ -338,6 +343,7 @@ function scheduleSearch(delay = 220) {
   if (searchTimer) {
     clearTimeout(searchTimer);
   }
+  if (state.search.mode === "rag") return;
   searchTimer = setTimeout(() => {
     searchTimer = 0;
     runSearch();
@@ -825,6 +831,7 @@ function handleSearchMemoryMouseMove(event) {
 }
 
 function handleSearchInputMemoryEnter(event) {
+  if (state.search.mode === "rag") return;
   if (event.key !== "Enter") {
     return;
   }
@@ -838,6 +845,7 @@ function handleSearchInputMemoryEnter(event) {
 }
 
 async function runSearch() {
+  if (state.search.mode === "rag") return;
   const query = $("globalSearch").value.trim();
   state.search.query = query;
   state.search.error = "";
@@ -929,6 +937,14 @@ async function runSearch() {
 }
 
 function renderSearch() {
+  $("globalSearch").disabled = false;
+  $("globalSearch").setAttribute("aria-label", "搜索关键词");
+  $("globalSearch").setAttribute("role", "combobox");
+  $("globalSearch").setAttribute("aria-expanded", "true");
+  $("globalSearch").setAttribute("aria-autocomplete", "list");
+  $("ragPanel").hidden = state.search.mode !== "rag";
+  $("searchResults").hidden = state.search.mode === "rag";
+  $("globalSearch").placeholder = "关键词，可加 source: role: project: before: after: -排除";
   const scopeLabel = $("searchScopeLabel");
   if (scopeLabel) {
     scopeLabel.textContent = state.search.scopeLabel || "全部历史";
@@ -944,7 +960,7 @@ function renderSearch() {
   for (const button of document.querySelectorAll("[data-search-flag]")) {
     const on = !!state.search.flags[button.dataset.searchFlag];
     button.setAttribute("aria-pressed", on ? "true" : "false");
-    button.disabled = semantic;
+    button.disabled = semantic || state.search.mode === "rag";
   }
   const prewarmButton = $("prewarmIndex");
   if (prewarmButton) {
@@ -960,6 +976,15 @@ function renderSearch() {
   }
 
   const status = $("searchStatus");
+  if (state.search.mode === "rag") {
+    status.textContent = "";
+    if ($("saveSearch")) $("saveSearch").hidden = true;
+    for (const el of document.querySelectorAll(".search-memory")) el.hidden = true;
+    renderRag();
+    return;
+  }
+  for (const el of document.querySelectorAll(".search-memory")) el.hidden = false;
+  if ($("saveSearch")) $("saveSearch").hidden = false;
   if (state.search.mode === "semantic" && state.semanticWarmup.running) {
     status.textContent = semanticWarmupStatus("预热中");
   } else if (state.search.mode === "semantic" && state.semanticWarmup.error && !state.search.query) {

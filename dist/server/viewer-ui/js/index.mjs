@@ -2,6 +2,7 @@
 import { stateUtilsJs } from "./state-utils.mjs";
 import { statsGalleryJs } from "./stats-gallery.mjs";
 import { searchOverlayJs } from "./search-overlay.mjs";
+import { ragJs } from "./rag.mjs";
 import { settingsReadingJs } from "./settings-reading.mjs";
 import { sessionsSidebarJs } from "./sessions-sidebar.mjs";
 import { transcriptLiveTailJs } from "./transcript-live-tail.mjs";
@@ -13,6 +14,7 @@ export function serverJs() {
         stateUtilsJs,
         statsGalleryJs,
         searchOverlayJs,
+        ragJs,
         settingsReadingJs,
         sessionsSidebarJs,
         transcriptLiveTailJs,

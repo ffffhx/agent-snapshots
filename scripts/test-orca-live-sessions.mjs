@@ -55,4 +55,14 @@ const unmatchedStale = matchOrcaProcessesToSessions([
 ], sessions);
 assert.deepEqual(unmatchedStale, []);
 
+const matchedTrustedWindowsTerminal = matchOrcaProcessesToSessions([
+  {
+    engine: "codex",
+    cwd: "\\tmp\\project\\",
+    startedAtMs: Date.now(),
+    trustedCwd: true,
+  },
+], sessions);
+assert.deepEqual(matchedTrustedWindowsTerminal.map((session) => session.ref), [sessions[0].ref]);
+
 console.log("[orca-live-sessions] PASS");

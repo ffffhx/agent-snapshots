@@ -15,6 +15,7 @@ import { realpath, stat } from "node:fs/promises";
 import { closeSync, openSync, readFileSync, readSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { discoverSessionFiles, parseSessionFile, toSnapshot } from "agent-session-core";
+import { loadCachedSession } from "./session-parse-cache.mjs";
 import { addRisks, detectRisks, redactText, severityRank } from "../core/privacy.js";
 import { renderMarkdownHtml } from "../renderers/markdown.mjs";
 import { stripAppDirectives as stripCodexAppDirectives } from "../shared/sanitize.js";
@@ -126,7 +127,7 @@ export async function loadSnapshot(ref, opts) {
         }
         return snapshot;
     }
-    const session = parseSessionFile(file);
+    const session = await loadCachedSession(file);
     if (!session) {
         const legacyRef = engine === "codex" ? `codex:${bareRef}` : ref;
         const snapshot = await legacyLoadSnapshot(legacyRef, { ...opts, codexHome: selectedCodexHome });
@@ -135,7 +136,7 @@ export async function loadSnapshot(ref, opts) {
         }
         return snapshot;
     }
-    const snapshot = ascSnapshot(session, { includeTools, includeToolOutput, redact });
+    const snapshot = await ascSnapshot(session, { includeTools, includeToolOutput, redact });
     if (engine === "codex") {
         attachCodexHomeFields(snapshot, selectedCodexHomeInfo);
     }
@@ -166,7 +167,7 @@ async function resolveAscFile(engine, bareRef, codexHome, claudeHome) {
     // Slow path: parse and match on the real session id (handles ids that only
     // live inside the file, and prefix matches), mirroring the legacy resolver.
     for (const f of files) {
-        const session = parseSessionFile(f);
+        const session = await loadCachedSession(f);
         if (session && (session.id === bareRef || session.id.startsWith(bareRef))) {
             return f;
         }
@@ -197,7 +198,7 @@ async function assertRealPathInsideHome(filePath, home) {
     }
     return realFile;
 }
-function ascSnapshot(session, { includeTools, includeToolOutput, redact }) {
+async function ascSnapshot(session, { includeTools, includeToolOutput, redact }) {
     stripSessionDirectives(session);
     const snapshot = toSnapshot(session, {
         includeTools,
@@ -238,7 +239,7 @@ function ascSnapshot(session, { includeTools, includeToolOutput, redact }) {
         snapshot.historyOnly = false;
         // Reconstruct the Task/Agent subagent transcripts nested under the parent
         // session (parsed + projected through ASC, same as the parent).
-        snapshot.subagents = loadAscClaudeSubagents(session.filePath, session.id, { includeTools, includeToolOutput, redact });
+        snapshot.subagents = await loadAscClaudeSubagents(session.filePath, session.id, { includeTools, includeToolOutput, redact });
     }
     else {
         // GAP: NormalizedSession has no model_provider/originator; the legacy summary
@@ -276,7 +277,7 @@ function collectAgentFiles(dir, out) {
         }
     }
 }
-function loadAscClaudeSubagents(parentFilePath, parentSessionId, { includeTools, includeToolOutput, redact }) {
+async function loadAscClaudeSubagents(parentFilePath, parentSessionId, { includeTools, includeToolOutput, redact }) {
     if (!parentSessionId || !parentFilePath) {
         return [];
     }
@@ -290,7 +291,7 @@ function loadAscClaudeSubagents(parentFilePath, parentSessionId, { includeTools,
     const subagents = [];
     let order = 0;
     for (const file of files) {
-        const session = parseSessionFile(file);
+        const session = await loadCachedSession(file);
         if (!session) {
             continue;
         }

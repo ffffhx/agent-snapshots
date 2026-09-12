@@ -6,7 +6,7 @@
 
 import assert from "node:assert/strict";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { JSDOM } from "jsdom";
 
 const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -22,7 +22,7 @@ let viewerScriptCache = "";
 
 async function launcherHtml() {
   if (!launcherHtmlCache) {
-    const { renderLauncherApp } = await import(path.join(ROOT_DIR, "dist/server/launcher-app.mjs"));
+    const { renderLauncherApp } = await import(pathToFileURL(path.join(ROOT_DIR, "dist/server/launcher-app.mjs")).href);
     launcherHtmlCache = renderLauncherApp("test-csrf");
   }
   return launcherHtmlCache;
@@ -37,7 +37,7 @@ async function launcherScript() {
 
 async function viewerScript() {
   if (!viewerScriptCache) {
-    const { renderServerApp } = await import(path.join(ROOT_DIR, "dist/server/local-viewer-app.mjs"));
+    const { renderServerApp } = await import(pathToFileURL(path.join(ROOT_DIR, "dist/server/local-viewer-app.mjs")).href);
     viewerScriptCache = largestInlineScript(renderServerApp("test-csrf", {}));
   }
   return viewerScriptCache;
@@ -562,6 +562,34 @@ test("viewer live-session detection handles codex and claude edge cases", async 
   assert.equal(isLiveSessionItem({ engine: "claude", historyOnly: true, complete: false }), false);
   assert.equal(isLiveSessionItem({ engine: "claude", sourceKind: "summary", complete: false }), false);
   assert.equal(isLiveSessionItem({ engine: "claude", sourceKind: "transcript", complete: false }), true);
+});
+
+test("viewer exposes Windows Ctrl shortcuts for help and file reveal", async () => {
+  const source = await viewerScript();
+  assert.match(source, /\(event\.metaKey \|\| event\.ctrlKey\) && key === "\/"/);
+  const calls = [];
+  globalThis.__filePathCalls = calls;
+  const { handleFilePathAction } = await viewerRuntime(
+    ["handleFilePathAction"],
+    `
+const calls = globalThis.__filePathCalls;
+function revealFilePath(path) { calls.push(["reveal", path]); }
+function copyFilePath(path) { calls.push(["copy", path]); }
+`,
+    ["handleFilePathAction"],
+  );
+  try {
+    const target = { dataset: { filePath: "C:\\project\\file.txt" } };
+    handleFilePathAction(target, { ctrlKey: true });
+    handleFilePathAction(target, {});
+  } finally {
+    delete globalThis.__filePathCalls;
+  }
+  assert.deepEqual(calls, [
+    ["reveal", "C:\\project\\file.txt"],
+    ["copy", "C:\\project\\file.txt"],
+  ]);
+  assert.match(await launcherHtml(), /Ctrl\/⌘/);
 });
 
 test("viewer selectSession renders failed snapshot loads without throwing", async () => {

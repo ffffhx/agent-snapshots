@@ -14,14 +14,13 @@
 // indexed-`LIKE` scan over the same column, so short queries keep working.
 import path from "node:path";
 import os from "node:os";
-import { mkdir } from "node:fs/promises";
+import { mkdir, stat } from "node:fs/promises";
 import { readSearchDocument, matchSearchDocument, foldSearchText, searchTerms, extractSessionTokenUsage, } from "../sources/local-history.mjs";
 import { listSessions } from "../sources/index.mjs";
 import { codexHomeKeys, discoverCodexHomes } from "../sources/codex-homes.mjs";
 const SEARCH_DOC_LIMIT = 24;
-let dbPromise = null;
-let syncing = false;
-let ftsEnabled = false;
+const dbPromises = new Map();
+const ftsEnabledByPath = new Map();
 export function defaultSearchIndexPath() {
     const cacheHome = process.env.XDG_CACHE_HOME || path.join(os.homedir(), ".cache");
     return path.join(cacheHome, "agent-snapshots", "search-index.v2.db");
@@ -30,14 +29,16 @@ function indexPath() {
     return defaultSearchIndexPath();
 }
 async function getDb() {
-    if (dbPromise) {
-        return dbPromise;
+    const dbFile = path.resolve(indexPath());
+    const existing = dbPromises.get(dbFile);
+    if (existing) {
+        return existing;
     }
-    dbPromise = (async () => {
-        const dbFile = indexPath();
+    const dbPromise = (async () => {
         await mkdir(path.dirname(dbFile), { recursive: true });
         const { DatabaseSync } = await import("node:sqlite");
         const db = new DatabaseSync(dbFile);
+        db.exec("PRAGMA busy_timeout = 5000");
         db.exec("PRAGMA journal_mode = WAL");
         db.exec("PRAGMA synchronous = NORMAL");
         db.exec(`CREATE TABLE IF NOT EXISTS docs (
@@ -62,10 +63,40 @@ async function getDb() {
     )`);
         db.exec("CREATE INDEX IF NOT EXISTS docs_source ON docs(source)");
         db.exec("CREATE INDEX IF NOT EXISTS docs_mtime ON docs(mtime)");
-        ftsEnabled = setupFtsIndex(db);
+        // This table is also used outside the optional FTS setup. Create it first
+        // so a transient FTS/locking failure can never leave later syncs querying
+        // a table that does not exist.
+        db.exec("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)");
+        ftsEnabledByPath.set(dbFile, setupFtsIndex(db));
         return db;
     })();
-    return dbPromise;
+    dbPromises.set(dbFile, dbPromise);
+    try {
+        return await dbPromise;
+    }
+    catch (error) {
+        if (dbPromises.get(dbFile) === dbPromise) {
+            dbPromises.delete(dbFile);
+            ftsEnabledByPath.delete(dbFile);
+        }
+        throw error;
+    }
+}
+export async function closeSearchIndexDatabases() {
+    const pending = [...dbPromises.values()];
+    dbPromises.clear();
+    ftsEnabledByPath.clear();
+    const settled = await Promise.allSettled(pending);
+    for (const result of settled) {
+        if (result.status === "fulfilled") {
+            try {
+                result.value.close();
+            }
+            catch {
+                // Already closed or failed during shutdown.
+            }
+        }
+    }
 }
 // External-content FTS5 table mirroring docs.fold, kept in sync by triggers so
 // every code path that writes docs (upsert, delete sweep) is covered. Returns
@@ -93,7 +124,6 @@ function setupFtsIndex(db) {
         // Backfill for databases created before the FTS table. COUNT(*) on an
         // external-content table proxies to `docs` and can't detect an empty
         // index, so a one-time meta flag marks the rebuild instead.
-        db.exec("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)");
         const ready = db.prepare("SELECT value FROM meta WHERE key = 'fts_ready'").get();
         if (!hadFts || !ready || ready.value !== "1") {
             db.exec("INSERT INTO docs_fts(docs_fts) VALUES('rebuild')");
@@ -133,6 +163,63 @@ export async function indexRowCount() {
     const row = db.prepare("SELECT COUNT(*) AS c FROM docs").get();
     return Number(row?.c || 0);
 }
+// Persistent fingerprints belong to the file, not the last visible message time.
+export async function searchFileState() {
+    const db = await getDb();
+    db.exec(`CREATE TABLE IF NOT EXISTS search_files_v1 (
+    path TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, keys_json TEXT NOT NULL
+  )`);
+    return db;
+}
+export async function syncSearchFile(candidate, options) {
+    const db = await searchFileState();
+    const fingerprint = JSON.stringify([candidate.mtimeMs, candidate.size, candidate.codexHomeKey, candidate.codexHomePrimary]);
+    const previous = db.prepare("SELECT * FROM search_files_v1 WHERE path = ?").get(candidate.filePath);
+    if (previous?.fingerprint === fingerprint && JSON.parse(previous.keys_json).every((key) => db.prepare("SELECT 1 FROM docs WHERE cache_key = ?").get(key)))
+        return false;
+    const { summarizeSessionCandidate } = await import("../sources/index.mjs");
+    const sessions = await summarizeSessionCandidate(candidate, options);
+    if (!sessions.length)
+        throw new Error("Session is not readable yet");
+    const result = await syncSearchIndex({ ...options, sessions, force: true, updateLimit: Infinity });
+    if (result.failed || result.pending)
+        throw new Error("Session indexing failed");
+    const after = await stat(candidate.filePath);
+    if (after.mtimeMs !== candidate.mtimeMs || after.size !== candidate.size) {
+        throw new Error("Session changed while being read");
+    }
+    db.prepare(`INSERT INTO search_files_v1 VALUES (?, ?, ?)
+    ON CONFLICT(path) DO UPDATE SET fingerprint=excluded.fingerprint, keys_json=excluded.keys_json`)
+        .run(candidate.filePath, fingerprint, JSON.stringify(sessions.map(docKeyOf)));
+    return true;
+}
+export async function removeSearchFile(filePath) {
+    const db = await searchFileState();
+    // Check the stored document path as a session may already have moved to archive.
+    const rows = db.prepare("SELECT rowid AS id, summary_json FROM docs").all();
+    const normalize = (value) => process.platform === "win32" ? path.resolve(value).toLowerCase() : path.resolve(value);
+    db.exec("BEGIN IMMEDIATE");
+    try {
+        for (const row of rows) {
+            const storedPath = JSON.parse(row.summary_json).filePath;
+            if (storedPath && normalize(storedPath) === normalize(filePath)) {
+                db.prepare("DELETE FROM docs WHERE rowid = ?").run(row.id);
+            }
+        }
+        db.prepare("DELETE FROM search_files_v1 WHERE path = ?").run(filePath);
+        db.exec("COMMIT");
+    }
+    catch (error) {
+        db.exec("ROLLBACK");
+        throw error;
+    }
+}
+export async function markSearchHomes(options) {
+    const db = await getDb();
+    const homes = await discoverCodexHomes(options.codexHome);
+    db.prepare("INSERT INTO meta (key, value) VALUES ('codex_home_keys', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value")
+        .run(Array.from(codexHomeKeys(homes)).sort().join(","));
+}
 export async function searchIndexCoversCodexHomes({ codexHome, source = "all" } = {}) {
     if (source && source !== "all" && engineKey(source) !== "codex") {
         return true;
@@ -146,10 +233,10 @@ export async function searchIndexCoversCodexHomes({ codexHome, source = "all" } 
 // Incrementally bring the index up to date with the on-disk sessions. Reads at
 // most `updateLimit` changed/new sessions per call so it can run in the
 // background without blocking; the rest are reported as `pending`.
-export async function syncSearchIndex({ codexHome, claudeHome, source = "all", cwd = "", includeArchived = true, completeOnly = true, scanLimit = 1200, updateLimit = 60, includeTools = true, includeToolOutput = false, withTokens = true, }) {
+export async function syncSearchIndex({ codexHome, claudeHome, source = "all", cwd = "", includeArchived = true, completeOnly = true, scanLimit = 1200, updateLimit = 60, includeTools = true, includeToolOutput = false, withTokens = true, sessions: suppliedSessions, force = false, }) {
     const db = await getDb();
     const homes = { codexHome, claudeHome };
-    const sessions = await listSessions({ ...homes, limit: scanLimit, cwd, includeArchived, source, completeOnly });
+    const sessions = suppliedSessions ?? await listSessions({ ...homes, limit: scanLimit, cwd, includeArchived, source, completeOnly });
     const getStmt = db.prepare("SELECT mtime FROM docs WHERE cache_key = ?");
     const upsert = db.prepare(`INSERT INTO docs
     (cache_key, ref, engine, source, home_key, title, cwd, display_cwd, mtime, fold, fields_json, segments_json, summary_json, tokens_total, tokens_input, tokens_output, model, updated_at)
@@ -195,7 +282,7 @@ export async function syncSearchIndex({ codexHome, claudeHome, source = "all", c
         const cacheKey = docKeyOf(summary);
         const existing = getStmt.get(cacheKey);
         const mtime = summary.mtime || "";
-        if (existing && existing.mtime === mtime) {
+        if (!force && existing && existing.mtime === mtime) {
             indexed += 1;
             continue;
         }
@@ -243,7 +330,7 @@ export async function syncSearchIndex({ codexHome, claudeHome, source = "all", c
     flushWrites();
     // When this pass saw the complete, unfiltered session list, evict rows for
     // sessions that no longer exist on disk (the FTS triggers mirror deletes).
-    if (source === "all" && !cwd && includeArchived && sessions.length < scanLimit && pending === 0) {
+    if (!suppliedSessions && source === "all" && !cwd && includeArchived && sessions.length < scanLimit && pending === 0) {
         const liveKeys = new Set(sessions.map((summary) => docKeyOf(summary)));
         const staleKeys = db.prepare("SELECT cache_key FROM docs").all()
             .map((row) => row.cache_key)
@@ -267,32 +354,12 @@ export async function syncSearchIndex({ codexHome, claudeHome, source = "all", c
             }
         }
     }
-    if (source === "all" && !cwd && includeArchived) {
+    if (!suppliedSessions && source === "all" && !cwd && includeArchived) {
         const codexHomes = await discoverCodexHomes(codexHome);
         db.prepare("INSERT INTO meta (key, value) VALUES ('codex_home_keys', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
             .run(Array.from(codexHomeKeys(codexHomes)).sort().join(","));
     }
     return { scanned: sessions.length, indexed, updated, pending, failed, total: await indexRowCount() };
-}
-// Fire-and-forget incremental sync, guarded so overlapping searches don't stack
-// multiple full passes. Errors are swallowed — the live fallback covers gaps.
-// A pass re-reads every live session and issues synchronous sqlite writes that
-// block the event loop, so rapid search-as-you-type must not restart it each
-// keystroke: after a pass completes, further requests are ignored for a cool-off.
-const SYNC_COOL_OFF_MS = 30_000;
-let lastSyncFinishedAt = 0;
-export function syncSearchIndexInBackground(options) {
-    if (syncing || Date.now() - lastSyncFinishedAt < SYNC_COOL_OFF_MS) {
-        return;
-    }
-    syncing = true;
-    Promise.resolve()
-        .then(() => syncSearchIndex(options))
-        .catch(() => { })
-        .finally(() => {
-        syncing = false;
-        lastSyncFinishedAt = Date.now();
-    });
 }
 export async function searchIndexed({ query, source = "all", cwd = "", limit = SEARCH_DOC_LIMIT }) {
     const db = await getDb();
@@ -306,7 +373,7 @@ export async function searchIndexed({ query, source = "all", cwd = "", limit = S
     // Trigram MATCH needs >= 3 characters per phrase; shorter terms (common in
     // Chinese) are constrained with LIKE on top of the FTS candidates, or the
     // whole query falls back to the LIKE scan when no term is long enough.
-    const longTerms = ftsEnabled ? terms.filter((term) => termLength(term) >= 3) : [];
+    const longTerms = ftsEnabledByPath.get(path.resolve(indexPath())) ? terms.filter((term) => termLength(term) >= 3) : [];
     const shortTerms = terms.filter((term) => !longTerms.includes(term));
     const params = [];
     let sql;

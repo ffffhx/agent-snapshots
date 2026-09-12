@@ -12,7 +12,7 @@ const PAGE_CACHE_MS = 15_000;
 const INLINE_IMAGE_RE = /^data:(image\/(?:png|jpe?g|gif|webp));base64,([\s\S]+)$/i;
 const sessionImageCache = new Map();
 const imagePageCache = new Map();
-let dbPromise = null;
+const dbPromises = new Map();
 let staleSweepPromise = null;
 let lastStaleSweepAt = 0;
 export function imageIndexPath() {
@@ -20,14 +20,16 @@ export function imageIndexPath() {
     return path.join(cacheHome, "agent-snapshots", "search-index.v2.db");
 }
 async function getDb() {
-    if (dbPromise) {
-        return dbPromise;
+    const dbFile = path.resolve(imageIndexPath());
+    const existing = dbPromises.get(dbFile);
+    if (existing) {
+        return existing;
     }
-    dbPromise = (async () => {
-        const dbFile = imageIndexPath();
+    const dbPromise = (async () => {
         await mkdir(path.dirname(dbFile), { recursive: true });
         const { DatabaseSync } = await import("node:sqlite");
         const db = new DatabaseSync(dbFile);
+        db.exec("PRAGMA busy_timeout = 5000");
         db.exec("PRAGMA journal_mode = WAL");
         db.exec("PRAGMA synchronous = NORMAL");
         db.exec(`CREATE TABLE IF NOT EXISTS ${IMAGE_INDEX_TABLE} (
@@ -47,7 +49,31 @@ async function getDb() {
         db.exec(`CREATE INDEX IF NOT EXISTS image_index_v1_updated_at ON ${IMAGE_INDEX_TABLE}(updated_at)`);
         return db;
     })();
-    return dbPromise;
+    dbPromises.set(dbFile, dbPromise);
+    try {
+        return await dbPromise;
+    }
+    catch (error) {
+        if (dbPromises.get(dbFile) === dbPromise) {
+            dbPromises.delete(dbFile);
+        }
+        throw error;
+    }
+}
+export async function closeImageIndexDatabases() {
+    const pending = [...dbPromises.values()];
+    dbPromises.clear();
+    const settled = await Promise.allSettled(pending);
+    for (const result of settled) {
+        if (result.status === "fulfilled") {
+            try {
+                result.value.close();
+            }
+            catch {
+                // Already closed or failed during shutdown.
+            }
+        }
+    }
 }
 export async function listImageEntries({ codexHome, claudeHome, listSessions, loadSnapshot, source = "all", limit = DEFAULT_IMAGE_LIMIT, offset = 0, }) {
     const pageLimit = clampPositive(limit, DEFAULT_IMAGE_LIMIT, MAX_IMAGE_LIMIT);

@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -10,6 +10,7 @@ const RESUME_COMMAND = {
     claude: (id) => `claude --resume ${id}`,
 };
 const TERMINAL_TIMEOUT_MS = 8000;
+const SESSION_ID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 export function shellQuote(value) {
     return "'" + String(value).replace(/'/g, "'\\''") + "'";
 }
@@ -45,6 +46,35 @@ export function buildTerminalAppleScript(app, shellCommand) {
         "activate",
         "end tell",
     ];
+}
+export function powershellQuote(value) {
+    return "'" + String(value).replace(/'/g, "''") + "'";
+}
+export function buildWindowsResumePowerShellCommand({ engine, sessionId, codexHome = "" }) {
+    const id = String(sessionId || "").trim();
+    if (!SESSION_ID_RE.test(id)) {
+        throw new Error("invalid session id");
+    }
+    let executable;
+    let args;
+    if (engine === "codex") {
+        executable = "codex";
+        args = ["resume", "--dangerously-bypass-approvals-and-sandbox", id];
+    }
+    else if (engine === "claude") {
+        executable = "claude";
+        args = ["--resume", id];
+    }
+    else {
+        throw new Error("unsupported engine");
+    }
+    const commands = [];
+    const home = String(codexHome || "").trim();
+    if (home && engine === "codex") {
+        commands.push(`$env:CODEX_HOME = ${powershellQuote(home)}`);
+    }
+    commands.push(`& ${powershellQuote(executable)} ${args.map(powershellQuote).join(" ")}`);
+    return commands.join("; ");
 }
 function expandHomeDir(cwd) {
     const dir = String(cwd || "").trim();
@@ -85,7 +115,50 @@ function osascriptArgs(lines) {
 function formatTerminalError(error) {
     return String((error && (error.stderr || error.message)) || error || "unknown error").trim().slice(0, 400);
 }
+function spawnDetached(command, args, options = {}) {
+    return new Promise((resolve, reject) => {
+        const child = spawn(command, args, {
+            ...options,
+            detached: true,
+            stdio: "ignore",
+            windowsHide: false,
+        });
+        child.once("error", reject);
+        child.once("spawn", () => {
+            child.unref();
+            resolve();
+        });
+    });
+}
+async function windowsTerminalAvailable() {
+    try {
+        await execFileAsync("where.exe", ["wt.exe"], { timeout: 2000, windowsHide: true });
+        return true;
+    }
+    catch {
+        return false;
+    }
+}
+async function openResumeInWindowsTerminal({ engine, sessionId, cwd, codexHome }) {
+    const dir = await existingDirectoryOrNull(cwd) || os.homedir();
+    const command = buildWindowsResumePowerShellCommand({ engine, sessionId, codexHome });
+    const powershellArgs = ["-NoLogo", "-NoExit", "-Command", command];
+    if (await windowsTerminalAvailable()) {
+        await spawnDetached("wt.exe", ["-d", dir, "powershell.exe", ...powershellArgs], { cwd: dir });
+        return { ok: true, via: "terminal", app: "Windows Terminal", message: "Orca 不可用，已在 Windows Terminal 打开" };
+    }
+    await spawnDetached("powershell.exe", powershellArgs, { cwd: dir });
+    return { ok: true, via: "terminal", app: "PowerShell", message: "Orca 不可用，已在 PowerShell 打开" };
+}
 export async function openResumeInTerminal({ engine, sessionId, cwd, codexHome = "" }) {
+    if (process.platform === "win32") {
+        try {
+            return await openResumeInWindowsTerminal({ engine, sessionId, cwd, codexHome });
+        }
+        catch (error) {
+            return { ok: false, error: formatTerminalError(error) || "打开 Windows Terminal 失败" };
+        }
+    }
     if (process.platform !== "darwin") {
         return { ok: false, error: "当前平台不支持 Terminal 回退" };
     }

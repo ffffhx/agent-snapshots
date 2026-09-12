@@ -17,6 +17,10 @@ const SESSION_ID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]
 // GUI-launched servers (Electron) get a minimal PATH, so resolve the orca
 // binary by known locations before falling back to PATH.
 const ORCA_CANDIDATES = [
+    ...(process.env.LOCALAPPDATA ? [
+        path.join(process.env.LOCALAPPDATA, "Programs", "orca", "resources", "bin", "orca.exe"),
+        path.join(process.env.LOCALAPPDATA, "Programs", "Orca", "resources", "bin", "orca.exe"),
+    ] : []),
     "/usr/local/bin/orca",
     "/opt/homebrew/bin/orca",
     "/Applications/Orca.app/Contents/Resources/bin/orca",

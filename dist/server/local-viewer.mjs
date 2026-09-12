@@ -1,6 +1,6 @@
 // @ts-nocheck
 import http from "node:http";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { stat } from "node:fs/promises";
 import { dirname, isAbsolute } from "node:path";
 import { promisify } from "node:util";
@@ -12,7 +12,10 @@ import { renderServerApp } from "./local-viewer-app.mjs";
 import { renderLauncherApp } from "./launcher-app.mjs";
 import { prewarmSemanticIndex, semanticSearchSessions } from "./semantic-index.mjs";
 import { semanticSearchSnapshot } from "./semantic-search.mjs";
-import { searchIndexed, syncSearchIndexInBackground, searchIndexStats, indexRowCount, searchIndexCoversCodexHomes } from "./search-index.mjs";
+import { createRagService, ragModelStatus } from "./rag-service.mjs";
+import { startSearchSync } from "./search-sync.mjs";
+import { closeSessionParseCache } from "../sources/session-parse-cache.mjs";
+import { searchIndexed, searchIndexStats, indexRowCount, searchIndexCoversCodexHomes } from "./search-index.mjs";
 import { listSessionsWithCache, sessionListCacheStatus, sessionListCacheWatermark, reconcileSessionListCacheInBackground } from "./session-list-cache.mjs";
 import { resumeSessionInOrca } from "./orca-bridge.mjs";
 import { readClaudeBlockUsageEstimate, readCodexQuotaSnapshot } from "./quota-meter.mjs";
@@ -27,6 +30,7 @@ const execFileAsync = promisify(execFile);
 export async function serveLocalViewer({ codexHome, claudeHome, host, port, defaultServerLimit, snapshotLogoSvg, shareConfig, listSessions, loadSnapshot, searchSessions, applySafetyChecksOption, snapshotApiResponse, publishAllSnapshots, publishSnapshot, createShareRequestPayload, stableSnapshotShareId, renderMarkdown, renderHtml, readPositiveInteger, readNonNegativeInteger, safeFileName, }) {
     const csrfToken = resolveMutationCsrfToken();
     const sessionHeadCache = new Map();
+    const rag = createRagService({ codexHome, claudeHome, listSessions, loadSnapshot });
     const server = http.createServer(async (request, response) => {
         try {
             setSnapshotServerCorsHeaders(request, response);
@@ -142,26 +146,11 @@ export async function serveLocalViewer({ codexHome, claudeHome, host, port, defa
                 const includeToolOutput = url.searchParams.get("includeToolOutput") === "1";
                 const rowCount = await indexRowCount();
                 const coversAll = rowCount > 0 && await searchIndexCoversCodexHomes({ codexHome, source: "all" });
-                // Bootstrap only after the user actually searches. Automatic startup
-                // refreshes can spend minutes parsing a large corpus even while the
-                // desktop app is otherwise idle.
-                if (!coversAll) {
-                    syncSearchIndexInBackground({
-                        codexHome,
-                        claudeHome,
-                        source: "all",
-                        includeArchived,
-                        completeOnly,
-                        scanLimit: 20000,
-                        updateLimit: 200,
-                        includeTools: true,
-                        includeToolOutput,
-                    });
-                }
                 let result;
                 // Serve from the fast index once it holds anything; otherwise do a live
                 // disk scan for this query while the index warms up in the background.
                 const indexReady = url.searchParams.get("noIndex") !== "1"
+                    && !includeToolOutput
                     && rowCount > 0
                     && (source === "all" ? coversAll : await searchIndexCoversCodexHomes({ codexHome, source }));
                 if (indexReady) {
@@ -183,35 +172,12 @@ export async function serveLocalViewer({ codexHome, claudeHome, host, port, defa
                     });
                 }
                 sendJson(response, result);
-                if (coversAll && query.trim()) {
-                    const refreshTimer = setTimeout(() => {
-                        syncSearchIndexInBackground({
-                            codexHome,
-                            claudeHome,
-                            source: "all",
-                            includeArchived: true,
-                            completeOnly: false,
-                            scanLimit: 20000,
-                            updateLimit: 20,
-                            includeTools: true,
-                            includeToolOutput,
-                        });
-                    }, 1000);
-                    refreshTimer.unref?.();
-                }
                 return;
             }
             if (url.pathname === "/api/search-stats") {
                 reconcileSessionListCacheInBackground({
                     codexHome,
                     claudeHome,
-                });
-                syncSearchIndexInBackground({
-                    codexHome,
-                    claudeHome,
-                    source: "all",
-                    scanLimit: 20000,
-                    updateLimit: 20000,
                 });
                 const stats = await searchIndexStats({
                     pricePerMTokIn: Number(url.searchParams.get("priceIn") || "0") || 0,
@@ -233,13 +199,6 @@ export async function serveLocalViewer({ codexHome, claudeHome, host, port, defa
                 return;
             }
             if (url.pathname === "/api/activity") {
-                syncSearchIndexInBackground({
-                    codexHome,
-                    claudeHome,
-                    source: "all",
-                    scanLimit: 20000,
-                    updateLimit: 20000,
-                });
                 const limit = readPositiveInteger(url.searchParams.get("limit") || "20000", "limit");
                 const analytics = await buildUsageAnalytics({
                     codexHome,
@@ -251,13 +210,6 @@ export async function serveLocalViewer({ codexHome, claudeHome, host, port, defa
                 return;
             }
             if (url.pathname === "/api/weekly-digest") {
-                syncSearchIndexInBackground({
-                    codexHome,
-                    claudeHome,
-                    source: "all",
-                    scanLimit: 20000,
-                    updateLimit: 20000,
-                });
                 const digest = await buildWeeklyDigest({
                     codexHome,
                     claudeHome,
@@ -515,6 +467,48 @@ export async function serveLocalViewer({ codexHome, claudeHome, host, port, defa
                 sendJson(response, result, result.ok ? 200 : 500);
                 return;
             }
+            if (url.pathname === "/api/rag/status") {
+                sendJson(response, { ...await ragModelStatus(), busy: rag.isBusy() });
+                return;
+            }
+            if (url.pathname === "/api/rag/ask" || url.pathname === "/api/rag/prewarm") {
+                if (!allowMutationRequest(request, response, csrfToken))
+                    return;
+                if (rag.isBusy()) {
+                    sendJson(response, { error: "RAG 正在处理其他请求，请稍后重试。" }, 409);
+                    return;
+                }
+                let body;
+                try {
+                    body = await readJsonRequestBody(request);
+                }
+                catch {
+                    sendJson(response, { error: "请求必须是有效 JSON，且不超过 64 KB。" }, 400);
+                    return;
+                }
+                const prewarm = url.pathname.endsWith("/prewarm");
+                if (!body || typeof body !== "object" || Array.isArray(body) || (!prewarm && (typeof body.query !== "string" || !body.query.trim() || body.query.length > 2000)) || (body.cwd !== undefined && typeof body.cwd !== "string") || (body.source !== undefined && !["all", "codex", "claude"].includes(body.source))) {
+                    sendJson(response, { error: "请输入 1–2000 字的问题，并选择有效的检索范围。" }, 400);
+                    return;
+                }
+                const controller = new AbortController();
+                const timeout = setTimeout(() => controller.abort(), 240000);
+                response.once("close", () => controller.abort());
+                response.writeHead(200, { "content-type": "application/x-ndjson; charset=utf-8", "cache-control": "no-store", "x-accel-buffering": "no" });
+                const emit = (event) => { if (!response.destroyed && !response.writableEnded)
+                    response.write(JSON.stringify(event) + "\n"); };
+                try {
+                    await rag.run({ query: String(body.query || "").trim(), cwd: body.cwd || "", source: body.source || "all", mode: "hybrid" }, emit, controller.signal, prewarm);
+                }
+                catch (error) {
+                    emit({ type: "error", error: controller.signal.aborted ? "请求已取消或超时。" : error instanceof Error ? error.message : String(error) });
+                }
+                finally {
+                    clearTimeout(timeout);
+                    response.end();
+                }
+                return;
+            }
             if (url.pathname === "/api/semantic-search") {
                 const query = url.searchParams.get("q") || url.searchParams.get("query") || "";
                 const limit = readPositiveInteger(url.searchParams.get("limit") || "20", "limit");
@@ -769,6 +763,8 @@ export async function serveLocalViewer({ codexHome, claudeHome, host, port, defa
         server.once("error", reject);
         server.listen(port, host, resolve);
     });
+    const searchSync = startSearchSync({ codexHome, claudeHome });
+    server.once("close", () => { void searchSync.stop(); void closeSessionParseCache(); });
     const url = `http://${host}:${port}`;
     console.log(`Codex Snapshot is running at ${url}`);
     console.log(`Codex home: ${codexHome}`);
@@ -965,11 +961,28 @@ async function revealPathInFileManager(targetPath, isDirectory) {
     }
     const directory = isDirectory ? targetPath : dirname(targetPath);
     if (process.platform === "win32") {
-        await execFileAsync("explorer.exe", [directory]);
+        // explorer.exe commonly exits with a non-zero code after successfully
+        // handing the request to the existing Explorer process. Waiting for its
+        // exit therefore turns a successful reveal into an HTTP 500 on Windows.
+        await spawnDetached("explorer.exe", [directory]);
         return { ok: true, message: "已打开所在目录" };
     }
     await execFileAsync("xdg-open", [directory]);
     return { ok: true, message: "已打开所在目录" };
+}
+function spawnDetached(command, args) {
+    return new Promise((resolve, reject) => {
+        const child = spawn(command, args, {
+            detached: true,
+            stdio: "ignore",
+            windowsHide: false,
+        });
+        child.once("error", reject);
+        child.once("spawn", () => {
+            child.unref();
+            resolve();
+        });
+    });
 }
 function sessionTurnTimeRange(turns) {
     const first = firstValidTurnDate(turns);

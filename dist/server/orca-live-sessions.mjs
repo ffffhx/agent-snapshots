@@ -1,5 +1,7 @@
 // @ts-nocheck
 import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
+import path from "node:path";
 import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
 const PROCESS_START_MATCH_WINDOW_MS = 15 * 60 * 1000;
@@ -65,7 +67,8 @@ function sessionTimeMs(session, key) {
     return Number.isFinite(value) ? value : 0;
 }
 function normalizePath(value) {
-    return String(value || "").replace(/[\\/]+$/, "");
+    const normalized = String(value || "").replace(/\\/g, "/").replace(/\/+$/, "");
+    return process.platform === "win32" ? normalized.toLowerCase() : normalized;
 }
 function uniqueSessionCandidates(sessions) {
     const byId = new Map();
@@ -92,7 +95,7 @@ export function matchOrcaProcessesToSessions(processes, sessions) {
             : null;
         if (!session) {
             const cwd = normalizePath(processInfo.cwd);
-            session = candidates
+            const cwdCandidates = candidates
                 .filter((candidate) => (!usedIds.has(sessionBareId(candidate))
                 && sessionEngine(candidate) === processInfo.engine
                 && normalizePath(candidate?.cwd || candidate?.displayCwd) === cwd))
@@ -100,9 +103,12 @@ export function matchOrcaProcessesToSessions(processes, sessions) {
                 candidate,
                 distance: Math.abs(sessionTimeMs(candidate, "createdAt") - processInfo.startedAtMs),
                 mtime: sessionTimeMs(candidate, "mtime"),
-            }))
-                .filter((entry) => entry.distance <= PROCESS_START_MATCH_WINDOW_MS)
-                .sort((a, b) => a.distance - b.distance || b.mtime - a.mtime)[0]?.candidate || null;
+            }));
+            session = processInfo.trustedCwd
+                ? cwdCandidates.sort((a, b) => b.mtime - a.mtime)[0]?.candidate || null
+                : cwdCandidates
+                    .filter((entry) => entry.distance <= PROCESS_START_MATCH_WINDOW_MS)
+                    .sort((a, b) => a.distance - b.distance || b.mtime - a.mtime)[0]?.candidate || null;
         }
         const id = sessionBareId(session);
         if (session && id && !usedIds.has(id)) {
@@ -113,6 +119,9 @@ export function matchOrcaProcessesToSessions(processes, sessions) {
     return matched;
 }
 async function discoverOrcaAgentProcesses() {
+    if (process.platform === "win32") {
+        return discoverWindowsOrcaAgentProcesses();
+    }
     if (!["darwin", "linux"].includes(process.platform)) {
         return [];
     }
@@ -149,6 +158,43 @@ async function discoverOrcaAgentProcesses() {
         });
     }
     return processes;
+}
+function resolveWindowsOrcaBinary() {
+    const candidates = process.env.LOCALAPPDATA ? [
+        path.join(process.env.LOCALAPPDATA, "Programs", "orca", "resources", "bin", "orca.exe"),
+        path.join(process.env.LOCALAPPDATA, "Programs", "Orca", "resources", "bin", "orca.exe"),
+    ] : [];
+    return candidates.find((candidate) => existsSync(candidate)) || "orca.exe";
+}
+function windowsTerminalEngine(terminal) {
+    const text = `${terminal?.title || ""}\n${terminal?.preview || ""}`;
+    if (/Ask Codex|\bgpt-[\w.-]+\b|\/ps to view|\/stop to close/i.test(text)) {
+        return "codex";
+    }
+    if (/Claude Code|\bclaude\b|bypass permissions/i.test(text)) {
+        return "claude";
+    }
+    return "";
+}
+async function discoverWindowsOrcaAgentProcesses() {
+    const { stdout } = await execFileAsync(resolveWindowsOrcaBinary(), ["terminal", "list", "--json"], { timeout: 5000, maxBuffer: 4 * 1024 * 1024, windowsHide: true });
+    const payload = JSON.parse(stdout);
+    const terminals = Array.isArray(payload?.result?.terminals) ? payload.result.terminals : [];
+    return terminals.flatMap((terminal) => {
+        const engine = windowsTerminalEngine(terminal);
+        const cwd = String(terminal?.worktreePath || "").trim();
+        if (!engine || !cwd || terminal?.orphaned || terminal?.connected === false) {
+            return [];
+        }
+        return [{
+                engine,
+                cwd,
+                startedAtMs: Number(terminal?.lastOutputAt || Date.now()),
+                terminalHandle: String(terminal?.handle || ""),
+                trustedCwd: true,
+                resumeId: String(terminal?.preview || "").match(UUID_RE)?.[0]?.toLowerCase() || "",
+            }];
+    });
 }
 export async function listOrcaAgentProcesses() {
     const now = Date.now();
