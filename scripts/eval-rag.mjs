@@ -38,7 +38,7 @@ try {
   for (const question of questions) {
     const scope = { cwd: question.cwd || "" };
     const keywordStart = performance.now();
-    const keyword = index.keyword(question.query, scope);
+    const keyword = (await index.keyword(question.query, scope));
     const keywordMs = performance.now() - keywordStart;
     const vectorStart = performance.now();
     const [query] = await embed([question.query]);

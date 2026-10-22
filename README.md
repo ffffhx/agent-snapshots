@@ -14,6 +14,7 @@
 - 按来源和项目组织会话，支持 Codex / Claude Code 标签页、正在进行的会话标记和实时跟随。
 - 默认隐藏 system/developer/bootstrap 消息和工具输出，可在标准、详细、摘要视图之间切换。
 - 支持全文搜索、语义搜索、会话内语义搜索、图片图库、使用统计和 Codex 配额仪表。
+- 当前源码的关键词搜索使用本地 HanLP、技术术语词典和代码切分规则。首次开发运行前执行 `corepack pnpm setup:hanlp`，Python 依赖、模型准备和检索边界见 [中文与代码检索](docs/search-tokenization.md)。
 - 搜索中的“问历史”支持 RAG：本地混合检索历史会话、补齐调试上下文，使用 DeepSeek 或本地 Ollama 生成带原文引用的答案。模型设置、索引与评测见 [RAG 使用说明](docs/rag.md)。
 - 自动脱敏常见 token、密钥、Cookie、本地 home 路径等敏感信息。
 - 支持导出 HTML / Markdown、本地发布到 GitHub secret Gist，或发布到配置好的分享服务。

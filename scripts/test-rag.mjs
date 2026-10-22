@@ -28,13 +28,13 @@ test("redacts secrets and excludes privileged historical instructions", () => {
 });
 
 test("Chinese intent and code identifiers tokenize without SQL query injection", async () => withIndex(async (index) => {
-  assert(ragTerms("怎么处理 ENOSPC 文件监听失败").includes("enospc"));
-  assert.equal(index.keyword("ENOSPC")[0].session.ref, "claude:rag-fixture-watch");
-  assert.deepEqual(index.keyword('" OR 1=1 -- nonexistentmarker'), []);
-  assert(index.keyword("CSRF").length);
-  assert.deepEqual(index.keyword("CSRF", { cwd: "/fixtures/port" }), []);
-  assert.deepEqual(index.keyword("CSRF", { source: "codex" }), []);
-  assert.deepEqual(index.keyword("我的银行卡余额"), [], "isolated 卡 must not match 卡顿 in an unrelated query");
+  assert((await ragTerms("怎么处理 ENOSPC 文件监听失败")).includes("enospc"));
+  assert.equal((await index.keyword("ENOSPC"))[0].session.ref, "claude:rag-fixture-watch");
+  assert.deepEqual((await index.keyword('" OR 1=1 -- nonexistentmarker')), []);
+  assert((await index.keyword("CSRF")).length);
+  assert.deepEqual((await index.keyword("CSRF", { cwd: "/fixtures/port" })), []);
+  assert.deepEqual((await index.keyword("CSRF", { source: "codex" })), []);
+  assert.deepEqual((await index.keyword("我的银行卡余额")), [], "isolated 卡 must not match 卡顿 in an unrelated query");
 }));
 
 test("RRF ignores score scales and duplicate hits within a single rank list", () => {
@@ -44,7 +44,7 @@ test("RRF ignores score scales and duplicate hits within a single rank list", ()
 });
 
 test("parent expansion includes failed attempt and later fix; dedup and budget enforced", async () => withIndex(async (index) => {
-  const hits = index.keyword("硬件加速");
+  const hits = (await index.keyword("硬件加速"));
   const evidence = packRagEvidence(hits, (hit) => index.parents(hit));
   assert(evidence[0].text.includes("白屏仍然存在"));
   assert(evidence[0].text.includes("修正 preload 路径"));
@@ -72,7 +72,7 @@ test("RRF agreement alone does not admit weak unrelated semantic evidence", () =
 
 test("serialized Chinese evidence stays within byte budget with truncation disclosed", async () => withIndex(async (index) => {
   const budget = ragEvidenceBudget("如何修复白屏？");
-  const evidence = packRagEvidence(index.keyword("Electron"), (hit) => index.parents(hit), { budget });
+  const evidence = packRagEvidence((await index.keyword("Electron")), (hit) => index.parents(hit), { budget });
   assert(Buffer.byteLength(JSON.stringify(evidence)) <= budget + 2);
 }));
 
@@ -86,7 +86,7 @@ test("file size changes invalidate RAG even when visible message and file timest
     await index.sync(deps);
     text = "NEW_CONTENT"; await writeFile(filePath, "longer updated content"); await utimes(filePath, before.atime, before.mtime);
     const result = await index.sync(deps);
-    assert.equal(result.updated, 1); assert.equal(index.keyword("OLD_CONTENT").length, 0); assert(index.keyword("NEW_CONTENT").length);
+    assert.equal(result.updated, 1); assert.equal((await index.keyword("OLD_CONTENT")).length, 0); assert((await index.keyword("NEW_CONTENT")).length);
   } finally { index.close(); assert(path.resolve(dir).startsWith(path.resolve(os.tmpdir()) + path.sep)); await rm(dir, { recursive: true, force: true }); }
 });
 
@@ -106,20 +106,20 @@ test("restart reuses index and embeddings, updates invalidate old text, deletion
     current = [{ ...current[0], mtime: "2026-08-22" }];
     snapshot = { turns: [{ role: "assistant", text: "NEWFIX" }] };
     await index.sync(deps);
-    assert.equal(index.keyword("preload").length, 0);
-    assert(index.keyword("NEWFIX").length);
+    assert.equal((await index.keyword("preload")).length, 0);
+    assert((await index.keyword("NEWFIX")).length);
     assert.equal(index.vectorStatus({}, "model-a").ready, 0);
-    current = []; await index.sync(deps); assert.equal(index.keyword("NEWFIX").length, 0);
+    current = []; await index.sync(deps); assert.equal((await index.keyword("NEWFIX")).length, 0);
   } finally { index.close(); assert(path.resolve(dir).startsWith(path.resolve(os.tmpdir()) + path.sep)); await rm(dir, { recursive: true, force: true }); }
 });
 
 test("stale sessions are excluded until successfully reloaded and enumeration failure preserves index", async () => withIndex(async (index) => {
   const deps = { listSessions: async () => sessions.map((s) => ({ ...s, mtime: "changed" })), loadSnapshot: async () => { throw new Error("unreadable"); } };
   const result = await index.sync(deps);
-  assert.equal(result.failed, 10); assert.equal(index.keyword("ENOSPC").length, 0);
+  assert.equal(result.failed, 10); assert.equal((await index.keyword("ENOSPC")).length, 0);
   await index.sync(fixtureDeps);
   await assert.rejects(index.sync({ ...fixtureDeps, listSessions: async () => { throw new Error("enumeration failed"); } }));
-  assert(index.keyword("ENOSPC").length);
+  assert((await index.keyword("ENOSPC")).length);
 }));
 
 test("vector cardinality/dimension errors are explicit and canceled work stops", async () => withIndex(async (index) => {

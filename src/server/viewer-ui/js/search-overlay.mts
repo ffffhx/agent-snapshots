@@ -913,7 +913,7 @@ async function runSearch() {
     state.search.indexed = Number(payload.indexed || 0);
     state.search.indexedChunks = Number(payload.indexedChunks || 0);
     state.search.updated = Number(payload.updated || 0);
-    state.search.pending = Number(payload.pending || 0);
+    state.search.pending = Number(payload.pending || payload.indexingPending || 0);
     state.search.failed = Number(payload.failed || 0);
     state.search.model = String(payload.model || "");
   } catch (error) {
@@ -1005,7 +1005,8 @@ function renderSearch() {
       const model = state.search.model ? " · " + state.search.model : "";
       status.textContent = "命中 " + state.search.matched + " / 索引 " + state.search.indexed + " / 扫描 " + state.search.scanned + updated + pending + failed + model;
     } else {
-      status.textContent = "命中 " + state.search.matched + " / 扫描 " + state.search.scanned + failed;
+      const pending = state.search.pending ? "，还有 " + state.search.pending + " 条历史正在整理，结果暂不完整" : "";
+      status.textContent = "命中 " + state.search.matched + " / 扫描 " + state.search.scanned + failed + pending;
     }
   } else {
     status.textContent = "";

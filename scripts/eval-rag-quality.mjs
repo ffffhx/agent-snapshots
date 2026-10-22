@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { RagIndex } from "../dist/server/rag-index.mjs";
+import { tokenizerVersion } from "../dist/server/search-tokenizer.mjs";
 import { fuseRagRanks, selectRagEvidenceHits, packRagEvidence, ragEvidenceBudget, RAG_SYSTEM_PROMPT } from "../dist/server/rag-core.mjs";
 import { ragConfig, ollamaEmbedder, generateRagAnswer } from "../dist/server/rag-service.mjs";
 import { digest, validateDataset, retrievalMetrics, quoteCoverage, retrievalSummary, percentile } from "./lib/rag-eval.mjs";
@@ -21,7 +22,7 @@ for (const name of ["retrieval.json", "generation.json"]) {
 const split = arg("--split", "all");
 if (!["all", "dev", "test"].includes(split)) throw new Error("Invalid split");
 const config = ragConfig();
-const code = {};
+const code = { tokenizer: tokenizerVersion };
 for (const name of ["rag-core", "rag-index", "rag-service"]) code[name] = digest(await readFile(new URL(`../dist/server/${name}.mjs`, import.meta.url), "utf8"));
 let frozen;
 if (arg("--replay")) {
@@ -44,7 +45,7 @@ if (arg("--replay")) {
     const buildMs = performance.now() - begin;
     for (const q of dataset.questions.filter((q) => split === "all" || q.split === split)) {
       const scope = q.cwd ? { cwd: q.cwd } : {};
-      const beginKeyword = performance.now(), keyword = index.keyword(q.query, scope), keywordMs = performance.now() - beginKeyword;
+      const beginKeyword = performance.now(), keyword = (await index.keyword(q.query, scope)), keywordMs = performance.now() - beginKeyword;
       const beginVector = performance.now();
       const [embedding] = await embed([q.query]);
       const vector = index.vector(embedding, scope, key).filter((h) => h.score >= .3);

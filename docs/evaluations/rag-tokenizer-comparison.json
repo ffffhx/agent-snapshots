@@ -1,0 +1,2882 @@
+{
+  "createdAt": "2026-09-14T14:07:04.885Z",
+  "runtime": {
+    "node": "24.18.0",
+    "acorn": "8.16.0",
+    "ada": "3.4.4",
+    "amaro": "1.1.9",
+    "ares": "1.34.6",
+    "brotli": "1.2.0",
+    "cldr": "48.0",
+    "icu": "78.2",
+    "llhttp": "9.4.2",
+    "merve": "1.2.2",
+    "modules": "146",
+    "napi": "10",
+    "nbytes": "0.1.4",
+    "ncrypto": "0.0.1",
+    "nghttp2": "1.69.0",
+    "nghttp3": "",
+    "ngtcp2": "",
+    "openssl": "0.0.0",
+    "simdjson": "4.6.4",
+    "simdutf": "7.7.0",
+    "sqlite": "3.53.1",
+    "tz": "2025c",
+    "undici": "7.28.0",
+    "unicode": "17.0",
+    "uv": "1.52.1",
+    "uvwasi": "0.0.23",
+    "v8": "14.8.178.38-electron.0",
+    "zlib": "1.3.2.1-motley",
+    "zstd": "1.6.0",
+    "electron": "42.6.1",
+    "chrome": "148.0.7778.280"
+  },
+  "cpu": "13th Gen Intel(R) Core(TM) i7-13700H",
+  "tokenizerVersion": "a1359e36cf2b46db23a68580a829aa8645e6be917c136d3577e7b33ab6c39d01",
+  "methodology": "RAG lexical retrieval only; production 1200-char chunks/150 overlap, OR + BM25, top40 chunks, session-dedup top5. HanLP runs actual RagIndex.keyword(). Trigram >=3 terms use native FTS5 phrase BM25; shorter terms scan substrings with additive FTS5-formula BM25 (validated on a native phrase). Native-query baseline uses whitespace; shared-query control uses production HanLP terms incl single-Han filtering. Same scope, source, parent expansion and evidence budget. Five alternating warm repetitions after all three query paths prewarm. No embeddings or answer generation. All real data remain in ignored output; public summaries omit query/source text. No tuning on test results.",
+  "datasets": [
+    {
+      "name": "synthetic",
+      "datasetHash": "656c5a83dc0646743b487aab70a198c548d8b70d1b6c70ee3ca1b80d7d59fb25",
+      "sessions": 10,
+      "chunks": 60,
+      "questions": 50,
+      "hanlpBuildMs": 216.9987999999994,
+      "trigramBuildMs": 1.127900000000409,
+      "summary": {
+        "hanlp": {
+          "answerable": 40,
+          "hitAt5": 0.975,
+          "recallAt5": 0.975,
+          "mrrAt5": 0.9333333333333332,
+          "ndcgAt5": 0.9440464876785729,
+          "goldCoverage": 0.975,
+          "unknown": 10,
+          "unknownWithCandidates": 0,
+          "warmP95Ms": 0.21590000000014697
+        },
+        "trigram-native-query": {
+          "answerable": 40,
+          "hitAt5": 0.525,
+          "recallAt5": 0.525,
+          "mrrAt5": 0.525,
+          "ndcgAt5": 0.525,
+          "goldCoverage": 0.525,
+          "unknown": 10,
+          "unknownWithCandidates": 0,
+          "warmP95Ms": 0.06820000000061555
+        },
+        "trigram-hanlp-query": {
+          "answerable": 40,
+          "hitAt5": 0.975,
+          "recallAt5": 0.975,
+          "mrrAt5": 0.9333333333333332,
+          "ndcgAt5": 0.9440464876785729,
+          "goldCoverage": 0.975,
+          "unknown": 10,
+          "unknownWithCandidates": 0,
+          "warmP95Ms": 0.05389999999988504
+        }
+      },
+      "testSummary": {
+        "hanlp": {
+          "answerable": 0,
+          "hitAt5": null,
+          "recallAt5": null,
+          "mrrAt5": null,
+          "ndcgAt5": null,
+          "goldCoverage": null,
+          "unknown": 0,
+          "unknownWithCandidates": 0,
+          "warmP95Ms": null
+        },
+        "trigram-native-query": {
+          "answerable": 0,
+          "hitAt5": null,
+          "recallAt5": null,
+          "mrrAt5": null,
+          "ndcgAt5": null,
+          "goldCoverage": null,
+          "unknown": 0,
+          "unknownWithCandidates": 0,
+          "warmP95Ms": null
+        },
+        "trigram-hanlp-query": {
+          "answerable": 0,
+          "hitAt5": null,
+          "recallAt5": null,
+          "mrrAt5": null,
+          "ndcgAt5": null,
+          "goldCoverage": null,
+          "unknown": 0,
+          "unknownWithCandidates": 0,
+          "warmP95Ms": null
+        }
+      },
+      "firstHanlpQueryP95Ms": 10.4979000000003,
+      "perQuestion": [
+        {
+          "id": "electron-0",
+          "answerable": true,
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 12,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 1,
+              "coverage": 1
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 12,
+              "coverage": 1
+            }
+          }
+        },
+        {
+          "id": "electron-1",
+          "answerable": true,
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 4,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 0,
+              "recallAtK": 0,
+              "precisionAtK": 0,
+              "reciprocalRank": 0,
+              "ndcgAtK": 0,
+              "candidates": 0,
+              "coverage": 0
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 4,
+              "coverage": 1
+            }
+          }
+        },
+        {
+          "id": "electron-2",
+          "answerable": true,
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 1,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 1,
+              "coverage": 1
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 1,
+              "coverage": 1
+            }
+          }
+        },
+        {
+          "id": "electron-3",
+          "answerable": true,
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 2,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 0,
+              "recallAtK": 0,
+              "precisionAtK": 0,
+              "reciprocalRank": 0,
+              "ndcgAtK": 0,
+              "candidates": 0,
+              "coverage": 0
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 2,
+              "coverage": 1
+            }
+          }
+        },
+        {
+          "id": "index-0",
+          "answerable": true,
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 4,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 1,
+              "coverage": 1
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 4,
+              "coverage": 1
+            }
+          }
+        },
+        {
+          "id": "index-1",
+          "answerable": true,
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 0.5,
+              "ndcgAtK": 0.6309297535714575,
+              "candidates": 3,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 0,
+              "recallAtK": 0,
+              "precisionAtK": 0,
+              "reciprocalRank": 0,
+              "ndcgAtK": 0,
+              "candidates": 0,
+              "coverage": 0
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 0.5,
+              "ndcgAtK": 0.6309297535714575,
+              "candidates": 3,
+              "coverage": 1
+            }
+          }
+        },
+        {
+          "id": "index-2",
+          "answerable": true,
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 1,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 1,
+              "coverage": 1
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 1,
+              "coverage": 1
+            }
+          }
+        },
+        {
+          "id": "index-3",
+          "answerable": true,
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 3,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 0,
+              "recallAtK": 0,
+              "precisionAtK": 0,
+              "reciprocalRank": 0,
+              "ndcgAtK": 0,
+              "candidates": 0,
+              "coverage": 0
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 3,
+              "coverage": 1
+            }
+          }
+        },
+        {
+          "id": "csrf-0",
+          "answerable": true,
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 2,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 2,
+              "coverage": 1
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 2,
+              "coverage": 1
+            }
+          }
+        },
+        {
+          "id": "csrf-1",
+          "answerable": true,
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 0.5,
+              "ndcgAtK": 0.6309297535714575,
+              "candidates": 5,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 0,
+              "recallAtK": 0,
+              "precisionAtK": 0,
+              "reciprocalRank": 0,
+              "ndcgAtK": 0,
+              "candidates": 0,
+              "coverage": 0
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 0.5,
+              "ndcgAtK": 0.6309297535714575,
+              "candidates": 5,
+              "coverage": 1
+            }
+          }
+        },
+        {
+          "id": "csrf-2",
+          "answerable": true,
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 3,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 3,
+              "coverage": 1
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 3,
+              "coverage": 1
+            }
+          }
+        },
+        {
+          "id": "csrf-3",
+          "answerable": true,
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 5,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 2,
+              "coverage": 1
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 5,
+              "coverage": 1
+            }
+          }
+        },
+        {
+          "id": "recovery-0",
+          "answerable": true,
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 4,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 1,
+              "coverage": 1
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 4,
+              "coverage": 1
+            }
+          }
+        },
+        {
+          "id": "recovery-1",
+          "answerable": true,
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 1,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 0,
+              "recallAtK": 0,
+              "precisionAtK": 0,
+              "reciprocalRank": 0,
+              "ndcgAtK": 0,
+              "candidates": 0,
+              "coverage": 0
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 1,
+              "coverage": 1
+            }
+          }
+        },
+        {
+          "id": "recovery-2",
+          "answerable": true,
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 4,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 1,
+              "coverage": 1
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 4,
+              "coverage": 1
+            }
+          }
+        },
+        {
+          "id": "recovery-3",
+          "answerable": true,
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 3,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 0,
+              "recallAtK": 0,
+              "precisionAtK": 0,
+              "reciprocalRank": 0,
+              "ndcgAtK": 0,
+              "candidates": 0,
+              "coverage": 0
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 3,
+              "coverage": 1
+            }
+          }
+        },
+        {
+          "id": "watch-0",
+          "answerable": true,
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 2,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 2,
+              "coverage": 1
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 2,
+              "coverage": 1
+            }
+          }
+        },
+        {
+          "id": "watch-1",
+          "answerable": true,
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 2,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 0,
+              "recallAtK": 0,
+              "precisionAtK": 0,
+              "reciprocalRank": 0,
+              "ndcgAtK": 0,
+              "candidates": 0,
+              "coverage": 0
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 2,
+              "coverage": 1
+            }
+          }
+        },
+        {
+          "id": "watch-2",
+          "answerable": true,
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 4,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 3,
+              "coverage": 1
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 4,
+              "coverage": 1
+            }
+          }
+        },
+        {
+          "id": "watch-3",
+          "answerable": true,
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 4,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 0,
+              "recallAtK": 0,
+              "precisionAtK": 0,
+              "reciprocalRank": 0,
+              "ndcgAtK": 0,
+              "candidates": 0,
+              "coverage": 0
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 4,
+              "coverage": 1
+            }
+          }
+        },
+        {
+          "id": "vector-0",
+          "answerable": true,
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 4,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 1,
+              "coverage": 1
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 4,
+              "coverage": 1
+            }
+          }
+        },
+        {
+          "id": "vector-1",
+          "answerable": true,
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 0.3333333333333333,
+              "ndcgAtK": 0.5,
+              "candidates": 6,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 0,
+              "recallAtK": 0,
+              "precisionAtK": 0,
+              "reciprocalRank": 0,
+              "ndcgAtK": 0,
+              "candidates": 0,
+              "coverage": 0
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 0.3333333333333333,
+              "ndcgAtK": 0.5,
+              "candidates": 6,
+              "coverage": 1
+            }
+          }
+        },
+        {
+          "id": "vector-2",
+          "answerable": true,
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 6,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 1,
+              "coverage": 1
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 6,
+              "coverage": 1
+            }
+          }
+        },
+        {
+          "id": "vector-3",
+          "answerable": true,
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 4,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 0,
+              "recallAtK": 0,
+              "precisionAtK": 0,
+              "reciprocalRank": 0,
+              "ndcgAtK": 0,
+              "candidates": 0,
+              "coverage": 0
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 4,
+              "coverage": 1
+            }
+          }
+        },
+        {
+          "id": "port-0",
+          "answerable": true,
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 1,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 1,
+              "coverage": 1
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 1,
+              "coverage": 1
+            }
+          }
+        },
+        {
+          "id": "port-1",
+          "answerable": true,
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 4,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 0,
+              "recallAtK": 0,
+              "precisionAtK": 0,
+              "reciprocalRank": 0,
+              "ndcgAtK": 0,
+              "candidates": 0,
+              "coverage": 0
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 4,
+              "coverage": 1
+            }
+          }
+        },
+        {
+          "id": "port-2",
+          "answerable": true,
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 13,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 3,
+              "coverage": 1
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 13,
+              "coverage": 1
+            }
+          }
+        },
+        {
+          "id": "port-3",
+          "answerable": true,
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 12,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 0,
+              "recallAtK": 0,
+              "precisionAtK": 0,
+              "reciprocalRank": 0,
+              "ndcgAtK": 0,
+              "candidates": 0,
+              "coverage": 0
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 12,
+              "coverage": 1
+            }
+          }
+        },
+        {
+          "id": "xss-0",
+          "answerable": true,
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 1,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 1,
+              "coverage": 1
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 1,
+              "coverage": 1
+            }
+          }
+        },
+        {
+          "id": "xss-1",
+          "answerable": true,
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 2,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 0,
+              "recallAtK": 0,
+              "precisionAtK": 0,
+              "reciprocalRank": 0,
+              "ndcgAtK": 0,
+              "candidates": 0,
+              "coverage": 0
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 2,
+              "coverage": 1
+            }
+          }
+        },
+        {
+          "id": "xss-2",
+          "answerable": true,
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 2,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 2,
+              "coverage": 1
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 2,
+              "coverage": 1
+            }
+          }
+        },
+        {
+          "id": "xss-3",
+          "answerable": true,
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 1,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 2,
+              "coverage": 1
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 2,
+              "coverage": 1
+            }
+          }
+        },
+        {
+          "id": "cancel-0",
+          "answerable": true,
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 3,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 0,
+              "recallAtK": 0,
+              "precisionAtK": 0,
+              "reciprocalRank": 0,
+              "ndcgAtK": 0,
+              "candidates": 0,
+              "coverage": 0
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 3,
+              "coverage": 1
+            }
+          }
+        },
+        {
+          "id": "cancel-1",
+          "answerable": true,
+          "variants": {
+            "hanlp": {
+              "hitAtK": 0,
+              "recallAtK": 0,
+              "precisionAtK": 0,
+              "reciprocalRank": 0,
+              "ndcgAtK": 0,
+              "candidates": 0,
+              "coverage": 0
+            },
+            "trigram-native-query": {
+              "hitAtK": 0,
+              "recallAtK": 0,
+              "precisionAtK": 0,
+              "reciprocalRank": 0,
+              "ndcgAtK": 0,
+              "candidates": 0,
+              "coverage": 0
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 0,
+              "recallAtK": 0,
+              "precisionAtK": 0,
+              "reciprocalRank": 0,
+              "ndcgAtK": 0,
+              "candidates": 0,
+              "coverage": 0
+            }
+          }
+        },
+        {
+          "id": "cancel-2",
+          "answerable": true,
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 4,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 1,
+              "coverage": 1
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 4,
+              "coverage": 1
+            }
+          }
+        },
+        {
+          "id": "cancel-3",
+          "answerable": true,
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 1,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 0,
+              "recallAtK": 0,
+              "precisionAtK": 0,
+              "reciprocalRank": 0,
+              "ndcgAtK": 0,
+              "candidates": 0,
+              "coverage": 0
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 1,
+              "coverage": 1
+            }
+          }
+        },
+        {
+          "id": "duplicate-0",
+          "answerable": true,
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 3,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 3,
+              "coverage": 1
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 3,
+              "coverage": 1
+            }
+          }
+        },
+        {
+          "id": "duplicate-1",
+          "answerable": true,
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 4,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 0,
+              "recallAtK": 0,
+              "precisionAtK": 0,
+              "reciprocalRank": 0,
+              "ndcgAtK": 0,
+              "candidates": 0,
+              "coverage": 0
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 4,
+              "coverage": 1
+            }
+          }
+        },
+        {
+          "id": "duplicate-2",
+          "answerable": true,
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 1,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 3,
+              "coverage": 1
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 3,
+              "coverage": 1
+            }
+          }
+        },
+        {
+          "id": "duplicate-3",
+          "answerable": true,
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 4,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 0,
+              "recallAtK": 0,
+              "precisionAtK": 0,
+              "reciprocalRank": 0,
+              "ndcgAtK": 0,
+              "candidates": 0,
+              "coverage": 0
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 4,
+              "coverage": 1
+            }
+          }
+        },
+        {
+          "id": "unknown-0",
+          "answerable": false,
+          "variants": {
+            "hanlp": {
+              "hitAtK": null,
+              "recallAtK": null,
+              "precisionAtK": null,
+              "reciprocalRank": null,
+              "ndcgAtK": null,
+              "candidates": 0,
+              "coverage": null
+            },
+            "trigram-native-query": {
+              "hitAtK": null,
+              "recallAtK": null,
+              "precisionAtK": null,
+              "reciprocalRank": null,
+              "ndcgAtK": null,
+              "candidates": 0,
+              "coverage": null
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": null,
+              "recallAtK": null,
+              "precisionAtK": null,
+              "reciprocalRank": null,
+              "ndcgAtK": null,
+              "candidates": 0,
+              "coverage": null
+            }
+          }
+        },
+        {
+          "id": "unknown-1",
+          "answerable": false,
+          "variants": {
+            "hanlp": {
+              "hitAtK": null,
+              "recallAtK": null,
+              "precisionAtK": null,
+              "reciprocalRank": null,
+              "ndcgAtK": null,
+              "candidates": 0,
+              "coverage": null
+            },
+            "trigram-native-query": {
+              "hitAtK": null,
+              "recallAtK": null,
+              "precisionAtK": null,
+              "reciprocalRank": null,
+              "ndcgAtK": null,
+              "candidates": 0,
+              "coverage": null
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": null,
+              "recallAtK": null,
+              "precisionAtK": null,
+              "reciprocalRank": null,
+              "ndcgAtK": null,
+              "candidates": 0,
+              "coverage": null
+            }
+          }
+        },
+        {
+          "id": "unknown-2",
+          "answerable": false,
+          "variants": {
+            "hanlp": {
+              "hitAtK": null,
+              "recallAtK": null,
+              "precisionAtK": null,
+              "reciprocalRank": null,
+              "ndcgAtK": null,
+              "candidates": 0,
+              "coverage": null
+            },
+            "trigram-native-query": {
+              "hitAtK": null,
+              "recallAtK": null,
+              "precisionAtK": null,
+              "reciprocalRank": null,
+              "ndcgAtK": null,
+              "candidates": 0,
+              "coverage": null
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": null,
+              "recallAtK": null,
+              "precisionAtK": null,
+              "reciprocalRank": null,
+              "ndcgAtK": null,
+              "candidates": 0,
+              "coverage": null
+            }
+          }
+        },
+        {
+          "id": "unknown-3",
+          "answerable": false,
+          "variants": {
+            "hanlp": {
+              "hitAtK": null,
+              "recallAtK": null,
+              "precisionAtK": null,
+              "reciprocalRank": null,
+              "ndcgAtK": null,
+              "candidates": 0,
+              "coverage": null
+            },
+            "trigram-native-query": {
+              "hitAtK": null,
+              "recallAtK": null,
+              "precisionAtK": null,
+              "reciprocalRank": null,
+              "ndcgAtK": null,
+              "candidates": 0,
+              "coverage": null
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": null,
+              "recallAtK": null,
+              "precisionAtK": null,
+              "reciprocalRank": null,
+              "ndcgAtK": null,
+              "candidates": 0,
+              "coverage": null
+            }
+          }
+        },
+        {
+          "id": "unknown-4",
+          "answerable": false,
+          "variants": {
+            "hanlp": {
+              "hitAtK": null,
+              "recallAtK": null,
+              "precisionAtK": null,
+              "reciprocalRank": null,
+              "ndcgAtK": null,
+              "candidates": 0,
+              "coverage": null
+            },
+            "trigram-native-query": {
+              "hitAtK": null,
+              "recallAtK": null,
+              "precisionAtK": null,
+              "reciprocalRank": null,
+              "ndcgAtK": null,
+              "candidates": 0,
+              "coverage": null
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": null,
+              "recallAtK": null,
+              "precisionAtK": null,
+              "reciprocalRank": null,
+              "ndcgAtK": null,
+              "candidates": 0,
+              "coverage": null
+            }
+          }
+        },
+        {
+          "id": "unknown-5",
+          "answerable": false,
+          "variants": {
+            "hanlp": {
+              "hitAtK": null,
+              "recallAtK": null,
+              "precisionAtK": null,
+              "reciprocalRank": null,
+              "ndcgAtK": null,
+              "candidates": 0,
+              "coverage": null
+            },
+            "trigram-native-query": {
+              "hitAtK": null,
+              "recallAtK": null,
+              "precisionAtK": null,
+              "reciprocalRank": null,
+              "ndcgAtK": null,
+              "candidates": 0,
+              "coverage": null
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": null,
+              "recallAtK": null,
+              "precisionAtK": null,
+              "reciprocalRank": null,
+              "ndcgAtK": null,
+              "candidates": 0,
+              "coverage": null
+            }
+          }
+        },
+        {
+          "id": "unknown-6",
+          "answerable": false,
+          "variants": {
+            "hanlp": {
+              "hitAtK": null,
+              "recallAtK": null,
+              "precisionAtK": null,
+              "reciprocalRank": null,
+              "ndcgAtK": null,
+              "candidates": 0,
+              "coverage": null
+            },
+            "trigram-native-query": {
+              "hitAtK": null,
+              "recallAtK": null,
+              "precisionAtK": null,
+              "reciprocalRank": null,
+              "ndcgAtK": null,
+              "candidates": 0,
+              "coverage": null
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": null,
+              "recallAtK": null,
+              "precisionAtK": null,
+              "reciprocalRank": null,
+              "ndcgAtK": null,
+              "candidates": 0,
+              "coverage": null
+            }
+          }
+        },
+        {
+          "id": "unknown-7",
+          "answerable": false,
+          "variants": {
+            "hanlp": {
+              "hitAtK": null,
+              "recallAtK": null,
+              "precisionAtK": null,
+              "reciprocalRank": null,
+              "ndcgAtK": null,
+              "candidates": 0,
+              "coverage": null
+            },
+            "trigram-native-query": {
+              "hitAtK": null,
+              "recallAtK": null,
+              "precisionAtK": null,
+              "reciprocalRank": null,
+              "ndcgAtK": null,
+              "candidates": 0,
+              "coverage": null
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": null,
+              "recallAtK": null,
+              "precisionAtK": null,
+              "reciprocalRank": null,
+              "ndcgAtK": null,
+              "candidates": 0,
+              "coverage": null
+            }
+          }
+        },
+        {
+          "id": "unknown-8",
+          "answerable": false,
+          "variants": {
+            "hanlp": {
+              "hitAtK": null,
+              "recallAtK": null,
+              "precisionAtK": null,
+              "reciprocalRank": null,
+              "ndcgAtK": null,
+              "candidates": 0,
+              "coverage": null
+            },
+            "trigram-native-query": {
+              "hitAtK": null,
+              "recallAtK": null,
+              "precisionAtK": null,
+              "reciprocalRank": null,
+              "ndcgAtK": null,
+              "candidates": 0,
+              "coverage": null
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": null,
+              "recallAtK": null,
+              "precisionAtK": null,
+              "reciprocalRank": null,
+              "ndcgAtK": null,
+              "candidates": 0,
+              "coverage": null
+            }
+          }
+        },
+        {
+          "id": "unknown-9",
+          "answerable": false,
+          "variants": {
+            "hanlp": {
+              "hitAtK": null,
+              "recallAtK": null,
+              "precisionAtK": null,
+              "reciprocalRank": null,
+              "ndcgAtK": null,
+              "candidates": 0,
+              "coverage": null
+            },
+            "trigram-native-query": {
+              "hitAtK": null,
+              "recallAtK": null,
+              "precisionAtK": null,
+              "reciprocalRank": null,
+              "ndcgAtK": null,
+              "candidates": 0,
+              "coverage": null
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": null,
+              "recallAtK": null,
+              "precisionAtK": null,
+              "reciprocalRank": null,
+              "ndcgAtK": null,
+              "candidates": 0,
+              "coverage": null
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "frozen-real",
+      "datasetHash": "9d146844b5a5a75046f3c47278e90b81621ba6037e22a703e365026f36f336ca",
+      "sessions": 7,
+      "chunks": 206,
+      "questions": 30,
+      "hanlpBuildMs": 5498.699199999999,
+      "trigramBuildMs": 20.14589999999953,
+      "summary": {
+        "hanlp": {
+          "answerable": 23,
+          "hitAt5": 1,
+          "recallAt5": 1,
+          "mrrAt5": 0.9782608695652174,
+          "ndcgAt5": 0.9839534675465851,
+          "goldCoverage": 0.782608695652174,
+          "unknown": 7,
+          "unknownWithCandidates": 7,
+          "warmP95Ms": 0.7929999999996653
+        },
+        "trigram-native-query": {
+          "answerable": 23,
+          "hitAt5": 0.6521739130434783,
+          "recallAt5": 0.6304347826086957,
+          "mrrAt5": 0.5507246376811594,
+          "ndcgAt5": 0.5562924995241983,
+          "goldCoverage": 0.3695652173913043,
+          "unknown": 7,
+          "unknownWithCandidates": 7,
+          "warmP95Ms": 0.2937000000001717
+        },
+        "trigram-hanlp-query": {
+          "answerable": 23,
+          "hitAt5": 1,
+          "recallAt5": 1,
+          "mrrAt5": 0.9782608695652174,
+          "ndcgAt5": 0.9839534675465851,
+          "goldCoverage": 0.6956521739130435,
+          "unknown": 7,
+          "unknownWithCandidates": 7,
+          "warmP95Ms": 0.3870999999999185
+        }
+      },
+      "testSummary": {
+        "hanlp": {
+          "answerable": 9,
+          "hitAt5": 1,
+          "recallAt5": 1,
+          "mrrAt5": 1,
+          "ndcgAt5": 1,
+          "goldCoverage": 0.7777777777777778,
+          "unknown": 3,
+          "unknownWithCandidates": 3,
+          "warmP95Ms": 0.755699999999706
+        },
+        "trigram-native-query": {
+          "answerable": 9,
+          "hitAt5": 0.6666666666666666,
+          "recallAt5": 0.6666666666666666,
+          "mrrAt5": 0.5555555555555556,
+          "ndcgAt5": 0.5846510563492129,
+          "goldCoverage": 0.4444444444444444,
+          "unknown": 3,
+          "unknownWithCandidates": 3,
+          "warmP95Ms": 0.3150000000005093
+        },
+        "trigram-hanlp-query": {
+          "answerable": 9,
+          "hitAt5": 1,
+          "recallAt5": 1,
+          "mrrAt5": 1,
+          "ndcgAt5": 1,
+          "goldCoverage": 0.5555555555555556,
+          "unknown": 3,
+          "unknownWithCandidates": 3,
+          "warmP95Ms": 0.3698000000003958
+        }
+      },
+      "firstHanlpQueryP95Ms": 16.744399999999587,
+      "perQuestion": [
+        {
+          "id": "clip-pin",
+          "answerable": true,
+          "split": "dev",
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 40,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 16,
+              "coverage": 1
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 40,
+              "coverage": 1
+            }
+          }
+        },
+        {
+          "id": "clip-gesture",
+          "answerable": true,
+          "split": "dev",
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 40,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 0,
+              "recallAtK": 0,
+              "precisionAtK": 0,
+              "reciprocalRank": 0,
+              "ndcgAtK": 0,
+              "candidates": 0,
+              "coverage": 0
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 40,
+              "coverage": 1
+            }
+          }
+        },
+        {
+          "id": "clip-apk",
+          "answerable": true,
+          "split": "dev",
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 40,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 40,
+              "coverage": 1
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 40,
+              "coverage": 1
+            }
+          }
+        },
+        {
+          "id": "clip-timeout",
+          "answerable": true,
+          "split": "dev",
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 40,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 40,
+              "coverage": 0
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 40,
+              "coverage": 1
+            }
+          }
+        },
+        {
+          "id": "clip-release",
+          "answerable": true,
+          "split": "dev",
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 40,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 0.3333333333333333,
+              "ndcgAtK": 0.5,
+              "candidates": 16,
+              "coverage": 0
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 40,
+              "coverage": 1
+            }
+          }
+        },
+        {
+          "id": "clip-cloud",
+          "answerable": true,
+          "split": "dev",
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 40,
+              "coverage": 0
+            },
+            "trigram-native-query": {
+              "hitAtK": 0,
+              "recallAtK": 0,
+              "precisionAtK": 0,
+              "reciprocalRank": 0,
+              "ndcgAtK": 0,
+              "candidates": 0,
+              "coverage": 0
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 40,
+              "coverage": 0
+            }
+          }
+        },
+        {
+          "id": "clip-status",
+          "answerable": true,
+          "split": "dev",
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 40,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 0.3333333333333333,
+              "ndcgAtK": 0.5,
+              "candidates": 10,
+              "coverage": 0
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 40,
+              "coverage": 1
+            }
+          }
+        },
+        {
+          "id": "clip-repeat",
+          "answerable": true,
+          "split": "dev",
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 0.5,
+              "ndcgAtK": 0.6309297535714575,
+              "candidates": 40,
+              "coverage": 0
+            },
+            "trigram-native-query": {
+              "hitAtK": 0,
+              "recallAtK": 0,
+              "precisionAtK": 0,
+              "reciprocalRank": 0,
+              "ndcgAtK": 0,
+              "candidates": 0,
+              "coverage": 0
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 0.5,
+              "ndcgAtK": 0.6309297535714575,
+              "candidates": 40,
+              "coverage": 0
+            }
+          }
+        },
+        {
+          "id": "clip-verify",
+          "answerable": true,
+          "split": "dev",
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 40,
+              "coverage": 0
+            },
+            "trigram-native-query": {
+              "hitAtK": 0,
+              "recallAtK": 0,
+              "precisionAtK": 0,
+              "reciprocalRank": 0,
+              "ndcgAtK": 0,
+              "candidates": 0,
+              "coverage": 0
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 40,
+              "coverage": 0
+            }
+          }
+        },
+        {
+          "id": "profile-offline",
+          "answerable": true,
+          "split": "test",
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 40,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 40,
+              "coverage": 1
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 40,
+              "coverage": 1
+            }
+          }
+        },
+        {
+          "id": "profile-length",
+          "answerable": true,
+          "split": "test",
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 20,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 28,
+              "coverage": 1
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 20,
+              "coverage": 1
+            }
+          }
+        },
+        {
+          "id": "profile-reconnect",
+          "answerable": true,
+          "split": "test",
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 40,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 35,
+              "coverage": 1
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 40,
+              "coverage": 1
+            }
+          }
+        },
+        {
+          "id": "profile-template",
+          "answerable": true,
+          "split": "test",
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 40,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 40,
+              "coverage": 1
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 40,
+              "coverage": 0
+            }
+          }
+        },
+        {
+          "id": "profile-cache",
+          "answerable": true,
+          "split": "test",
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 40,
+              "coverage": 0
+            },
+            "trigram-native-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 0.5,
+              "ndcgAtK": 0.6309297535714575,
+              "candidates": 9,
+              "coverage": 0
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 40,
+              "coverage": 0
+            }
+          }
+        },
+        {
+          "id": "profile-existing",
+          "answerable": true,
+          "split": "test",
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 40,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 0.5,
+              "ndcgAtK": 0.6309297535714575,
+              "candidates": 19,
+              "coverage": 0
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 40,
+              "coverage": 0
+            }
+          }
+        },
+        {
+          "id": "games-assets",
+          "answerable": true,
+          "split": "test",
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 40,
+              "coverage": 0
+            },
+            "trigram-native-query": {
+              "hitAtK": 0,
+              "recallAtK": 0,
+              "precisionAtK": 0,
+              "reciprocalRank": 0,
+              "ndcgAtK": 0,
+              "candidates": 0,
+              "coverage": 0
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 40,
+              "coverage": 0
+            }
+          }
+        },
+        {
+          "id": "games-maps",
+          "answerable": true,
+          "split": "test",
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 40,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 0,
+              "recallAtK": 0,
+              "precisionAtK": 0,
+              "reciprocalRank": 0,
+              "ndcgAtK": 0,
+              "candidates": 0,
+              "coverage": 0
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 40,
+              "coverage": 1
+            }
+          }
+        },
+        {
+          "id": "games-commit",
+          "answerable": true,
+          "split": "test",
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 40,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 0,
+              "recallAtK": 0,
+              "precisionAtK": 0,
+              "reciprocalRank": 0,
+              "ndcgAtK": 0,
+              "candidates": 0,
+              "coverage": 0
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 40,
+              "coverage": 1
+            }
+          }
+        },
+        {
+          "id": "deer-compression",
+          "answerable": true,
+          "split": "dev",
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 39,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 0,
+              "recallAtK": 0,
+              "precisionAtK": 0,
+              "reciprocalRank": 0,
+              "ndcgAtK": 0,
+              "candidates": 0,
+              "coverage": 0
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 39,
+              "coverage": 1
+            }
+          }
+        },
+        {
+          "id": "deer-tests",
+          "answerable": true,
+          "split": "dev",
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 40,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 5,
+              "coverage": 1
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 40,
+              "coverage": 1
+            }
+          }
+        },
+        {
+          "id": "deer-commits",
+          "answerable": true,
+          "split": "dev",
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 35,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 10,
+              "coverage": 1
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 35,
+              "coverage": 1
+            }
+          }
+        },
+        {
+          "id": "clip-cross-release",
+          "answerable": true,
+          "split": "dev",
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.4,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 40,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 1,
+              "recallAtK": 0.5,
+              "precisionAtK": 0.2,
+              "reciprocalRank": 1,
+              "ndcgAtK": 0.6131471927654584,
+              "candidates": 11,
+              "coverage": 0
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.4,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 40,
+              "coverage": 1
+            }
+          }
+        },
+        {
+          "id": "clip-cross-reset",
+          "answerable": true,
+          "split": "dev",
+          "variants": {
+            "hanlp": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.4,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 40,
+              "coverage": 1
+            },
+            "trigram-native-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.4,
+              "reciprocalRank": 1,
+              "ndcgAtK": 0.9197207891481876,
+              "candidates": 16,
+              "coverage": 0.5
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": 1,
+              "recallAtK": 1,
+              "precisionAtK": 0.4,
+              "reciprocalRank": 1,
+              "ndcgAtK": 1,
+              "candidates": 40,
+              "coverage": 1
+            }
+          }
+        },
+        {
+          "id": "unknown-0",
+          "answerable": false,
+          "split": "dev",
+          "variants": {
+            "hanlp": {
+              "hitAtK": null,
+              "recallAtK": null,
+              "precisionAtK": null,
+              "reciprocalRank": null,
+              "ndcgAtK": null,
+              "candidates": 40,
+              "coverage": null
+            },
+            "trigram-native-query": {
+              "hitAtK": null,
+              "recallAtK": null,
+              "precisionAtK": null,
+              "reciprocalRank": null,
+              "ndcgAtK": null,
+              "candidates": 16,
+              "coverage": null
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": null,
+              "recallAtK": null,
+              "precisionAtK": null,
+              "reciprocalRank": null,
+              "ndcgAtK": null,
+              "candidates": 40,
+              "coverage": null
+            }
+          }
+        },
+        {
+          "id": "unknown-1",
+          "answerable": false,
+          "split": "dev",
+          "variants": {
+            "hanlp": {
+              "hitAtK": null,
+              "recallAtK": null,
+              "precisionAtK": null,
+              "reciprocalRank": null,
+              "ndcgAtK": null,
+              "candidates": 40,
+              "coverage": null
+            },
+            "trigram-native-query": {
+              "hitAtK": null,
+              "recallAtK": null,
+              "precisionAtK": null,
+              "reciprocalRank": null,
+              "ndcgAtK": null,
+              "candidates": 10,
+              "coverage": null
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": null,
+              "recallAtK": null,
+              "precisionAtK": null,
+              "reciprocalRank": null,
+              "ndcgAtK": null,
+              "candidates": 40,
+              "coverage": null
+            }
+          }
+        },
+        {
+          "id": "unknown-2",
+          "answerable": false,
+          "split": "dev",
+          "variants": {
+            "hanlp": {
+              "hitAtK": null,
+              "recallAtK": null,
+              "precisionAtK": null,
+              "reciprocalRank": null,
+              "ndcgAtK": null,
+              "candidates": 40,
+              "coverage": null
+            },
+            "trigram-native-query": {
+              "hitAtK": null,
+              "recallAtK": null,
+              "precisionAtK": null,
+              "reciprocalRank": null,
+              "ndcgAtK": null,
+              "candidates": 10,
+              "coverage": null
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": null,
+              "recallAtK": null,
+              "precisionAtK": null,
+              "reciprocalRank": null,
+              "ndcgAtK": null,
+              "candidates": 40,
+              "coverage": null
+            }
+          }
+        },
+        {
+          "id": "unknown-3",
+          "answerable": false,
+          "split": "test",
+          "variants": {
+            "hanlp": {
+              "hitAtK": null,
+              "recallAtK": null,
+              "precisionAtK": null,
+              "reciprocalRank": null,
+              "ndcgAtK": null,
+              "candidates": 36,
+              "coverage": null
+            },
+            "trigram-native-query": {
+              "hitAtK": null,
+              "recallAtK": null,
+              "precisionAtK": null,
+              "reciprocalRank": null,
+              "ndcgAtK": null,
+              "candidates": 13,
+              "coverage": null
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": null,
+              "recallAtK": null,
+              "precisionAtK": null,
+              "reciprocalRank": null,
+              "ndcgAtK": null,
+              "candidates": 36,
+              "coverage": null
+            }
+          }
+        },
+        {
+          "id": "unknown-4",
+          "answerable": false,
+          "split": "test",
+          "variants": {
+            "hanlp": {
+              "hitAtK": null,
+              "recallAtK": null,
+              "precisionAtK": null,
+              "reciprocalRank": null,
+              "ndcgAtK": null,
+              "candidates": 40,
+              "coverage": null
+            },
+            "trigram-native-query": {
+              "hitAtK": null,
+              "recallAtK": null,
+              "precisionAtK": null,
+              "reciprocalRank": null,
+              "ndcgAtK": null,
+              "candidates": 9,
+              "coverage": null
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": null,
+              "recallAtK": null,
+              "precisionAtK": null,
+              "reciprocalRank": null,
+              "ndcgAtK": null,
+              "candidates": 40,
+              "coverage": null
+            }
+          }
+        },
+        {
+          "id": "unknown-5",
+          "answerable": false,
+          "split": "test",
+          "variants": {
+            "hanlp": {
+              "hitAtK": null,
+              "recallAtK": null,
+              "precisionAtK": null,
+              "reciprocalRank": null,
+              "ndcgAtK": null,
+              "candidates": 24,
+              "coverage": null
+            },
+            "trigram-native-query": {
+              "hitAtK": null,
+              "recallAtK": null,
+              "precisionAtK": null,
+              "reciprocalRank": null,
+              "ndcgAtK": null,
+              "candidates": 3,
+              "coverage": null
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": null,
+              "recallAtK": null,
+              "precisionAtK": null,
+              "reciprocalRank": null,
+              "ndcgAtK": null,
+              "candidates": 24,
+              "coverage": null
+            }
+          }
+        },
+        {
+          "id": "unknown-6",
+          "answerable": false,
+          "split": "dev",
+          "variants": {
+            "hanlp": {
+              "hitAtK": null,
+              "recallAtK": null,
+              "precisionAtK": null,
+              "reciprocalRank": null,
+              "ndcgAtK": null,
+              "candidates": 17,
+              "coverage": null
+            },
+            "trigram-native-query": {
+              "hitAtK": null,
+              "recallAtK": null,
+              "precisionAtK": null,
+              "reciprocalRank": null,
+              "ndcgAtK": null,
+              "candidates": 40,
+              "coverage": null
+            },
+            "trigram-hanlp-query": {
+              "hitAtK": null,
+              "recallAtK": null,
+              "precisionAtK": null,
+              "reciprocalRank": null,
+              "ndcgAtK": null,
+              "candidates": 17,
+              "coverage": null
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "coldHanlpMs": 4431.914,
+  "scriptHash": "36711fe385dd2b05fa50489496d95f15357ab3ede9ea007eb402f4ad0cb17edb",
+  "codeHashes": {
+    "rag-core": "50a7b2fca055b504cf52707f30dd5fb3c72370a09f3ecf7e0c60516adb55e2cc",
+    "rag-index": "977f253c197f4edef85e6d73773cc9ca4fbf618d9b169e46aa01b4b03cc663ef",
+    "search-tokenizer": "d6ba3891cbb722dea0f5db8d4269a26a39cbea75e35127a47b94d4a590046546"
+  }
+}

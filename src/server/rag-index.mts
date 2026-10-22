@@ -1,8 +1,9 @@
+import { tokenizeTexts, searchQueryTerms, indexToken, tokenizerVersion } from "./search-tokenizer.mjs";
 import { DatabaseSync } from "node:sqlite";
 import { mkdir, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { buildRagDocument, hash, ragTerms, sessionKey, type RagSession, type RagHit, type RagParent } from "./rag-core.mjs";
+import { buildRagDocument, hash, sessionKey, type RagSession, type RagHit, type RagParent } from "./rag-core.mjs";
 import type { SnapshotLike } from "./semantic-search.mjs";
 
 export type RagDependencies = {
@@ -86,13 +87,15 @@ export class RagIndex {
         const snapshot = await deps.loadSnapshot(session.ref, { codexHome: deps.codexHome, claudeHome: deps.claudeHome, includeTools: true, includeToolOutput: true, redact: true });
         signal?.throwIfAborted();
         const doc = buildRagDocument(snapshot, key);
+        const tokenized = await tokenizeTexts(doc.chunks.map((chunk) => chunk.text));
+        signal?.throwIfAborted();
         this.db.exec("BEGIN IMMEDIATE");
         try {
           this.db.prepare("DELETE FROM sessions WHERE key=?").run(key);
           this.db.prepare("INSERT INTO sessions VALUES(?,?,?,?,?,1)").run(key, fingerprint(session), JSON.stringify(session), session.cwd || "", session.engine || "codex");
           doc.parents.forEach((parent, ordinal) => this.db.prepare("INSERT INTO parents VALUES(?,?,?,?)").run(parent.id, key, ordinal, JSON.stringify(parent)));
-          for (const chunk of doc.chunks) {
-            const tokens = ragTerms(chunk.text, false).join(" ");
+          for (const [i, chunk] of doc.chunks.entries()) {
+            const tokens = tokenized[i].map(indexToken).join(" ");
             const row = this.db.prepare("INSERT INTO chunks VALUES(?,?,?,?,?,?)").run(chunk.id, key, chunk.parentId, tokens, chunk.hash, JSON.stringify(chunk));
             if (this.lexicalBackend === "fts5") this.db.prepare("INSERT INTO chunk_fts(rowid,tokens) VALUES(?,?)").run(row.lastInsertRowid, tokens);
           }
@@ -106,13 +109,13 @@ export class RagIndex {
     return { scanned: sessions.length, indexed, updated, failed, pending: sessions.length - indexed, chunks: Number((this.db.prepare("SELECT count(*) AS n FROM chunks c JOIN sessions s ON s.key=c.session_key WHERE s.active=1").get() as Row).n) };
   }
 
-  keyword(query: string, scope: RagScope = {}, limit = 40): RagHit[] {
-    const rawTerms = ragTerms(query);
+  async keyword(query: string, scope: RagScope = {}, limit = 40): Promise<RagHit[]> {
+    const rawTerms = await searchQueryTerms(query);
     // ICU can split 银行卡 into 银行 + 卡. In a longer query the isolated
     // character must not retrieve 卡顿 and supply unrelated debugging evidence.
     // Explicit one-character searches still work when no longer terms exist.
     const meaningful = rawTerms.filter((term) => !/^\p{Script=Han}$/u.test(term));
-    const terms = (meaningful.length ? meaningful : rawTerms).slice(0, 32);
+    const terms = (meaningful.length ? meaningful : rawTerms).slice(0, 32).map(indexToken);
     if (!terms.length) return [];
     const { where, params } = scopeSql(scope);
     if (this.lexicalBackend === "bm25-scan") {
@@ -192,7 +195,7 @@ export async function openRagIndex(file = defaultRagIndexPath()) {
   return new RagIndex(file);
 }
 
-function fingerprint(session: RagSession) { return hash(JSON.stringify(["turn-chunks-v2", session.ref, session.codexHomeKey, session.mtime, session.title, session.cwd, session.filePath, session.fileMtimeMs, session.size])); }
+function fingerprint(session: RagSession) { return hash(JSON.stringify(["turn-chunks-v2", tokenizerVersion, session.ref, session.codexHomeKey, session.mtime, session.title, session.cwd, session.filePath, session.fileMtimeMs, session.size])); }
 function scopeSql(scope: RagScope) {
   let where = "s.active=1";
   const params: string[] = [];

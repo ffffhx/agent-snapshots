@@ -1,0 +1,559 @@
+{
+  "createdAt": "2026-09-14T13:57:57.075Z",
+  "tokenizerVersion": "a1359e36cf2b46db23a68580a829aa8645e6be917c136d3577e7b33ab6c39d01",
+  "cpu": "13th Gen Intel(R) Core(TM) i7-13700H",
+  "runtime": {
+    "node": "24.18.0",
+    "acorn": "8.16.0",
+    "ada": "3.4.4",
+    "amaro": "1.1.9",
+    "ares": "1.34.6",
+    "brotli": "1.2.0",
+    "cldr": "48.0",
+    "icu": "78.2",
+    "llhttp": "9.4.2",
+    "merve": "1.2.2",
+    "modules": "146",
+    "napi": "10",
+    "nbytes": "0.1.4",
+    "ncrypto": "0.0.1",
+    "nghttp2": "1.69.0",
+    "nghttp3": "",
+    "ngtcp2": "",
+    "openssl": "0.0.0",
+    "simdjson": "4.6.4",
+    "simdutf": "7.7.0",
+    "sqlite": "3.53.1",
+    "tz": "2025c",
+    "undici": "7.28.0",
+    "unicode": "17.0",
+    "uv": "1.52.1",
+    "uvwasi": "0.0.23",
+    "v8": "14.8.178.38-electron.0",
+    "zlib": "1.3.2.1-motley",
+    "zstd": "1.6.0",
+    "electron": "42.6.1",
+    "chrome": "148.0.7778.280"
+  },
+  "methodology": "Ordinary keyword search, session-level documents, AND across query terms, identical existing field/snippet scoring and source text. No embedding/generation. trigram-native uses legacy whitespace query terms; trigram-shared-query uses the SAME HanLP query terms as hanlp to isolate indexed word vs substring matching. Trigram terms under 3 characters use escaped SQL LIKE, matching legacy behavior. 5 alternating warm repetitions AFTER explicit common query prewarm; JS query cache bypassed with tokenizeTexts(query=true); model sentence cache remains warm. First query preprocessing and cold HanLP model load measured separately. Index bytes include identical raw text table plus contentless FTS. Real corpus and per-query results remain in ignored output directory. Keyword forms are manually shortened from existing questions, inherit existing agent gold, and are not independent natural query logs.",
+  "datasets": [
+    {
+      "name": "synthetic-history",
+      "corpusHash": "58fe057fb66953428f4d5a8171c4b336e1d71e699dcd3040109cfa7775e2adbe",
+      "questionsHash": "47b833ffccd4cfa088dd3bba0921b69fb817c5e1c112901496637690bac6cea9",
+      "documents": 10,
+      "questions": 50,
+      "rawBytes": 2928,
+      "build": {
+        "trigram": {
+          "elapsedMs": 30.588999999999942,
+          "tokenMs": 0.1915000000008149,
+          "totalBytes": 53248,
+          "indexAddedBytes": 45056
+        },
+        "hanlp": {
+          "elapsedMs": 389.3089,
+          "tokenMs": 357.8086000000003,
+          "totalBytes": 36864,
+          "indexAddedBytes": 28672
+        }
+      },
+      "summary": {
+        "hanlp": {
+          "answerable": 40,
+          "recallAt5": 0.525,
+          "hitAt5": 0.525,
+          "mrrAt5": 0.525,
+          "precisionAt5": 0.10500000000000002,
+          "unknown": 10,
+          "unknownWithHits": 0,
+          "p50Ms": 0.3426999999992404,
+          "p95Ms": 0.6548000000002503,
+          "lookupP95Ms": 0.3386000000009517
+        },
+        "trigram-native": {
+          "answerable": 40,
+          "recallAt5": 0.45,
+          "hitAt5": 0.45,
+          "mrrAt5": 0.45,
+          "precisionAt5": 0.09000000000000002,
+          "unknown": 10,
+          "unknownWithHits": 0,
+          "p50Ms": 0.11349999999947613,
+          "p95Ms": 0.25450000000091677,
+          "lookupP95Ms": 0.23559999999997672
+        },
+        "trigram-shared-query": {
+          "answerable": 40,
+          "recallAt5": 0.525,
+          "hitAt5": 0.525,
+          "mrrAt5": 0.525,
+          "precisionAt5": 0.10500000000000002,
+          "unknown": 10,
+          "unknownWithHits": 0,
+          "p50Ms": 0.3379000000004453,
+          "p95Ms": 0.551499999999578,
+          "lookupP95Ms": 0.2890000000006694
+        }
+      },
+      "firstHanlpQueryP95Ms": 15.79780000000028,
+      "disagreements": [
+        {
+          "id": "electron-0",
+          "category": "natural-question",
+          "answerable": true,
+          "variants": {
+            "hanlp": {
+              "recall": 1,
+              "rr": 1,
+              "candidates": 1
+            },
+            "trigram-native": {
+              "recall": 0,
+              "rr": 0,
+              "candidates": 0
+            },
+            "trigram-shared-query": {
+              "recall": 1,
+              "rr": 1,
+              "candidates": 1
+            }
+          }
+        },
+        {
+          "id": "port-3",
+          "category": "natural-question",
+          "answerable": true,
+          "variants": {
+            "hanlp": {
+              "recall": 1,
+              "rr": 1,
+              "candidates": 1
+            },
+            "trigram-native": {
+              "recall": 0,
+              "rr": 0,
+              "candidates": 0
+            },
+            "trigram-shared-query": {
+              "recall": 1,
+              "rr": 1,
+              "candidates": 1
+            }
+          }
+        },
+        {
+          "id": "cancel-0",
+          "category": "natural-question",
+          "answerable": true,
+          "variants": {
+            "hanlp": {
+              "recall": 1,
+              "rr": 1,
+              "candidates": 1
+            },
+            "trigram-native": {
+              "recall": 0,
+              "rr": 0,
+              "candidates": 0
+            },
+            "trigram-shared-query": {
+              "recall": 1,
+              "rr": 1,
+              "candidates": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "boundary-cases",
+      "corpusHash": "cdeb0cd0cbd168bcfcbcf01c71c8fd0611d919822f469f8b2a065fffc730799d",
+      "questionsHash": "0a6a27c3e9a2b5f1676a3b35760429c15073a1dd1462a96913dfef10d20939d4",
+      "documents": 12,
+      "questions": 20,
+      "rawBytes": 398,
+      "build": {
+        "trigram": {
+          "elapsedMs": 40.54619999999886,
+          "tokenMs": 0.1176000000014028,
+          "totalBytes": 24576,
+          "indexAddedBytes": 16384
+        },
+        "hanlp": {
+          "elapsedMs": 194.47350000000006,
+          "tokenMs": 158.73970000000008,
+          "totalBytes": 24576,
+          "indexAddedBytes": 16384
+        }
+      },
+      "summary": {
+        "hanlp": {
+          "answerable": 18,
+          "recallAt5": 0.75,
+          "hitAt5": 0.7777777777777778,
+          "mrrAt5": 0.7777777777777778,
+          "precisionAt5": 0.1888888888888889,
+          "unknown": 2,
+          "unknownWithHits": 0,
+          "p50Ms": 0.25979999999981374,
+          "p95Ms": 0.5103999999992084,
+          "lookupP95Ms": 0.27819999999883294
+        },
+        "trigram-native": {
+          "answerable": 18,
+          "recallAt5": 1,
+          "hitAt5": 1,
+          "mrrAt5": 1,
+          "precisionAt5": 0.2555555555555556,
+          "unknown": 2,
+          "unknownWithHits": 0,
+          "p50Ms": 0.09599999999954889,
+          "p95Ms": 0.20200000000113505,
+          "lookupP95Ms": 0.19530000000122527
+        },
+        "trigram-shared-query": {
+          "answerable": 18,
+          "recallAt5": 1,
+          "hitAt5": 1,
+          "mrrAt5": 1,
+          "precisionAt5": 0.2555555555555556,
+          "unknown": 2,
+          "unknownWithHits": 0,
+          "p50Ms": 0.2782000000006519,
+          "p95Ms": 0.46090000000003783,
+          "lookupP95Ms": 0.20470000000022992
+        }
+      },
+      "firstHanlpQueryP95Ms": 12.612800000000789,
+      "disagreements": [
+        {
+          "id": "edge-4",
+          "category": "short-word",
+          "answerable": true,
+          "variants": {
+            "hanlp": {
+              "recall": 0.5,
+              "rr": 1,
+              "candidates": 1
+            },
+            "trigram-native": {
+              "recall": 1,
+              "rr": 1,
+              "candidates": 2
+            },
+            "trigram-shared-query": {
+              "recall": 1,
+              "rr": 1,
+              "candidates": 2
+            }
+          }
+        },
+        {
+          "id": "edge-5",
+          "category": "word-boundary",
+          "answerable": true,
+          "variants": {
+            "hanlp": {
+              "recall": 1,
+              "rr": 1,
+              "candidates": 1
+            },
+            "trigram-native": {
+              "recall": 1,
+              "rr": 1,
+              "candidates": 3
+            },
+            "trigram-shared-query": {
+              "recall": 1,
+              "rr": 1,
+              "candidates": 3
+            }
+          }
+        },
+        {
+          "id": "edge-12",
+          "category": "identifier-prefix",
+          "answerable": true,
+          "variants": {
+            "hanlp": {
+              "recall": 0,
+              "rr": 0,
+              "candidates": 0
+            },
+            "trigram-native": {
+              "recall": 1,
+              "rr": 1,
+              "candidates": 2
+            },
+            "trigram-shared-query": {
+              "recall": 1,
+              "rr": 1,
+              "candidates": 2
+            }
+          }
+        },
+        {
+          "id": "edge-13",
+          "category": "identifier-substring",
+          "answerable": true,
+          "variants": {
+            "hanlp": {
+              "recall": 0,
+              "rr": 0,
+              "candidates": 0
+            },
+            "trigram-native": {
+              "recall": 1,
+              "rr": 1,
+              "candidates": 1
+            },
+            "trigram-shared-query": {
+              "recall": 1,
+              "rr": 1,
+              "candidates": 1
+            }
+          }
+        },
+        {
+          "id": "edge-14",
+          "category": "filename-substring",
+          "answerable": true,
+          "variants": {
+            "hanlp": {
+              "recall": 0,
+              "rr": 0,
+              "candidates": 0
+            },
+            "trigram-native": {
+              "recall": 1,
+              "rr": 1,
+              "candidates": 1
+            },
+            "trigram-shared-query": {
+              "recall": 1,
+              "rr": 1,
+              "candidates": 1
+            }
+          }
+        },
+        {
+          "id": "edge-15",
+          "category": "error-substring",
+          "answerable": true,
+          "variants": {
+            "hanlp": {
+              "recall": 0,
+              "rr": 0,
+              "candidates": 0
+            },
+            "trigram-native": {
+              "recall": 1,
+              "rr": 1,
+              "candidates": 1
+            },
+            "trigram-shared-query": {
+              "recall": 1,
+              "rr": 1,
+              "candidates": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "frozen-real-history",
+      "corpusHash": "150a388a1d3ba1c02be5c9a6db0c11506681183e9eadab57762d21409de659fd",
+      "questionsHash": "3463b2501a9b14836a99a2a57de4e72d0881a66a4f87c82240a6670e81587234",
+      "documents": 7,
+      "questions": 30,
+      "rawBytes": 80664,
+      "build": {
+        "trigram": {
+          "elapsedMs": 33.27440000000024,
+          "tokenMs": 0.4798000000009779,
+          "totalBytes": 671744,
+          "indexAddedBytes": 577536
+        },
+        "hanlp": {
+          "elapsedMs": 6932.965800000002,
+          "tokenMs": 6907.945299999998,
+          "totalBytes": 253952,
+          "indexAddedBytes": 159744
+        }
+      },
+      "summary": {
+        "hanlp": {
+          "answerable": 23,
+          "recallAt5": 0.08695652173913043,
+          "hitAt5": 0.08695652173913043,
+          "mrrAt5": 0.08695652173913043,
+          "precisionAt5": 0.017391304347826087,
+          "unknown": 7,
+          "unknownWithHits": 0,
+          "p50Ms": 0.32259999999951106,
+          "p95Ms": 0.6186000000016065,
+          "lookupP95Ms": 0.34020000000236905
+        },
+        "trigram-native": {
+          "answerable": 23,
+          "recallAt5": 0,
+          "hitAt5": 0,
+          "mrrAt5": 0,
+          "precisionAt5": 0,
+          "unknown": 7,
+          "unknownWithHits": 0,
+          "p50Ms": 0.10599999999976717,
+          "p95Ms": 0.23240000000077998,
+          "lookupP95Ms": 0.20929999999862048
+        },
+        "trigram-shared-query": {
+          "answerable": 23,
+          "recallAt5": 0.08695652173913043,
+          "hitAt5": 0.08695652173913043,
+          "mrrAt5": 0.08695652173913043,
+          "precisionAt5": 0.017391304347826087,
+          "unknown": 7,
+          "unknownWithHits": 0,
+          "p50Ms": 0.36040000000139116,
+          "p95Ms": 0.7386000000005879,
+          "lookupP95Ms": 0.41850000000340515
+        }
+      },
+      "firstHanlpQueryP95Ms": 19.77679999999964,
+      "disagreements": [
+        {
+          "id": "profile-offline",
+          "category": "natural-question",
+          "answerable": true,
+          "variants": {
+            "hanlp": {
+              "recall": 1,
+              "rr": 1,
+              "candidates": 1
+            },
+            "trigram-native": {
+              "recall": 0,
+              "rr": 0,
+              "candidates": 0
+            },
+            "trigram-shared-query": {
+              "recall": 1,
+              "rr": 1,
+              "candidates": 1
+            }
+          }
+        },
+        {
+          "id": "profile-template",
+          "category": "natural-question",
+          "answerable": true,
+          "variants": {
+            "hanlp": {
+              "recall": 1,
+              "rr": 1,
+              "candidates": 1
+            },
+            "trigram-native": {
+              "recall": 0,
+              "rr": 0,
+              "candidates": 0
+            },
+            "trigram-shared-query": {
+              "recall": 1,
+              "rr": 1,
+              "candidates": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "real-keyword-forms",
+      "corpusHash": "150a388a1d3ba1c02be5c9a6db0c11506681183e9eadab57762d21409de659fd",
+      "questionsHash": "fbe2cb9b944d6db35eab4e3e3cb9b02632d3555c3e778ba8a9736b7fef7830f3",
+      "documents": 7,
+      "questions": 17,
+      "rawBytes": 80664,
+      "build": {
+        "trigram": {
+          "elapsedMs": 29.101399999999558,
+          "tokenMs": 0.3646000000080676,
+          "totalBytes": 671744,
+          "indexAddedBytes": 577536
+        },
+        "hanlp": {
+          "elapsedMs": 41.55129999999917,
+          "tokenMs": 18.1864000000096,
+          "totalBytes": 253952,
+          "indexAddedBytes": 159744
+        }
+      },
+      "summary": {
+        "hanlp": {
+          "answerable": 17,
+          "recallAt5": 0.8235294117647058,
+          "hitAt5": 0.8235294117647058,
+          "mrrAt5": 0.8235294117647058,
+          "precisionAt5": 0.1647058823529412,
+          "unknown": 0,
+          "unknownWithHits": 0,
+          "p50Ms": 0.44059999999808497,
+          "p95Ms": 0.810300000001007,
+          "lookupP95Ms": 0.6981000000014319
+        },
+        "trigram-native": {
+          "answerable": 17,
+          "recallAt5": 0.8235294117647058,
+          "hitAt5": 0.8235294117647058,
+          "mrrAt5": 0.8235294117647058,
+          "precisionAt5": 0.1647058823529412,
+          "unknown": 0,
+          "unknownWithHits": 0,
+          "p50Ms": 0.23070000000006985,
+          "p95Ms": 0.3977999999988242,
+          "lookupP95Ms": 0.3937000000005355
+        },
+        "trigram-shared-query": {
+          "answerable": 17,
+          "recallAt5": 0.8235294117647058,
+          "hitAt5": 0.8235294117647058,
+          "mrrAt5": 0.8235294117647058,
+          "precisionAt5": 0.1647058823529412,
+          "unknown": 0,
+          "unknownWithHits": 0,
+          "p50Ms": 0.48240000000078,
+          "p95Ms": 1.0277999999998428,
+          "lookupP95Ms": 0.813799999999901
+        }
+      },
+      "firstHanlpQueryP95Ms": 13.374400000000605,
+      "disagreements": [
+        {
+          "id": "clip-timeout",
+          "category": "manual-keyword-form",
+          "answerable": true,
+          "variants": {
+            "hanlp": {
+              "recall": 1,
+              "rr": 1,
+              "candidates": 5
+            },
+            "trigram-native": {
+              "recall": 1,
+              "rr": 1,
+              "candidates": 1
+            },
+            "trigram-shared-query": {
+              "recall": 1,
+              "rr": 1,
+              "candidates": 5
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "hanlpColdMs": 10085.6363,
+  "scriptHash": "dcffb79751a8403d19c5c4e9836fbf8c4789035f693b787826635e1b269719dd"
+}

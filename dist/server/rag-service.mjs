@@ -142,7 +142,7 @@ export function createRagService(deps, overrides = {}) {
                 return result;
             }
             emit({ type: "status", message: "正在检索证据并补齐上下文…" });
-            const keyword = options.mode === "vector" ? [] : index.keyword(options.query, options);
+            const keyword = options.mode === "vector" ? [] : await index.keyword(options.query, options);
             let vector = [];
             if (options.mode !== "keyword" && !semanticError && vectors.ready) {
                 try {

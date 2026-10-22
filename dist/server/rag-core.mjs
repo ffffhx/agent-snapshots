@@ -2,17 +2,7 @@ import { createHash } from "node:crypto";
 import { redactText } from "../core/privacy.js";
 export const hash = (text) => createHash("sha256").update(text).digest("hex");
 export const sessionKey = (s) => hash(`${s.codexHomeKey || ""}\0${s.ref}`);
-// Word segmentation for Chinese plus exact code identifiers. The same tokenizer
-// feeds FTS documents and queries; SQL still receives only bound parameters.
-const segmenter = new Intl.Segmenter("zh", { granularity: "word" });
-const stopWords = new Set("我 我们 你 你们 的 了 吗 呢 啊 是 在 和 与 及 或 把 被 有 一个 这个 那个 怎么 如何 什么 为什么 之前 以前 上次 最后 请 帮 帮我 一下 问题 the a an is are was were how what why did do does i we it to of in for and please".split(" "));
-export function ragTerms(text, unique = true) {
-    const clean = text.normalize("NFKC").toLowerCase();
-    const words = [...segmenter.segment(clean)].filter((s) => s.isWordLike).map((s) => s.segment);
-    const identifiers = clean.match(/[a-z_][a-z0-9_./:-]{2,}/g) || [];
-    const terms = [...identifiers, ...words].filter((w) => !stopWords.has(w) && /[\p{L}\p{N}]/u.test(w));
-    return unique ? [...new Set(terms)] : terms;
-}
+export { searchQueryTerms as ragTerms } from "./search-tokenizer.mjs";
 export function buildRagDocument(snapshot, key) {
     const parents = [];
     const chunks = [];

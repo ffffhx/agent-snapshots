@@ -8,6 +8,8 @@ import { discoverSessionSummaryCandidates } from "../sources/index.mjs";
 import { discoverCodexHomes } from "../sources/codex-homes.mjs";
 import { syncSearchFile, removeSearchFile, searchFileState, markSearchHomes } from "./search-index.mjs";
 
+import { tokenizerVersion } from "./search-tokenizer.mjs";
+
 const options = { ...workerData, claudeHome: workerData.claudeHome || path.join(os.homedir(), ".claude") };
 const debounceMs = workerData.debounceMs ?? 2000;
 const maxWaitMs = workerData.maxWaitMs ?? 10000;
@@ -96,7 +98,7 @@ async function reconcile() {
   const db = await searchFileState();
   const states = new Map(db.prepare("SELECT * FROM search_files_v1").all().map((row) => [row.path, row]));
   for (const candidate of candidates) {
-    const fingerprint = JSON.stringify([candidate.mtimeMs, candidate.size, candidate.codexHomeKey, candidate.codexHomePrimary]);
+    const fingerprint = JSON.stringify([candidate.mtimeMs, candidate.size, candidate.codexHomeKey, candidate.codexHomePrimary, tokenizerVersion]);
     const old = states.get(candidate.filePath);
     if (!old || old.fingerprint !== fingerprint || !JSON.parse(old.keys_json).every((key) => db.prepare("SELECT 1 FROM docs WHERE cache_key = ?").get(key))) enqueue(candidate.filePath);
   }

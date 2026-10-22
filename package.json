@@ -45,6 +45,10 @@
   },
   "scripts": {
     "build": "pnpm build:dist && pnpm build:site",
+    "setup:hanlp": "node scripts/setup-hanlp.mjs",
+    "test:hanlp": "pnpm build:dist && node --test scripts/test-hanlp.mjs",
+    "eval:tokenizers": "pnpm build:dist && node scripts/run-tokenizer-comparison.mjs",
+    "eval:rag-tokenizers": "pnpm build:dist && node scripts/run-rag-tokenizer-comparison.mjs",
     "build:dist": "tsc -p tsconfig.build.json && node scripts/finalize-dist.mjs",
     "build:site": "node scripts/build-site.mjs",
     "dev": "pnpm build:dist && node dist/cli/agent-snapshot.mjs serve --port 4321",
@@ -107,6 +111,7 @@
       "electron/**/*",
       "dist/**/*",
       "build/icon.png",
+      "build/icon.ico",
       "package.json"
     ],
     "mac": {
@@ -121,7 +126,7 @@
       "target": [
         "nsis"
       ],
-      "icon": "build/icon.png"
+      "icon": "build/icon.ico"
     },
     "linux": {
       "target": [

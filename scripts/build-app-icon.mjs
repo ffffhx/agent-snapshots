@@ -1,8 +1,7 @@
 #!/usr/bin/env node
-// Generate the desktop app icons (build/icon.png + build/icon.icns) from the
-// Agent Snapshots logo SVG. Uses macOS-native tooling (qlmanage/sips/iconutil)
-// to rasterize; on other platforms it produces the PNG only when a rasterizer
-// is available and skips the .icns step.
+// Generate the desktop app icons (PNG, Windows ICO, and macOS ICNS) from the
+// Agent Snapshots logo SVG. Electron renders PNG and ICO on every platform;
+// macOS additionally uses sips/iconutil to produce ICNS.
 
 import { execFile } from "node:child_process";
 import { mkdir, writeFile, rm, access } from "node:fs/promises";
@@ -121,11 +120,17 @@ async function main() {
 
   const pngPath = path.join(BUILD_DIR, "icon.png");
   await rasterizeWithElectron(svgPath, pngPath, 1024);
+  const require = createRequire(import.meta.url);
+  const iconEnv = { ...process.env };
+  delete iconEnv.ELECTRON_RUN_AS_NODE;
+  await execFileAsync(require("electron"), [
+    path.join(__dirname, "render-windows-icon.mjs"), pngPath, path.join(BUILD_DIR, "icon.ico"),
+  ], { env: iconEnv });
   if (process.platform === "darwin") {
     await buildIcns(pngPath);
-    console.log("Generated build/icon.png and build/icon.icns");
+    console.log("Generated build/icon.png, build/icon.ico and build/icon.icns");
   } else {
-    console.log("Generated build/icon.png (skipping .icns — needs macOS sips/iconutil)");
+    console.log("Generated build/icon.png and build/icon.ico (skipping .icns — needs macOS sips/iconutil)");
   }
   await rm(tmpDir, { recursive: true, force: true });
 }

@@ -1,4 +1,6 @@
 node_modules/
+.venv-hanlp/
+__pycache__/
 .DS_Store
 .env
 .env.*

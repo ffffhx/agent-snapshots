@@ -258,11 +258,11 @@ function trimSearchSegment(text) {
     }
     return clean.length > MAX_SEARCH_SEGMENT_CHARS ? clean.slice(0, MAX_SEARCH_SEGMENT_CHARS) : clean;
 }
-export function matchSearchDocument(document, rawQuery, normalizedQuery, terms) {
+export function matchSearchDocument(document, rawQuery, normalizedQuery, terms, matchedByIndex = false) {
     const summary = document.summary;
     const fieldText = document.fields.join("\n");
     const searchableText = foldSearchText([fieldText, ...document.segments.map((segment) => segment.text)].join("\n"));
-    if (!searchableText || !searchTextMatches(searchableText, normalizedQuery, terms)) {
+    if (!searchableText || (!matchedByIndex && !searchTextMatches(searchableText, normalizedQuery, terms))) {
         return null;
     }
     const fieldScore = searchScore(fieldText, normalizedQuery, terms) * 2.4;

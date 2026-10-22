@@ -55,6 +55,9 @@ const MAX_SESSION_REF_LENGTH = 4096;
 const SETTINGS_VERSION = 1;
 const isMac = process.platform === "darwin";
 const isWindows = process.platform === "win32";
+const APP_USER_MODEL_ID = process.defaultApp
+  ? "com.ffffhx.agent-snapshots.dev"
+  : "com.ffffhx.agent-snapshots";
 const supportsOpenAtLogin = isMac || isWindows;
 const supportsNotificationSilent = isMac || isWindows;
 const GLOBAL_SHORTCUT_SETTING_KEY = "globalShortcut";
@@ -97,6 +100,8 @@ const DEFAULT_SETTINGS = {
 // The app logo, so the dev-mode window/dock shows our mark instead of the
 // default Electron atom (the packaged .app already embeds build/icon.icns).
 const APP_ICON = nativeImage.createFromPath(path.join(APP_ROOT, "build", "icon.png"));
+// Pass the ICO path directly so Windows loads native small and large icons.
+const WINDOW_ICON = isWindows ? path.join(APP_ROOT, "build", "icon.ico") : APP_ICON;
 const require = createRequire(import.meta.url);
 
 // Development launches otherwise inherit Electron's generic app name and
@@ -769,12 +774,13 @@ function centerWindowOnCursor(window) {
 // The full reading view, opened in a larger window from the launcher.
 function viewerWindowOptions() {
   return {
+    show: false,
     width: 1360,
     height: 900,
     minWidth: 960,
     minHeight: 600,
     backgroundColor: "#231d12",
-    icon: APP_ICON,
+    icon: WINDOW_ICON,
     title: "Agent Snapshots",
     ...(isMac ? { titleBarStyle: "hiddenInset" } : {}),
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
@@ -785,14 +791,14 @@ function launcherWindowOptions() {
   const bounds = sanitizeBounds(setting("launcherBounds"));
   return {
     ...(bounds || { width: 800, height: 560, center: true }),
-    show: !START_HIDDEN,
+    show: false,
     minWidth: 560,
     minHeight: 380,
     resizable: true,
     ...(isMac
       ? { backgroundColor: "#00000000", titleBarStyle: "hiddenInset", vibrancy: "under-window", visualEffectState: "followWindow" }
       : { backgroundColor: "#1c150e" }),
-    icon: APP_ICON,
+    icon: WINDOW_ICON,
     title: "Agent Snapshots",
     webPreferences: {
       contextIsolation: true,
@@ -804,6 +810,19 @@ function launcherWindowOptions() {
 }
 
 function configureWindowNavigation(window) {
+  if (isWindows) {
+    // Explorer's taskbar group uses relaunch metadata independently of WM_SETICON.
+    // In development the executable is electron.exe, so specify our identity too.
+    window.setAppDetails({
+      appId: APP_USER_MODEL_ID,
+      appIconPath: WINDOW_ICON,
+      appIconIndex: 0,
+      relaunchCommand: process.defaultApp
+        ? `"${process.execPath}" "${path.join(__dirname, "main.mjs")}"`
+        : `"${process.execPath}"`,
+      relaunchDisplayName: "Agent Snapshots",
+    });
+  }
   window.webContents.setWindowOpenHandler(({ url }) => {
     if (isAppUrl(url)) {
       openViewerUrl(url);
@@ -830,6 +849,7 @@ function createLauncherWindow() {
 
   mainWindow.loadURL(startUrl + "launcher");
   configureWindowNavigation(mainWindow);
+  if (!START_HIDDEN) mainWindow.show();
 
   mainWindow.on("close", (event) => {
     saveLauncherBoundsNow();
@@ -1816,7 +1836,7 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   if (process.platform === "win32") {
-    app.setAppUserModelId("com.ffffhx.agent-snapshots");
+    app.setAppUserModelId(APP_USER_MODEL_ID);
   }
   registerDeepLinkProtocol();
   const initialDeepLink = findDeepLinkArg(process.argv);

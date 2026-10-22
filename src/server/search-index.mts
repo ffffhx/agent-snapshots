@@ -8,11 +8,8 @@
 // summary) in SQLite, keyed by the session mtime, so queries reuse the exact
 // same `matchSearchDocument` scoring/snippet logic without touching the disk.
 //
-// Candidate selection is FTS5 with the `trigram` tokenizer over a folded text
-// column: substring MATCH works for any language (including CJK) once a term
-// is >= 3 characters, backed by an inverted index instead of a full-table
-// scan. Terms shorter than 3 characters (common for Chinese) fall back to the
-// indexed-`LIKE` scan over the same column, so short queries keep working.
+// Candidate selection uses HanLP terms and code identifiers in FTS5.
+// Tokenization runs before short write transactions; no session text leaves the machine.
 
 import path from "node:path";
 import os from "node:os";
@@ -21,11 +18,12 @@ import {
   readSearchDocument,
   matchSearchDocument,
   foldSearchText,
-  searchTerms,
   extractSessionTokenUsage,
 } from "../sources/local-history.mjs";
 import { listSessions } from "../sources/index.mjs";
 import { codexHomeKeys, discoverCodexHomes } from "../sources/codex-homes.mjs";
+
+import { tokenizeTexts, searchQueryTerms, indexToken, tokenizerVersion } from "./search-tokenizer.mjs";
 
 const SEARCH_DOC_LIMIT = 24;
 
@@ -80,6 +78,13 @@ async function getDb() {
     // so a transient FTS/locking failure can never leave later syncs querying
     // a table that does not exist.
     db.exec("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)");
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      const columns = new Set(db.prepare("PRAGMA table_info(docs)").all().map((row) => row.name));
+      if (!columns.has("lexical")) db.exec("ALTER TABLE docs ADD COLUMN lexical TEXT NOT NULL DEFAULT ''");
+      if (!columns.has("lexical_version")) db.exec("ALTER TABLE docs ADD COLUMN lexical_version TEXT NOT NULL DEFAULT ''");
+      db.exec("COMMIT");
+    } catch (error) { db.exec("ROLLBACK"); db.close(); throw error; }
     ftsEnabledByPath.set(dbFile, setupFtsIndex(db));
     return db;
   })();
@@ -111,51 +116,40 @@ export async function closeSearchIndexDatabases() {
   }
 }
 
-// External-content FTS5 table mirroring docs.fold, kept in sync by triggers so
-// every code path that writes docs (upsert, delete sweep) is covered. Returns
-// false when the bundled SQLite lacks FTS5/trigram, in which case searches use
-// the LIKE fallback only.
+// Triggers cover inserts, updates and deletion. Old substring indexes are
+// replaced transactionally; existing documents are retokenized by background sync.
 function setupFtsIndex(db) {
   try {
-    const hadFts = Boolean(db.prepare("SELECT 1 AS x FROM sqlite_master WHERE type = 'table' AND name = 'docs_fts'").get());
-    db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS docs_fts USING fts5(
-      fold,
-      content='docs',
-      content_rowid='rowid',
-      tokenize='trigram'
-    )`);
-    db.exec(`CREATE TRIGGER IF NOT EXISTS docs_fts_ai AFTER INSERT ON docs BEGIN
-      INSERT INTO docs_fts(rowid, fold) VALUES (new.rowid, new.fold);
-    END`);
-    db.exec(`CREATE TRIGGER IF NOT EXISTS docs_fts_ad AFTER DELETE ON docs BEGIN
-      INSERT INTO docs_fts(docs_fts, rowid, fold) VALUES ('delete', old.rowid, old.fold);
-    END`);
-    db.exec(`CREATE TRIGGER IF NOT EXISTS docs_fts_au AFTER UPDATE OF fold ON docs BEGIN
-      INSERT INTO docs_fts(docs_fts, rowid, fold) VALUES ('delete', old.rowid, old.fold);
-      INSERT INTO docs_fts(rowid, fold) VALUES (new.rowid, new.fold);
-    END`);
-    // Backfill for databases created before the FTS table. COUNT(*) on an
-    // external-content table proxies to `docs` and can't detect an empty
-    // index, so a one-time meta flag marks the rebuild instead.
-    const ready = db.prepare("SELECT value FROM meta WHERE key = 'fts_ready'").get();
-    if (!hadFts || !ready || ready.value !== "1") {
-      db.exec("INSERT INTO docs_fts(docs_fts) VALUES('rebuild')");
-      db.prepare("INSERT INTO meta (key, value) VALUES ('fts_ready', '1') ON CONFLICT(key) DO UPDATE SET value = excluded.value").run();
+    db.exec("BEGIN IMMEDIATE");
+    const old = db.prepare("SELECT sql FROM sqlite_master WHERE name='docs_fts'").get();
+    if (old && !old.sql.includes("lexical")) {
+      db.exec("DROP TRIGGER IF EXISTS docs_fts_ai; DROP TRIGGER IF EXISTS docs_fts_ad; DROP TRIGGER IF EXISTS docs_fts_au; DROP TABLE docs_fts");
     }
+    db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS docs_fts USING fts5(lexical, content='docs', content_rowid='rowid', tokenize='ascii');
+      CREATE TRIGGER IF NOT EXISTS docs_fts_ai AFTER INSERT ON docs BEGIN
+        INSERT INTO docs_fts(rowid,lexical) VALUES(new.rowid,new.lexical);
+      END;
+      CREATE TRIGGER IF NOT EXISTS docs_fts_ad AFTER DELETE ON docs BEGIN
+        INSERT INTO docs_fts(docs_fts,rowid,lexical) VALUES('delete',old.rowid,old.lexical);
+      END;
+      CREATE TRIGGER IF NOT EXISTS docs_fts_au AFTER UPDATE OF lexical ON docs BEGIN
+        INSERT INTO docs_fts(docs_fts,rowid,lexical) VALUES('delete',old.rowid,old.lexical);
+        INSERT INTO docs_fts(rowid,lexical) VALUES(new.rowid,new.lexical);
+      END;`);
+    const ready = db.prepare("SELECT value FROM meta WHERE key='hanlp_fts_ready'").get();
+    if (!old || !old.sql.includes("lexical") || !ready || ready.value !== '1') {
+      db.exec("INSERT INTO docs_fts(docs_fts) VALUES('rebuild')");
+      db.prepare("INSERT OR REPLACE INTO meta VALUES('hanlp_fts_ready','1')").run();
+    }
+    db.exec("COMMIT");
     return true;
-  } catch {
+  } catch (error) {
+    db.exec("ROLLBACK");
+    if (!String(error.message).includes("no such module: fts5")) throw error;
+    db.exec("DROP TRIGGER IF EXISTS docs_fts_ai; DROP TRIGGER IF EXISTS docs_fts_ad; DROP TRIGGER IF EXISTS docs_fts_au");
+    db.prepare("DELETE FROM meta WHERE key='hanlp_fts_ready'").run();
     return false;
   }
-}
-
-// FTS5 string syntax: double quotes delimit a phrase; trigram makes a quoted
-// phrase of >= 3 characters behave as an indexed substring match.
-function ftsPhrase(term) {
-  return '"' + String(term).replace(/"/g, '""') + '"';
-}
-
-function termLength(term) {
-  return Array.from(String(term)).length;
 }
 
 function engineKey(engine) {
@@ -195,7 +189,7 @@ export async function searchFileState() {
 
 export async function syncSearchFile(candidate, options) {
   const db = await searchFileState();
-  const fingerprint = JSON.stringify([candidate.mtimeMs, candidate.size, candidate.codexHomeKey, candidate.codexHomePrimary]);
+  const fingerprint = JSON.stringify([candidate.mtimeMs, candidate.size, candidate.codexHomeKey, candidate.codexHomePrimary, tokenizerVersion]);
   const previous = db.prepare("SELECT * FROM search_files_v1 WHERE path = ?").get(candidate.filePath);
   if (previous?.fingerprint === fingerprint && JSON.parse(previous.keys_json).every((key) =>
     db.prepare("SELECT 1 FROM docs WHERE cache_key = ?").get(key))) return false;
@@ -274,16 +268,16 @@ export async function syncSearchIndex({
   const db = await getDb();
   const homes = { codexHome, claudeHome };
   const sessions = suppliedSessions ?? await listSessions({ ...homes, limit: scanLimit, cwd, includeArchived, source, completeOnly });
-  const getStmt = db.prepare("SELECT mtime FROM docs WHERE cache_key = ?");
+  const getStmt = db.prepare("SELECT mtime, lexical_version FROM docs WHERE cache_key = ?");
   const upsert = db.prepare(`INSERT INTO docs
-    (cache_key, ref, engine, source, home_key, title, cwd, display_cwd, mtime, fold, fields_json, segments_json, summary_json, tokens_total, tokens_input, tokens_output, model, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (cache_key, ref, engine, source, home_key, title, cwd, display_cwd, mtime, fold, fields_json, segments_json, summary_json, tokens_total, tokens_input, tokens_output, model, updated_at, lexical, lexical_version)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(cache_key) DO UPDATE SET
       ref=excluded.ref, engine=excluded.engine, source=excluded.source, home_key=excluded.home_key, title=excluded.title, cwd=excluded.cwd,
       display_cwd=excluded.display_cwd, mtime=excluded.mtime, fold=excluded.fold,
       fields_json=excluded.fields_json, segments_json=excluded.segments_json, summary_json=excluded.summary_json,
       tokens_total=excluded.tokens_total, tokens_input=excluded.tokens_input, tokens_output=excluded.tokens_output,
-      model=excluded.model, updated_at=excluded.updated_at`);
+      model=excluded.model, updated_at=excluded.updated_at, lexical=excluded.lexical, lexical_version=excluded.lexical_version`);
 
   let indexed = 0;
   let updated = 0;
@@ -318,7 +312,7 @@ export async function syncSearchIndex({
     const cacheKey = docKeyOf(summary);
     const existing = getStmt.get(cacheKey);
     const mtime = summary.mtime || "";
-    if (!force && existing && existing.mtime === mtime) {
+    if (!force && existing && existing.mtime === mtime && existing.lexical_version === tokenizerVersion) {
       indexed += 1;
       continue;
     }
@@ -329,6 +323,7 @@ export async function syncSearchIndex({
     try {
       const doc = await readSearchDocument(summary, { ...homes, includeTools, includeToolOutput });
       const fold = foldSearchText([doc.fields.join("\n"), ...doc.segments.map((segment) => segment.text)].join("\n"));
+      const [lexical] = await tokenizeTexts([[doc.fields.join("\n"), ...doc.segments.map((segment) => segment.text)].join("\n")]);
       let tokens = null;
       if (withTokens) {
         tokens = await extractSessionTokenUsage(summary);
@@ -352,6 +347,8 @@ export async function syncSearchIndex({
         tokens?.output || 0,
         tokens?.model || "",
         Date.now(),
+        lexical.map(indexToken).join(" "),
+        tokenizerVersion,
       ]);
       if (writeBuffer.length >= 50) {
         flushWrites();
@@ -399,60 +396,28 @@ export async function searchIndexed({ query, source = "all", cwd = "", limit = S
   const db = await getDb();
   const cleanQuery = String(query || "").trim();
   const normalizedQuery = foldSearchText(cleanQuery);
-  const terms = searchTerms(cleanQuery);
+  const terms = (await searchQueryTerms(cleanQuery)).slice(0, 32);
   const total = await indexRowCount();
+  const ready = Number(db.prepare("SELECT count(*) AS n FROM docs WHERE lexical_version=?").get(tokenizerVersion).n);
   if (!normalizedQuery || !terms.length) {
-    return { query: cleanQuery, terms: [], scanned: total, matched: 0, failed: 0, results: [], indexed: total, viaIndex: true };
+    return { query: cleanQuery, terms: [], scanned: ready, matched: 0, failed: 0, results: [], indexed: ready, indexingPending: total - ready, viaIndex: true };
   }
 
-  // Trigram MATCH needs >= 3 characters per phrase; shorter terms (common in
-  // Chinese) are constrained with LIKE on top of the FTS candidates, or the
-  // whole query falls back to the LIKE scan when no term is long enough.
-  const longTerms = ftsEnabledByPath.get(path.resolve(indexPath())) ? terms.filter((term) => termLength(term) >= 3) : [];
-  const shortTerms = terms.filter((term) => !longTerms.includes(term));
-
-  const params = [];
-  let sql;
-  if (longTerms.length) {
-    let where = "docs_fts MATCH ?";
-    params.push(longTerms.map(ftsPhrase).join(" AND "));
-    for (const term of shortTerms) {
-      where += " AND d.fold LIKE ? ESCAPE '\\'";
-      params.push("%" + likeEscape(term) + "%");
-    }
-    if (source && source !== "all") {
-      where += " AND d.source = ?";
-      params.push(engineKey(source));
-    }
-    if (cwd) {
-      where += " AND (d.cwd = ? OR d.display_cwd = ?)";
-      params.push(cwd, cwd);
-    }
-    sql = `SELECT d.fields_json, d.segments_json, d.summary_json FROM docs_fts JOIN docs d ON d.rowid = docs_fts.rowid WHERE ${where}`;
+  const params = [tokenizerVersion];
+  let where = "d.lexical_version=?";
+  if (source && source !== "all") { where += " AND d.source=?"; params.push(engineKey(source)); }
+  if (cwd) { where += " AND (d.cwd=? OR d.display_cwd=?)"; params.push(cwd, cwd); }
+  let rows;
+  if (ftsEnabledByPath.get(path.resolve(indexPath()))) {
+    where += " AND docs_fts MATCH ?";
+    params.push(terms.map(indexToken).join(" AND "));
+    rows = db.prepare(`SELECT d.fields_json,d.segments_json,d.summary_json FROM docs_fts JOIN docs d ON d.rowid=docs_fts.rowid WHERE ${where}`).all(...params);
   } else {
-    let where = "1=1";
-    if (source && source !== "all") {
-      where += " AND source = ?";
-      params.push(engineKey(source));
-    }
-    if (cwd) {
-      where += " AND (cwd = ? OR display_cwd = ?)";
-      params.push(cwd, cwd);
-    }
-    const conditions = [];
-    conditions.push("fold LIKE ? ESCAPE '\\'");
-    params.push("%" + likeEscape(normalizedQuery) + "%");
-    if (terms.length) {
-      conditions.push("(" + terms.map(() => "fold LIKE ? ESCAPE '\\'").join(" AND ") + ")");
-      for (const term of terms) {
-        params.push("%" + likeEscape(term) + "%");
-      }
-    }
-    where += " AND (" + conditions.join(" OR ") + ")";
-    sql = `SELECT fields_json, segments_json, summary_json FROM docs WHERE ${where}`;
+    // SQLite builds without FTS use exactly the same token boundaries.
+    rows = db.prepare(`SELECT d.lexical,d.fields_json,d.segments_json,d.summary_json FROM docs d WHERE ${where}`).all(...params)
+      .filter((row) => { const tokens = new Set(row.lexical.split(" ")); return terms.every((term) => tokens.has(indexToken(term))); });
   }
 
-  const rows = db.prepare(sql).all(...params);
   const results = [];
   for (const row of rows) {
     try {
@@ -461,7 +426,7 @@ export async function searchIndexed({ query, source = "all", cwd = "", limit = S
         fields: JSON.parse(row.fields_json),
         segments: JSON.parse(row.segments_json),
       };
-      const match = matchSearchDocument(document, cleanQuery, normalizedQuery, terms);
+      const match = matchSearchDocument(document, cleanQuery, normalizedQuery, terms, true);
       if (match) {
         results.push(match);
       }
@@ -479,11 +444,12 @@ export async function searchIndexed({ query, source = "all", cwd = "", limit = S
   return {
     query: cleanQuery,
     terms,
-    scanned: total,
+    scanned: ready,
     matched: results.length,
     failed: 0,
     results: results.slice(0, limit),
-    indexed: total,
+    indexed: ready,
+    indexingPending: total - ready,
     viaIndex: true,
   };
 }

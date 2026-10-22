@@ -1,0 +1,398 @@
+{
+  "dataset": "Authored synthetic rag-corpus; not production accuracy",
+  "tokenizerVersion": "a1359e36cf2b46db23a68580a829aa8645e6be917c136d3577e7b33ab6c39d01",
+  "runtime": {
+    "node": "24.18.0",
+    "acorn": "8.16.0",
+    "ada": "3.4.4",
+    "amaro": "1.1.9",
+    "ares": "1.34.6",
+    "brotli": "1.2.0",
+    "cldr": "48.0",
+    "icu": "78.2",
+    "llhttp": "9.4.2",
+    "merve": "1.2.2",
+    "modules": "146",
+    "napi": "10",
+    "nbytes": "0.1.4",
+    "ncrypto": "0.0.1",
+    "nghttp2": "1.69.0",
+    "nghttp3": "",
+    "ngtcp2": "",
+    "openssl": "0.0.0",
+    "simdjson": "4.6.4",
+    "simdutf": "7.7.0",
+    "sqlite": "3.53.1",
+    "tz": "2025c",
+    "undici": "7.28.0",
+    "unicode": "17.0",
+    "uv": "1.52.1",
+    "uvwasi": "0.0.23",
+    "v8": "14.8.178.38-electron.0",
+    "zlib": "1.3.2.1-motley",
+    "zstd": "1.6.0",
+    "electron": "42.6.1",
+    "chrome": "148.0.7778.280"
+  },
+  "backend": "fts5",
+  "buildMs": 8003.986,
+  "answerable": 40,
+  "recallAt5": 0.975,
+  "mrrAt5": 0.9333333333333332,
+  "unknownQueries": 10,
+  "unknownWithCandidates": 0,
+  "queryP50Ms": 21.89470000000074,
+  "queryP95Ms": 24.660899999998946,
+  "results": [
+    {
+      "id": "electron-0",
+      "answerable": true,
+      "rank": 1,
+      "candidates": 12,
+      "ms": 19.25879999999961
+    },
+    {
+      "id": "electron-1",
+      "answerable": true,
+      "rank": 1,
+      "candidates": 4,
+      "ms": 22.269600000000537
+    },
+    {
+      "id": "electron-2",
+      "answerable": true,
+      "rank": 1,
+      "candidates": 1,
+      "ms": 0.6971999999996115
+    },
+    {
+      "id": "electron-3",
+      "answerable": true,
+      "rank": 1,
+      "candidates": 2,
+      "ms": 22.192200000000412
+    },
+    {
+      "id": "index-0",
+      "answerable": true,
+      "rank": 1,
+      "candidates": 4,
+      "ms": 22.620299999999588
+    },
+    {
+      "id": "index-1",
+      "answerable": true,
+      "rank": 2,
+      "candidates": 3,
+      "ms": 20.675599999999577
+    },
+    {
+      "id": "index-2",
+      "answerable": true,
+      "rank": 1,
+      "candidates": 1,
+      "ms": 1.7188999999998487
+    },
+    {
+      "id": "index-3",
+      "answerable": true,
+      "rank": 1,
+      "candidates": 3,
+      "ms": 24.0625
+    },
+    {
+      "id": "csrf-0",
+      "answerable": true,
+      "rank": 1,
+      "candidates": 2,
+      "ms": 0.8401000000012573
+    },
+    {
+      "id": "csrf-1",
+      "answerable": true,
+      "rank": 2,
+      "candidates": 5,
+      "ms": 23.819400000000314
+    },
+    {
+      "id": "csrf-2",
+      "answerable": true,
+      "rank": 1,
+      "candidates": 3,
+      "ms": 0.5751000000000204
+    },
+    {
+      "id": "csrf-3",
+      "answerable": true,
+      "rank": 1,
+      "candidates": 5,
+      "ms": 22.433199999999488
+    },
+    {
+      "id": "recovery-0",
+      "answerable": true,
+      "rank": 1,
+      "candidates": 4,
+      "ms": 22.504300000000512
+    },
+    {
+      "id": "recovery-1",
+      "answerable": true,
+      "rank": 1,
+      "candidates": 1,
+      "ms": 25.06670000000122
+    },
+    {
+      "id": "recovery-2",
+      "answerable": true,
+      "rank": 1,
+      "candidates": 4,
+      "ms": 21.77050000000054
+    },
+    {
+      "id": "recovery-3",
+      "answerable": true,
+      "rank": 1,
+      "candidates": 3,
+      "ms": 22.95349999999962
+    },
+    {
+      "id": "watch-0",
+      "answerable": true,
+      "rank": 1,
+      "candidates": 2,
+      "ms": 0.9025999999994383
+    },
+    {
+      "id": "watch-1",
+      "answerable": true,
+      "rank": 1,
+      "candidates": 2,
+      "ms": 21.444799999999304
+    },
+    {
+      "id": "watch-2",
+      "answerable": true,
+      "rank": 1,
+      "candidates": 4,
+      "ms": 21.275299999999334
+    },
+    {
+      "id": "watch-3",
+      "answerable": true,
+      "rank": 1,
+      "candidates": 4,
+      "ms": 23.523799999999028
+    },
+    {
+      "id": "vector-0",
+      "answerable": true,
+      "rank": 1,
+      "candidates": 4,
+      "ms": 0.5625999999992928
+    },
+    {
+      "id": "vector-1",
+      "answerable": true,
+      "rank": 3,
+      "candidates": 6,
+      "ms": 22.668299999999363
+    },
+    {
+      "id": "vector-2",
+      "answerable": true,
+      "rank": 1,
+      "candidates": 6,
+      "ms": 21.89470000000074
+    },
+    {
+      "id": "vector-3",
+      "answerable": true,
+      "rank": 1,
+      "candidates": 4,
+      "ms": 28.00300000000061
+    },
+    {
+      "id": "port-0",
+      "answerable": true,
+      "rank": 1,
+      "candidates": 1,
+      "ms": 0.7672000000002299
+    },
+    {
+      "id": "port-1",
+      "answerable": true,
+      "rank": 1,
+      "candidates": 4,
+      "ms": 22.69129999999859
+    },
+    {
+      "id": "port-2",
+      "answerable": true,
+      "rank": 1,
+      "candidates": 13,
+      "ms": 20.421299999999974
+    },
+    {
+      "id": "port-3",
+      "answerable": true,
+      "rank": 1,
+      "candidates": 12,
+      "ms": 22.746800000000803
+    },
+    {
+      "id": "xss-0",
+      "answerable": true,
+      "rank": 1,
+      "candidates": 1,
+      "ms": 0.5578000000004977
+    },
+    {
+      "id": "xss-1",
+      "answerable": true,
+      "rank": 1,
+      "candidates": 2,
+      "ms": 22.386500000000524
+    },
+    {
+      "id": "xss-2",
+      "answerable": true,
+      "rank": 1,
+      "candidates": 2,
+      "ms": 20.90430000000015
+    },
+    {
+      "id": "xss-3",
+      "answerable": true,
+      "rank": 1,
+      "candidates": 1,
+      "ms": 23.35620000000017
+    },
+    {
+      "id": "cancel-0",
+      "answerable": true,
+      "rank": 1,
+      "candidates": 3,
+      "ms": 23.14350000000013
+    },
+    {
+      "id": "cancel-1",
+      "answerable": true,
+      "rank": null,
+      "candidates": 0,
+      "ms": 21.225000000000364
+    },
+    {
+      "id": "cancel-2",
+      "answerable": true,
+      "rank": 1,
+      "candidates": 4,
+      "ms": 20.738900000000285
+    },
+    {
+      "id": "cancel-3",
+      "answerable": true,
+      "rank": 1,
+      "candidates": 1,
+      "ms": 24.660899999998946
+    },
+    {
+      "id": "duplicate-0",
+      "answerable": true,
+      "rank": 1,
+      "candidates": 3,
+      "ms": 0.669000000001688
+    },
+    {
+      "id": "duplicate-1",
+      "answerable": true,
+      "rank": 1,
+      "candidates": 4,
+      "ms": 24.559400000000096
+    },
+    {
+      "id": "duplicate-2",
+      "answerable": true,
+      "rank": 1,
+      "candidates": 1,
+      "ms": 0.7282999999988533
+    },
+    {
+      "id": "duplicate-3",
+      "answerable": true,
+      "rank": 1,
+      "candidates": 4,
+      "ms": 21.36160000000018
+    },
+    {
+      "id": "unknown-0",
+      "answerable": false,
+      "rank": null,
+      "candidates": 0,
+      "ms": 23.6270999999997
+    },
+    {
+      "id": "unknown-1",
+      "answerable": false,
+      "rank": null,
+      "candidates": 0,
+      "ms": 22.081099999999424
+    },
+    {
+      "id": "unknown-2",
+      "answerable": false,
+      "rank": null,
+      "candidates": 0,
+      "ms": 22.677200000000084
+    },
+    {
+      "id": "unknown-3",
+      "answerable": false,
+      "rank": null,
+      "candidates": 0,
+      "ms": 23.190499999998792
+    },
+    {
+      "id": "unknown-4",
+      "answerable": false,
+      "rank": null,
+      "candidates": 0,
+      "ms": 20.410399999998845
+    },
+    {
+      "id": "unknown-5",
+      "answerable": false,
+      "rank": null,
+      "candidates": 0,
+      "ms": 23.39389999999912
+    },
+    {
+      "id": "unknown-6",
+      "answerable": false,
+      "rank": null,
+      "candidates": 0,
+      "ms": 21.054799999999886
+    },
+    {
+      "id": "unknown-7",
+      "answerable": false,
+      "rank": null,
+      "candidates": 0,
+      "ms": 20.437699999998586
+    },
+    {
+      "id": "unknown-8",
+      "answerable": false,
+      "rank": null,
+      "candidates": 0,
+      "ms": 18.984599999999773
+    },
+    {
+      "id": "unknown-9",
+      "answerable": false,
+      "rank": null,
+      "candidates": 0,
+      "ms": 20.506199999999808
+    }
+  ]
+}
